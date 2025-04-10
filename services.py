@@ -101,7 +101,7 @@ def find_and_extract_sd(tgz_path, resource_identifier): # Public version
                     if fileobj: fileobj.close() # Ensure resource cleanup
 
             if sd_data is None:
-                logger.warning(f"SD matching '{resource_identifier}' not found within archive {os.path.basename(tgz_path)}")
+                logger.info(f"SD matching '{resource_identifier}' not found within archive {os.path.basename(tgz_path)} - caller may attempt fallback")
     except tarfile.TarError as e:
         logger.error(f"TarError reading {tgz_path} in find_and_extract_sd: {e}")
         raise tarfile.TarError(f"Error reading package archive: {e}") from e
@@ -182,7 +182,6 @@ def extract_dependencies(tgz_path):
         error_message = f"Unexpected error extracting deps: {e}"; logger.error(error_message, exc_info=True); dependencies = None
     return dependencies, error_message
 
-
 # --- Recursive Import Orchestrator ---
 def import_package_and_dependencies(initial_name, initial_version):
     """Orchestrates recursive download and dependency extraction."""
@@ -246,7 +245,6 @@ def import_package_and_dependencies(initial_name, initial_version):
     proc_count=len(results['processed']); dl_count=len(results['downloaded']); err_count=len(results['errors'])
     logger.info(f"Import finished. Processed: {proc_count}, Downloaded/Verified: {dl_count}, Errors: {err_count}")
     return results
-
 
 # --- Package File Content Processor (V6.2 - Fixed MS path handling) ---
 def process_package_file(tgz_path):

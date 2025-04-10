@@ -289,7 +289,7 @@ def unload_ig():
         flash("Invalid package ID.", "error")
         return redirect(url_for('view_igs'))
     
-    processed_ig = ProcessedIg.query.get(ig_id)
+    processed_ig = db.session.get(ProcessedIg, ig_id)
     if processed_ig:
         try:
             db.session.delete(processed_ig)
@@ -318,16 +318,54 @@ def get_structure_definition():
     resource_identifier = request.args.get('resource_type')
     if not all([package_name, package_version, resource_identifier]):
         return jsonify({"error": "Missing query parameters"}), 400
+    
+    # First, try to get the structure definition from the specified package
     tgz_path = os.path.join(app.config['FHIR_PACKAGES_DIR'], services._construct_tgz_filename(package_name, package_version))
-    if not os.path.exists(tgz_path):
-        return jsonify({"error": f"Package file not found: {tgz_path}"}), 404
-    sd_data, _ = services.find_and_extract_sd(tgz_path, resource_identifier)
+    sd_data = None
+    fallback_used = False
+    
+    if os.path.exists(tgz_path):
+        sd_data, _ = services.find_and_extract_sd(tgz_path, resource_identifier)
+    
+    # If not found, fall back to the core FHIR package (hl7.fhir.r4.core#4.0.1)
     if sd_data is None:
-        return jsonify({"error": f"SD for '{resource_identifier}' not found."}), 404
+        logger.debug(f"Structure definition for '{resource_identifier}' not found in {package_name}#{package_version}, attempting fallback to hl7.fhir.r4.core#4.0.1")
+        core_package_name = "hl7.fhir.r4.core"
+        core_package_version = "4.0.1"
+        
+        # Ensure the core package is downloaded
+        core_tgz_path = os.path.join(app.config['FHIR_PACKAGES_DIR'], services._construct_tgz_filename(core_package_name, core_package_version))
+        if not os.path.exists(core_tgz_path):
+            logger.debug(f"Core package {core_package_name}#{core_package_version} not found, attempting to download")
+            try:
+                result = services.import_package_and_dependencies(core_package_name, core_package_version)
+                if result['errors'] and not result['downloaded']:
+                    logger.error(f"Failed to download core package: {result['errors'][0]}")
+                    return jsonify({"error": f"SD for '{resource_identifier}' not found in {package_name}#{package_version}, and failed to download core package: {result['errors'][0]}"}), 404
+            except Exception as e:
+                logger.error(f"Error downloading core package: {str(e)}")
+                return jsonify({"error": f"SD for '{resource_identifier}' not found in {package_name}#{package_version}, and error downloading core package: {str(e)}"}), 500
+        
+        # Try to extract the structure definition from the core package
+        if os.path.exists(core_tgz_path):
+            sd_data, _ = services.find_and_extract_sd(core_tgz_path, resource_identifier)
+            if sd_data is None:
+                return jsonify({"error": f"SD for '{resource_identifier}' not found in {package_name}#{package_version} or in core package {core_package_name}#{core_package_version}."}), 404
+            fallback_used = True
+        else:
+            return jsonify({"error": f"SD for '{resource_identifier}' not found in {package_name}#{package_version}, and core package {core_package_name}#{core_package_version} could not be located."}), 404
+    
     elements = sd_data.get('snapshot', {}).get('element', []) or sd_data.get('differential', {}).get('element', [])
     processed_ig = ProcessedIg.query.filter_by(package_name=package_name, version=package_version).first()
     must_support_paths = processed_ig.must_support_elements.get(resource_identifier, []) if processed_ig else []
-    return jsonify({"elements": elements, "must_support_paths": must_support_paths})
+    
+    response = {
+        "elements": elements,
+        "must_support_paths": must_support_paths,
+        "fallback_used": fallback_used,
+        "source_package": f"{core_package_name}#{core_package_version}" if fallback_used else f"{package_name}#{package_version}"
+    }
+    return jsonify(response)
 
 @app.route('/get-example')
 def get_example_content():
@@ -578,11 +616,6 @@ with app.app_context():
     logger.debug(f"Creating database at: {app.config['SQLALCHEMY_DATABASE_URI']}")
     db.create_all()
     logger.debug("Database initialization complete")
-
-# Add route to serve favicon
-@app.route('/favicon.ico')
-def favicon():
-    return send_from_directory(os.path.join(app.root_path, 'static'), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 if __name__ == '__main__':
     app.run(debug=True)

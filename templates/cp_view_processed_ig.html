@@ -1,9 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="px-4 py-5 my-5 text “
-
-center">
+<div class="px-4 py-5 my-5 text-center">
     <img class="d-block mx-auto mb-4" src="{{ url_for('static', filename='FHIRFLARE.png') }}" alt="FHIRFLARE Ig Toolkit" width="192" height="192">
     <h1 class="display-5 fw-bold text-body-emphasis">{{ title }}</h1>
     <div class="col-lg-6 mx-auto">
@@ -49,10 +47,10 @@ center">
                         <div class="d-flex flex-wrap gap-1 mb-3 resource-type-list">
                             {% for type_info in profile_list %}
                                 <a href="#" class="resource-type-link text-decoration-none"
-                                   data-package-name="{{ processed_ig.package_name }}"
-                                   data-package-version="{{ processed_ig.version }}"
-                                   data-resource-type="{{ type_info.name }}"
-                                   aria-label="View structure for {{ type_info.name }}">
+                                    data-package-name="{{ processed_ig.package_name }}"
+                                    data-package-version="{{ processed_ig.version }}"
+                                    data-resource-type="{{ type_info.name }}"
+                                    aria-label="View structure for {{ type_info.name }}">
                                     {% if type_info.must_support %}
                                         <span class="badge bg-warning text-dark border" title="Contains Must Support elements">{{ type_info.name }}</span>
                                     {% else %}
@@ -65,15 +63,15 @@ center">
                         <p class="text-muted"><em>No profiles defined.</em></p>
                     {% endif %}
                     {% if base_list %}
-                    <p class="mb-2"><small><span class="badge bg-primary text-light border me-1">Examples</span> = - Examples will be displayed when selecting Base Types if contained in the IG</small></p>
+                        <p class="mb-2"><small><span class="badge bg-primary text-light border me-1">Examples</span> = - Examples will be displayed when selecting Base Types if contained in the IG</small></p>
                         <h6>Base Resource Types Referenced ({{ base_list|length }}):</h6>
                         <div class="d-flex flex-wrap gap-1 resource-type-list">
                             {% for type_info in base_list %}
                                 <a href="#" class="resource-type-link text-decoration-none"
-                                   data-package-name="{{ processed_ig.package_name }}"
-                                   data-package-version="{{ processed_ig.version }}"
-                                   data-resource-type="{{ type_info.name }}"
-                                   aria-label="View structure for {{ type_info.name }}">
+                                    data-package-name="{{ processed_ig.package_name }}"
+                                    data-package-version="{{ processed_ig.version }}"
+                                    data-resource-type="{{ type_info.name }}"
+                                    aria-label="View structure for {{ type_info.name }}">
                                     {% if type_info.must_support %}
                                         <span class="badge bg-warning text-dark border" title="Contains Must Support elements">{{ type_info.name }}</span>
                                     {% else %}
@@ -101,6 +99,7 @@ center">
                     <div id="structure-loading" class="text-center py-3" style="display: none;">
                         <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
                     </div>
+                    <div id="structure-fallback-message" class="alert alert-info" style="display: none;"></div>
                     <div id="structure-content"></div>
                 </div>
             </div>
@@ -148,17 +147,8 @@ center">
     {% else %}
         <div class="alert alert-warning" role="alert">Processed IG details not available.</div>
     {% endif %}
-
-    <!-- Debugging: Display raw data for verification ------------------------------------------------------------------------------
-    <div class="mt-4">
-        <details>
-            <summary class="text-muted small">Debug: Raw Data (Click to Expand)</summary>
-            <pre class="p-2 border bg-light">Resource Types Info: {{ processed_ig.resource_types_info | tojson | safe }}</pre>
-            <pre class="p-2 border bg-light">Examples: {{ processed_ig.examples | tojson | safe }}</pre>
-        </details>
-    </div>
 </div>
--------------------------------------------------------------------------------------------------------------DEBUG end -->
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>const examplesData = {{ examples_by_type | tojson | safe }};</script>
 <script>
@@ -168,6 +158,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const structureDisplay = document.getElementById('structure-content');
         const structureTitle = document.getElementById('structure-title');
         const structureLoading = document.getElementById('structure-loading');
+        const structureFallbackMessage = document.getElementById('structure-fallback-message');
         const exampleDisplayWrapper = document.getElementById('example-display-wrapper');
         const exampleSelectorWrapper = document.getElementById('example-selector-wrapper');
         const exampleSelect = document.getElementById('example-select');
@@ -188,54 +179,73 @@ document.addEventListener('DOMContentLoaded', function() {
         // Debugging: Log initial data
         console.log("Examples Data:", examplesData);
 
-        document.body.addEventListener('click', function(event) {
-            const link = event.target.closest('.resource-type-link');
-            if (!link) return;
-            event.preventDefault();
+        // Debug all clicks to identify interference
+        document.addEventListener('click', function(event) {
+            console.log("Click event on:", event.target, "Class:", event.target.className);
+        }, true);
 
-            const pkgName = link.dataset.packageName;
-            const pkgVersion = link.dataset.packageVersion;
-            const resourceType = link.dataset.resourceType;
-            if (!pkgName || !pkgVersion || !resourceType) {
-                console.error("Missing data attributes:", { pkgName, pkgVersion, resourceType });
-                return;
-            }
+        // Handle clicks on resource-type-link within resource-type-list containers
+        document.querySelectorAll('.resource-type-list').forEach(container => {
+            container.addEventListener('click', function(event) {
+                const link = event.target.closest('.resource-type-link');
+                if (!link) return;
+                event.preventDefault();
+                console.log("Resource type link clicked:", link.dataset.resourceType);
 
-            const structureParams = new URLSearchParams({ package_name: pkgName, package_version: pkgVersion, resource_type: resourceType });
-            const structureFetchUrl = `${structureBaseUrl}?${structureParams.toString()}`;
-            console.log("Fetching structure from:", structureFetchUrl);
+                const pkgName = link.dataset.packageName;
+                const pkgVersion = link.dataset.packageVersion;
+                const resourceType = link.dataset.resourceType;
+                if (!pkgName || !pkgVersion || !resourceType) {
+                    console.error("Missing data attributes:", { pkgName, pkgVersion, resourceType });
+                    return;
+                }
 
-            structureTitle.textContent = `${resourceType} (${pkgName}#${pkgVersion})`;
-            rawStructureTitle.textContent = `${resourceType} (${pkgName}#${pkgVersion})`;
-            structureDisplay.innerHTML = '';
-            rawStructureContent.textContent = '';
-            structureLoading.style.display = 'block';
-            rawStructureLoading.style.display = 'block';
-            structureDisplayWrapper.style.display = 'block';
-            rawStructureWrapper.style.display = 'block';
-            exampleDisplayWrapper.style.display = 'none';
+                const structureParams = new URLSearchParams({ package_name: pkgName, package_version: pkgVersion, resource_type: resourceType });
+                const structureFetchUrl = `${structureBaseUrl}?${structureParams.toString()}`;
+                console.log("Fetching structure from:", structureFetchUrl);
 
-            fetch(structureFetchUrl)
-                .then(response => {
-                    console.log("Structure fetch response status:", response.status);
-                    return response.json().then(data => ({ ok: response.ok, status: response.status, data }));
-                })
-                .then(result => {
-                    if (!result.ok) throw new Error(result.data.error || `HTTP error ${result.status}`);
-                    console.log("Structure data received:", result.data);
-                    renderStructureTree(result.data.elements, result.data.must_support_paths || []);
-                    rawStructureContent.textContent = JSON.stringify(result.data, null, 2);
-                    populateExampleSelector(resourceType);
-                })
-                .catch(error => {
-                    console.error("Error fetching structure:", error);
-                    structureDisplay.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
-                    rawStructureContent.textContent = `Error: ${error.message}`;
-                })
-                .finally(() => {
-                    structureLoading.style.display = 'none';
-                    rawStructureLoading.style.display = 'none';
-                });
+                structureTitle.textContent = `${resourceType} (${pkgName}#${pkgVersion})`;
+                rawStructureTitle.textContent = `${resourceType} (${pkgName}#${pkgVersion})`;
+                structureDisplay.innerHTML = '';
+                rawStructureContent.textContent = '';
+                structureLoading.style.display = 'block';
+                rawStructureLoading.style.display = 'block';
+                structureFallbackMessage.style.display = 'none';
+                structureDisplayWrapper.style.display = 'block';
+                rawStructureWrapper.style.display = 'block';
+                exampleDisplayWrapper.style.display = 'none';
+
+                fetch(structureFetchUrl)
+                    .then(response => {
+                        console.log("Structure fetch response status:", response.status);
+                        return response.json().then(data => ({ ok: response.ok, status: response.status, data }));
+                    })
+                    .then(result => {
+                        if (!result.ok) {
+                            throw new Error(result.data.error || `HTTP error ${result.status}`);
+                        }
+                        console.log("Structure data received:", result.data);
+                        if (result.data.fallback_used) {
+                            structureFallbackMessage.style.display = 'block';
+                            structureFallbackMessage.textContent = `Structure definition not found in this IG; using base FHIR definition from ${result.data.source_package}.`;
+                        } else {
+                            structureFallbackMessage.style.display = 'none';
+                        }
+                        renderStructureTree(result.data.elements, result.data.must_support_paths || []);
+                        rawStructureContent.textContent = JSON.stringify(result.data, null, 2);
+                        populateExampleSelector(resourceType);
+                    })
+                    .catch(error => {
+                        console.error("Error fetching structure:", error);
+                        structureFallbackMessage.style.display = 'none';
+                        structureDisplay.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+                        rawStructureContent.textContent = `Error: ${error.message}`;
+                    })
+                    .finally(() => {
+                        structureLoading.style.display = 'none';
+                        rawStructureLoading.style.display = 'none';
+                    });
+            });
         });
 
         function populateExampleSelector(resourceOrProfileIdentifier) {
@@ -355,6 +365,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const mustSupportDisplay = isMustSupport ? '<i class="bi bi-check-circle-fill text-warning"></i>' : '';
             const hasChildren = Object.keys(node.children).length > 0;
             const collapseId = `collapse-${path.replace(/[\.\:]/g, '-')}`;
+            console.log(`Rendering node: ${path}, Collapse ID: ${collapseId}`); // Debug collapse IDs
             const padding = level * 20;
             const pathStyle = `padding-left: ${padding}px; white-space: nowrap;`;
             let typeString = 'N/A';
@@ -378,7 +389,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 childrenHtml += `</ul>`;
             }
             let itemHtml = `<li class="${liClass}">`;
-            itemHtml += `<div class="row gx-2 align-items-center ${hasChildren ? 'collapse-toggle' : ''}" ${hasChildren ? `data-bs-toggle="collapse" href="#${collapseId}" role="button" aria-expanded="false" aria-controls="${collapseId}"` : ''}>`;
+            itemHtml += `<div class="row gx-2 align-items-center ${hasChildren ? 'collapse-toggle' : ''}" ${hasChildren ? `data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" aria-expanded="false" aria-controls="${collapseId}"` : ''}>`;
             itemHtml += `<div class="col-lg-4 col-md-3 text-truncate" style="${pathStyle}"><span style="display: inline-block; width: 1.2em; text-align: center;">`;
             if (hasChildren) {
                 itemHtml += `<i class="bi bi-chevron-right small toggle-icon"></i>`;
@@ -391,11 +402,11 @@ document.addEventListener('DOMContentLoaded', function() {
             if (definition) {
                 const escapedDefinition = definition
                     .replace(/\\/g, '\\\\') // Escape backslashes
-                    .replace(/"/g, '\\"')   // Escape double quotes
-                    .replace(/'/g, "\\'")   // Escape single quotes
-                    .replace(/\n/g, '\\n')  // Escape newlines
-                    .replace(/\r/g, '\\r')  // Escape carriage returns
-                    .replace(/\t/g, '\\t'); // Escape tabs
+                    .replace(/"/g, '\\"')    // Escape double quotes
+                    .replace(/'/g, "\\'")    // Escape single quotes
+                    .replace(/\n/g, '\\n')    // Escape newlines
+                    .replace(/\r/g, '\\r')    // Escape carriage returns
+                    .replace(/\t/g, '\\t');   // Escape tabs
                 descriptionTooltipAttrs = `data-bs-toggle="tooltip" data-bs-placement="top" title="${escapedDefinition}"`;
             }
             itemHtml += `<div class="col-lg-3 col-md-4 text-muted text-truncate small" ${descriptionTooltipAttrs}>${short}</div>`;
@@ -423,13 +434,34 @@ document.addEventListener('DOMContentLoaded', function() {
             tooltipTriggerList.forEach(function (tooltipTriggerEl) {
                 new bootstrap.Tooltip(tooltipTriggerEl);
             });
-            structureDisplay.querySelectorAll('.collapse').forEach(collapseEl => {
-                collapseEl.addEventListener('show.bs.collapse', event => {
-                    event.target.previousElementSibling.querySelector('.toggle-icon')?.classList.replace('bi-chevron-right', 'bi-chevron-down');
-                });
-                collapseEl.addEventListener('hide.bs.collapse', event => {
-                    event.target.previousElementSibling.querySelector('.toggle-icon')?.classList.replace('bi-chevron-down', 'bi-chevron-right');
-                });
+
+            // Initialize collapse toggles and chevron icons *after* rendering
+            const collapseToggles = structureDisplay.querySelectorAll('.collapse-toggle');
+            collapseToggles.forEach(toggleEl => {
+                const collapseId = toggleEl.getAttribute('data-bs-target');
+                const collapseEl = document.querySelector(collapseId);
+                const toggleIcon = toggleEl.querySelector('.toggle-icon');
+
+                if (collapseEl && toggleIcon) {
+                    // Initially hide the collapse element
+                    collapseEl.style.display = 'none';
+
+                    // Handle click on the toggle element
+                    toggleEl.addEventListener('click', (event) => {
+                        event.preventDefault();
+                        event.stopPropagation(); // Stop propagation to prevent conflicts
+
+                        // Toggle visibility with a slight delay
+                        const isExpanding = collapseEl.style.display === 'none';
+
+                        toggleIcon.classList.replace(isExpanding ? 'bi-chevron-right' : 'bi-chevron-down', isExpanding ? 'bi-chevron-down' : 'bi-chevron-right');
+
+                        // Use setTimeout for a slight delay before showing/hiding
+                        setTimeout(() => {
+                            collapseEl.style.display = isExpanding ? 'block' : 'none'; // Or 'flex', 'grid', etc.
+                        }, 5); // A very small delay (milliseconds)
+                    });
+                }
             });
         }
     } catch (e) {
