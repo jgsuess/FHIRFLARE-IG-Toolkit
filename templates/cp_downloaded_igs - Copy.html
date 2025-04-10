@@ -1,0 +1,135 @@
+{# app/control_panel/templates/cp_downloaded_igs.html #}
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-journal-arrow-down me-2"></i>Manage FHIR Packages</h2>
+        <div>
+             <a href="{{ url_for('fhir_ig_importer.import_ig') }}" class="btn btn-success"><i class="bi bi-download me-1"></i> Import More IGs</a>
+             <a href="{{ url_for('control_panel.index') }}" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back to CP Index</a>
+        </div>
+    </div>
+
+    {% if error_message %}
+    <div class="alert alert-danger" role="alert">
+        <h5 class="alert-heading">Error</h5>
+        {{ error_message }}
+    </div>
+    {% endif %}
+
+    {# NOTE: The block calculating processed_ids set using {% set %} was REMOVED from here #}
+
+    {# --- Start Two Column Layout --- #}
+    <div class="row g-4">
+
+        {# --- Left Column: Downloaded Packages (Horizontal Buttons) --- #}
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header"><i class="bi bi-folder-symlink me-1"></i> Downloaded Packages ({{ packages|length }})</div>
+                <div class="card-body">
+                    {% if packages %}
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead>
+                                    <p class="mb-2"><small><span class="badge bg-danger text-dark border me-1">Risk:</span>= Duplicate Dependancy with different versions</small></p>
+                                    <tr><th>Package Name</th><th>Version</th><th>Actions</th></tr>
+                                </thead>
+                                <tbody>
+                                    {% for pkg in packages %}
+                                        {% set is_processed = (pkg.name, pkg.version) in processed_ids %}
+                                        {# --- ADDED: Check for duplicate name --- #}
+                                        {% set is_duplicate = pkg.name in duplicate_names %}
+                                        {# --- ADDED: Assign row class based on duplicate group --- #}
+                                        <tr class="{{ duplicate_groups.get(pkg.name, '') if is_duplicate else '' }}">
+                                            <td>
+                                                {# --- ADDED: Risk Badge for duplicates --- #}
+                                                {% if is_duplicate %}
+                                                    <span class="badge bg-danger mb-1 d-block">Duplicate</span>
+                                                {% endif %}
+                                                {# --- End Add --- #}
+                                                <code>{{ pkg.name }}</code>
+                                            </td>
+                                            <td>{{ pkg.version }}</td>
+                                            <td> {# Actions #}
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    {% if is_processed %}
+                                                        <span class="btn btn-success disabled"><i class="bi bi-check-lg"></i> Processed</span>
+                                                    {% else %}
+                                                        <form action="{{ url_for('control_panel.process_ig') }}" method="POST" style="display: inline-block;">
+                                                            <input type="hidden" name="package_name" value="{{ pkg.name }}">
+                                                            <input type="hidden" name="package_version" value="{{ pkg.version }}">
+                                                            <button type="submit" class="btn btn-outline-primary" title="Mark as processed"><i class="bi bi-gear"></i> Process</button>
+                                                        </form>
+                                                    {% endif %}
+                                                    <form action="{{ url_for('control_panel.delete_ig_file') }}" method="POST" style="display: inline-block;" onsubmit="return confirm('Delete file \'{{ pkg.filename }}\'?');">
+                                                        <input type="hidden" name="filename" value="{{ pkg.filename }}">
+                                                        <button type="submit" class="btn btn-outline-danger" title="Delete File"><i class="bi bi-trash"></i> Delete</button>
+                                                    </form>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% elif not error_message %}<p class="text-muted">No downloaded FHIR packages found.</p>{% endif %}
+                </div>
+            </div>
+        </div>{# --- End Left Column --- #}
+
+
+        {# --- Right Column: Processed Packages (Vertical Buttons) --- #}
+        <div class="col-md-6">
+             <div class="card h-100">
+                <div class="card-header"><i class="bi bi-check-circle me-1"></i> Processed Packages ({{ processed_list|length }})</div>
+                <div class="card-body">
+                    {% if processed_list %}
+                        <p class="mb-2"><small><span class="badge bg-warning text-dark border me-1">MS</span> = Contains Must Support Elements</small></p>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead>
+                                    <tr><th>Package Name</th><th>Version</th><th>Resource Types</th><th>Actions</th></tr>
+                                </thead>
+                                <tbody>
+                                    {% for processed_ig in processed_list %}
+                                        <tr>
+                                            <td>{# Tooltip for Processed At / Status #}
+                                                {% set tooltip_title_parts = [] %}
+                                                {% if processed_ig.processed_at %}{% set _ = tooltip_title_parts.append("Processed: " + processed_ig.processed_at.strftime('%Y-%m-%d %H:%M')) %}{% endif %}
+                                                {% if processed_ig.status %}{% set _ = tooltip_title_parts.append("Status: " + processed_ig.status) %}{% endif %}
+                                                {% set tooltip_text = tooltip_title_parts | join('\n') %}
+                                                <code data-bs-toggle="tooltip" data-bs-placement="top" title="{{ tooltip_text }}">{{ processed_ig.package_name }}</code>
+                                            </td>
+                                            <td>{{ processed_ig.package_version }}</td>
+                                            <td> {# Resource Types Cell w/ Badges #}
+                                                {% set types_info = processed_ig.resource_types_info %}
+                                                {% if types_info %}<div class="d-flex flex-wrap gap-1">{% for type_info in types_info %}{% if type_info.must_support %}<span class="badge bg-warning text-dark border" title="Has Must Support">{{ type_info.name }}</span>{% else %}<span class="badge bg-light text-dark border">{{ type_info.name }}</span>{% endif %}{% endfor %}</div>{% else %}<small class="text-muted">N/A</small>{% endif %}
+                                            </td>
+                                            <td>
+                                                {# Vertical Button Group #}
+                                                <div class="btn-group-vertical btn-group-sm w-100" role="group" aria-label="Processed Package Actions for {{ processed_ig.package_name }}">
+                                                     <a href="{{ url_for('control_panel.view_processed_ig', processed_ig_id=processed_ig.id) }}" class="btn btn-outline-info w-100" title="View Details"><i class="bi bi-search"></i> View</a>
+                                                     <form action="{{ url_for('control_panel.unload_ig') }}" method="POST" onsubmit="return confirm('Unload record for \'{{ processed_ig.package_name }}#{{ processed_ig.package_version }}\'?');">
+                                                        <input type="hidden" name="processed_ig_id" value="{{ processed_ig.id }}">
+                                                        <button type="submit" class="btn btn-outline-warning w-100" title="Unload/Remove Processed Record"><i class="bi bi-x-lg"></i> Unload</button>
+                                                    </form>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% elif not error_message %}<p class="text-muted">No packages recorded as processed yet.</p>{% endif %}
+                </div>
+             </div>
+        </div>{# --- End Right Column --- #}
+
+    </div>{# --- End Row --- #}
+
+</div>{# End container #}
+{% endblock %}
+
+{# Tooltip JS Initializer should be in base.html #}
+{% block scripts %}{{ super() }}{% endblock %}

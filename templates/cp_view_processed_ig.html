@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+<body>
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2><i class="bi bi-info-circle me-2"></i>{{ title }}</h2>
+        <a href="{{ url_for('view_igs') }}" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back to Package List</a>
+    </div>
+
+    {% if processed_ig %}
+        <div class="card">
+            <div class="card-header">Package Details</div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-3">Package Name</dt>
+                    <dd class="col-sm-9"><code>{{ processed_ig.package_name }}</code></dd>
+                    <dt class="col-sm-3">Package Version</dt>
+                    <dd class="col-sm-9">{{ processed_ig.version }}</dd>
+                    <dt class="col-sm-3">Processed At</dt>
+                    <dd class="col-sm-9">{{ processed_ig.processed_date.strftime('%Y-%m-%d %H:%M:%S UTC') }}</dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">Resource Types Found / Defined</div>
+            <div class="card-body">
+                {% if profile_list or base_list %}
+                    <p class="mb-2"><small><span class="badge bg-warning text-dark border me-1">MS</span> = Contains Must Support Elements</small></p>
+                    {% if profile_list %}
+                        <h6>Profiles Defined ({{ profile_list|length }}):</h6>
+                        <div class="d-flex flex-wrap gap-1 mb-3 resource-type-list">
+                            {% for type_info in profile_list %}
+                                <a href="#" class="resource-type-link text-decoration-none"
+                                   data-package-name="{{ processed_ig.package_name }}"
+                                   data-package-version="{{ processed_ig.version }}"
+                                   data-resource-type="{{ type_info.name }}"
+                                   aria-label="View structure for {{ type_info.name }}">
+                                    {% if type_info.must_support %}
+                                        <span class="badge bg-warning text-dark border" title="Contains Must Support elements">{{ type_info.name }}</span>
+                                    {% else %}
+                                        <span class="badge bg-light text-dark border">{{ type_info.name }}</span>
+                                    {% endif %}
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    {% if base_list %}
+                        <h6>Base Resource Types Referenced ({{ base_list|length }}):</h6>
+                        <div class="d-flex flex-wrap gap-1 resource-type-list">
+                            {% for type_info in base_list %}
+                                <a href="#" class="resource-type-link text-decoration-none"
+                                   data-package-name="{{ processed_ig.package_name }}"
+                                   data-package-version="{{ processed_ig.version }}"
+                                   data-resource-type="{{ type_info.name }}"
+                                   aria-label="View structure for {{ type_info.name }}">
+                                    {% if type_info.must_support %}
+                                        <span class="badge bg-warning text-dark border" title="Contains Must Support elements">{{ type_info.name }}</span>
+                                    {% else %}
+                                        <span class="badge bg-light text-dark border">{{ type_info.name }}</span>
+                                    {% endif %}
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% else %}
+                    <p class="text-muted"><em>No resource type information extracted or stored.</em></p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div id="structure-display-wrapper" class="mt-4" style="display: none;">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Structure Definition for: <code id="structure-title"></code></span>
+                    <button type="button" class="btn-close" aria-label="Close" onclick="document.getElementById('structure-display-wrapper').style.display='none'; document.getElementById('example-display-wrapper').style.display='none'; document.getElementById('raw-structure-wrapper').style.display='none';"></button>
+                </div>
+                <div class="card-body">
+                    <div id="structure-loading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                    </div>
+                    <div id="structure-content"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="raw-structure-wrapper" class="mt-4" style="display: none;">
+            <div class="card">
+                <div class="card-header">Raw Structure Definition for <code id="raw-structure-title"></code></div>
+                <div class="card-body">
+                    <div id="raw-structure-loading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                    </div>
+                    <pre><code id="raw-structure-content" class="p-2 d-block border bg-light" style="max-height: 400px; overflow-y: auto;"></code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div id="example-display-wrapper" class="mt-4" style="display: none;">
+            <div class="card">
+                <div class="card-header">Examples for <code id="example-resource-type-title"></code></div>
+                <div class="card-body">
+                    <div class="mb-3" id="example-selector-wrapper" style="display: none;">
+                        <label for="example-select" class="form-label">Select Example:</label>
+                        <select class="form-select form-select-sm" id="example-select"><option selected value="">-- Select --</option></select>
+                    </div>
+                    <div id="example-loading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-secondary" role="status"><span class="visually-hidden">Loading...</span></div>
+                    </div>
+                    <div id="example-content-wrapper" style="display: none;">
+                        <h6 id="example-filename" class="mt-2 small text-muted"></h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Raw Content</h6>
+                                <pre><code id="example-content-raw" class="p-2 d-block border bg-light" style="max-height: 400px; overflow-y: auto;"></code></pre>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Pretty-Printed JSON</h6>
+                                <pre><code id="example-content-json" class="p-2 d-block border bg-light" style="max-height: 400px; overflow-y: auto;"></code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="alert alert-warning" role="alert">Processed IG details not available.</div>
+    {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>const examplesData = {{ examples_by_type | tojson | safe }};</script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const structureDisplayWrapper = document.getElementById('structure-display-wrapper');
+    const structureDisplay = document.getElementById('structure-content');
+    const structureTitle = document.getElementById('structure-title');
+    const structureLoading = document.getElementById('structure-loading');
+    const exampleDisplayWrapper = document.getElementById('example-display-wrapper');
+    const exampleSelectorWrapper = document.getElementById('example-selector-wrapper');
+    const exampleSelect = document.getElementById('example-select');
+    const exampleResourceTypeTitle = document.getElementById('example-resource-type-title');
+    const exampleLoading = document.getElementById('example-loading');
+    const exampleContentWrapper = document.getElementById('example-content-wrapper');
+    const exampleFilename = document.getElementById('example-filename');
+    const exampleContentRaw = document.getElementById('example-content-raw');
+    const exampleContentJson = document.getElementById('example-content-json');
+    const rawStructureWrapper = document.getElementById('raw-structure-wrapper');
+    const rawStructureTitle = document.getElementById('raw-structure-title');
+    const rawStructureContent = document.getElementById('raw-structure-content');
+    const rawStructureLoading = document.getElementById('raw-structure-loading');
+
+    const structureBaseUrl = "{{ url_for('get_structure_definition') }}";
+    const exampleBaseUrl = "{{ url_for('get_example_content') }}";
+
+    document.body.addEventListener('click', function(event) {
+        const link = event.target.closest('.resource-type-link');
+        if (!link) return;
+        event.preventDefault();
+
+        const pkgName = link.dataset.packageName;
+        const pkgVersion = link.dataset.packageVersion;
+        const resourceType = link.dataset.resourceType;
+        if (!pkgName || !pkgVersion || !resourceType) return;
+
+        const structureParams = new URLSearchParams({ package_name: pkgName, package_version: pkgVersion, resource_type: resourceType });
+        const structureFetchUrl = `${structureBaseUrl}?${structureParams.toString()}`;
+
+        structureTitle.textContent = `${resourceType} (${pkgName}#${pkgVersion})`;
+        rawStructureTitle.textContent = `${resourceType} (${pkgName}#${pkgVersion})`;
+        structureDisplay.innerHTML = '';
+        rawStructureContent.textContent = '';
+        structureLoading.style.display = 'block';
+        rawStructureLoading.style.display = 'block';
+        structureDisplayWrapper.style.display = 'block';
+        rawStructureWrapper.style.display = 'block';
+        exampleDisplayWrapper.style.display = 'none';
+
+        fetch(structureFetchUrl)
+            .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
+            .then(result => {
+                if (!result.ok) throw new Error(result.data.error || `HTTP error ${result.status}`);
+                renderStructureTree(result.data.elements, result.data.must_support_paths || []);
+                rawStructureContent.textContent = JSON.stringify(result.data, null, 2);
+                populateExampleSelector(resourceType);
+            })
+            .catch(error => {
+                structureDisplay.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+                rawStructureContent.textContent = `Error: ${error.message}`;
+            })
+            .finally(() => {
+                structureLoading.style.display = 'none';
+                rawStructureLoading.style.display = 'none';
+            });
+    });
+
+    function populateExampleSelector(resourceOrProfileIdentifier) {
+        exampleResourceTypeTitle.textContent = resourceOrProfileIdentifier;
+        const availableExamples = examplesData[resourceOrProfileIdentifier] || [];
+        exampleSelect.innerHTML = '<option selected value="">-- Select --</option>';
+        exampleContentWrapper.style.display = 'none';
+        exampleFilename.textContent = '';
+        exampleContentRaw.textContent = '';
+        exampleContentJson.textContent = '';
+        if (availableExamples.length > 0) {
+            availableExamples.forEach(filePath => {
+                const filename = filePath.split('/').pop();
+                const option = document.createElement('option');
+                option.value = filePath;
+                option.textContent = filename;
+                exampleSelect.appendChild(option);
+            });
+            exampleSelectorWrapper.style.display = 'block';
+            exampleDisplayWrapper.style.display = 'block';
+        } else {
+            exampleSelectorWrapper.style.display = 'none';
+            exampleDisplayWrapper.style.display = 'none';
+        }
+    }
+
+    if(exampleSelect) {
+        exampleSelect.addEventListener('change', function(event) {
+            const selectedFilePath = this.value;
+            exampleContentRaw.textContent = '';
+            exampleContentJson.textContent = '';
+            exampleFilename.textContent = '';
+            exampleContentWrapper.style.display = 'none';
+            if (!selectedFilePath) return;
+
+            const exampleParams = new URLSearchParams({
+                package_name: "{{ processed_ig.package_name }}",
+                package_version: "{{ processed_ig.version }}",
+                filename: selectedFilePath
+            });
+            const exampleFetchUrl = `${exampleBaseUrl}?${exampleParams.toString()}`;
+            exampleLoading.style.display = 'block';
+            fetch(exampleFetchUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(errText => { throw new Error(errText || `HTTP error ${response.status}`); });
+                    }
+                    return response.text();
+                })
+                .then(content => {
+                    exampleFilename.textContent = `Source: ${selectedFilePath.split('/').pop()}`;
+                    exampleContentRaw.textContent = content;
+                    try {
+                        const jsonContent = JSON.parse(content);
+                        exampleContentJson.textContent = JSON.stringify(jsonContent, null, 2);
+                    } catch (e) {
+                        exampleContentJson.textContent = 'Not valid JSON';
+                    }
+                    exampleContentWrapper.style.display = 'block';
+                })
+                .catch(error => {
+                    exampleFilename.textContent = 'Error';
+                    exampleContentRaw.textContent = `Error: ${error.message}`;
+                    exampleContentJson.textContent = `Error: ${error.message}`;
+                    exampleContentWrapper.style.display = 'block';
+                })
+                .finally(() => {
+                    exampleLoading.style.display = 'none';
+                });
+        });
+    }
+
+    function buildTreeData(elements) {
+        const treeRoot = { children: {}, element: null, name: 'Root' };
+        const nodeMap = {'Root': treeRoot};
+        elements.forEach(el => {
+            const path = el.path;
+            if (!path) return;
+            const parts = path.split('.');
+            let currentPath = '';
+            let parentNode = treeRoot;
+            for(let i = 0; i < parts.length; i++) {
+                const part = parts[i];
+                const currentPartName = part.includes('[') ? part.substring(0, part.indexOf('[')) : part;
+                currentPath = i === 0 ? currentPartName : `${currentPath}.${part}`;
+                if (!nodeMap[currentPath]) {
+                    const newNode = { children: {}, element: null, name: part, path: currentPath };
+                    parentNode.children[part] = newNode;
+                    nodeMap[currentPath] = newNode;
+                }
+                if (i === parts.length - 1) {
+                    nodeMap[currentPath].element = el;
+                }
+                parentNode = nodeMap[currentPath];
+            }
+        });
+        return Object.values(treeRoot.children);
+    }
+
+    function renderNodeAsLi(node, mustSupportPathsSet, level = 0) {
+        if (!node || !node.element) return '';
+        const el = node.element;
+        const path = el.path || 'N/A';
+        const min = el.min !== undefined ? el.min : '';
+        const max = el.max || '';
+        const short = el.short || '';
+        const definition = el.definition || '';
+        const isMustSupport = mustSupportPathsSet.has(path);
+        const mustSupportDisplay = isMustSupport ? '<i class="bi bi-check-circle-fill text-warning"></i>' : '';
+        const hasChildren = Object.keys(node.children).length > 0;
+        const collapseId = `collapse-${path.replace(/[\.\:]/g, '-')}`;
+        const padding = level * 20;
+        const pathStyle = `padding-left: ${padding}px; white-space: nowrap;`;
+        let typeString = 'N/A';
+        if (el.type && el.type.length > 0) {
+            typeString = el.type.map(t => {
+                let s = t.code || '';
+                if (t.targetProfile && t.targetProfile.length > 0) {
+                    const targetTypes = t.targetProfile.map(p => p.split('/').pop());
+                    s += `(<span class="text-muted">${targetTypes.join('|')}</span>)`;
+                }
+                return s;
+            }).join(' | ');
+        }
+        const liClass = isMustSupport ? 'list-group-item py-1 px-2 list-group-item-warning' : 'list-group-item py-1 px-2';
+        let childrenHtml = '';
+        if (hasChildren) {
+            childrenHtml += `<ul class="collapse list-group list-group-flush" id="${collapseId}">`;
+            Object.values(node.children).sort((a,b) => a.name.localeCompare(b.name)).forEach(childNode => {
+                childrenHtml += renderNodeAsLi(childNode, mustSupportPathsSet, level + 1);
+            });
+            childrenHtml += `</ul>`;
+        }
+        let itemHtml = `<li class="${liClass}">`;
+        itemHtml += `<div class="row gx-2 align-items-center ${hasChildren ? 'collapse-toggle' : ''}" ${hasChildren ? `data-bs-toggle="collapse" href="#${collapseId}" role="button" aria-expanded="false" aria-controls="${collapseId}"` : ''}>`;
+        itemHtml += `<div class="col-lg-4 col-md-3 text-truncate" style="${pathStyle}"><span style="display: inline-block; width: 1.2em; text-align: center;">`;
+        if (hasChildren) {
+            itemHtml += `<i class="bi bi-chevron-right small toggle-icon"></i>`;
+        }
+        itemHtml += `</span><code class="fw-bold ms-1">${node.name}</code></div>`;
+        itemHtml += `<div class="col-lg-1 col-md-1 text-center text-muted small"><code>${min}..${max}</code></div>`;
+        itemHtml += `<div class="col-lg-3 col-md-3 text-truncate small">${typeString}</div>`;
+        itemHtml += `<div class="col-lg-1 col-md-1 text-center">${mustSupportDisplay}</div>`;
+        let descriptionTooltipAttrs = '';
+        if (definition) {
+            const escapedDefinition = definition.replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+            descriptionTooltipAttrs = `data-bs-toggle="tooltip" data-bs-placement="top" title="${escapedDefinition}"`;
+        }
+        itemHtml += `<div class="col-lg-3 col-md-4 text-muted text-truncate small" ${descriptionTooltipAttrs}>${short}</div>`;
+        itemHtml += `</div>`;
+        itemHtml += childrenHtml;
+        itemHtml += `</li>`;
+        return itemHtml;
+    }
+
+    function renderStructureTree(elements, mustSupportPaths) {
+        if (!elements || elements.length === 0) {
+            structureDisplay.innerHTML = '<p class="text-muted"><em>No elements found.</em></p>';
+            return;
+        }
+        const mustSupportPathsSet = new Set(mustSupportPaths || []);
+        let html = '<p><small><span class="badge bg-warning text-dark border me-1">MS</span> = Must Support (Row Highlighted)</small></p>';
+        html += `<div class="row gx-2 small fw-bold border-bottom mb-1 d-none d-md-flex"><div class="col-lg-4 col-md-3">Path</div><div class="col-lg-1 col-md-1 text-center">Card.</div><div class="col-lg-3 col-md-3">Type(s)</div><div class="col-lg-1 col-md-1 text-center">MS</div><div class="col-lg-3 col-md-4">Description</div></div>`;
+        html += '<ul class="list-group list-group-flush">';
+        buildTreeData(elements).sort((a,b) => a.name.localeCompare(b.name)).forEach(rootNode => {
+            html += renderNodeAsLi(rootNode, mustSupportPathsSet, 0);
+        });
+        html += '</ul>';
+        structureDisplay.innerHTML = html;
+        var tooltipTriggerList = [].slice.call(structureDisplay.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+            new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+        structureDisplay.querySelectorAll('.collapse').forEach(collapseEl => {
+            collapseEl.addEventListener('show.bs.collapse', event => {
+                event.target.previousElementSibling.querySelector('.toggle-icon')?.classList.replace('bi-chevron-right', 'bi-chevron-down');
+            });
+            collapseEl.addEventListener('hide.bs.collapse', event => {
+                event.target.previousElementSibling.querySelector('.toggle-icon')?.classList.replace('bi-chevron-down', 'bi-chevron-right');
+            });
+        });
+    }
+});
+</script>
+</body>
+</html>
