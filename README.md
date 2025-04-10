@@ -14,6 +14,27 @@ This tool was initially developed as an IG package viewer within a larger projec
 - **Database Integration**: Store processed IGs in a SQLite database for persistence.
 - **User-Friendly Interface**: Built with Bootstrap for a responsive and intuitive UI.
 
+## Technology Stack
+
+This application is built using the following technologies:
+
+* **Backend:**
+    * **Python:** The primary programming language.
+    * **Flask:** A lightweight web framework for building the application.
+    * **SQLAlchemy:** An ORM (Object-Relational Mapper) for interacting with the database.
+* **Frontend:**
+    * **HTML:** For structuring the web pages.
+    * **CSS:** Styling is primarily provided by Bootstrap.
+    * **Bootstrap 5.3.3:** A CSS framework for responsive and consistent design.
+    * **Bootstrap Icons 1.11.3:** A library of icons for use within the user interface.
+    * **JavaScript:** For client-side interactivity, particularly in the IG details view.
+* **Data Storage:**
+    * **SQLite:** (Example -  *You should specify your actual database here if different*) A lightweight, file-based database.
+* **Other:**
+    * **tarfile:** Python's built-in module for working with tar archives.
+    * **requests:** A Python library for making HTTP requests.
+    * **json:** Python's built-in module for working with JSON data.
+
 ## Prerequisites
 
 Before setting up the project, ensure you have the following installed:
