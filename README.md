@@ -4,6 +4,8 @@
 
 FHIRFLARE IG Toolkit is a Flask-based web application designed to simplify the management of FHIR Implementation Guides (IGs). It allows users to import, process, view, and manage FHIR packages, with features to handle duplicate dependencies and visualize processed IGs. The toolkit is built to assist developers, researchers, and healthcare professionals working with FHIR standards.
 
+This tool was initially developed as an IG package viewer within a larger project I was building. As the requirements expanded and it became clear there was a strong need for a lightweight, purpose-built solution to interact with IG packages, I decided to decouple it from the original codebase and release it as a standalone open-source utility for broader community use.
+
 ### Key Features
 - **Import FHIR Packages**: Download FHIR IGs and their dependencies by specifying package names and versions.
 - **Manage Duplicates**: Detect and highlight duplicate packages with different versions, using color-coded indicators.
