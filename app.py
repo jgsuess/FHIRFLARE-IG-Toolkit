@@ -65,26 +65,7 @@ class ProcessedIg(db.Model):
 
 @app.route('/')
 def index():
-    return render_template_string('''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>FHIR IG Toolkit</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { text-align: center; padding: 50px; }
-        .button { padding: 15px 30px; margin: 10px; font-size: 16px; }
-    </style>
-</head>
-<body>
-    <h1>FHIR IG Toolkit</h1>
-    <p>Simple tool for importing and viewing FHIR Implementation Guides.</p>
-    <a href="{{ url_for('import_ig') }}"><button class="button btn btn-primary">Import FHIR IG</button></a>
-    <a href="{{ url_for('view_igs') }}"><button class="button btn btn-primary">View Downloaded IGs</button></a>
-</body>
-</html>
-    ''')
+    return render_template('index.html', site_name='FHIRFLARE IG Toolkit', now=datetime.now())
 
 @app.route('/import-ig', methods=['GET', 'POST'])
 def import_ig():
@@ -101,47 +82,7 @@ def import_ig():
             return redirect(url_for('view_igs'))
         except Exception as e:
             flash(f"Error downloading IG: {str(e)}", "error")
-    return render_template_string('''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Import FHIR IG</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        .form { max-width: 400px; margin: 20px auto; }
-        .message { margin-top: 10px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1 class="mt-4">Import FHIR IG</h1>
-        <form class="form" method="POST">
-            {{ form.hidden_tag() }}
-            <div class="mb-3">
-                {{ form.package_name.label(class="form-label") }}
-                {{ form.package_name(class="form-control") }}
-                {% for error in form.package_name.errors %}<p class="text-danger message">{{ error }}</p>{% endfor %}
-            </div>
-            <div class="mb-3">
-                {{ form.package_version.label(class="form-label") }}
-                {{ form.package_version(class="form-control") }}
-                {% for error in form.package_version.errors %}<p class="text-danger message">{{ error }}</p>{% endfor %}
-            </div>
-            {{ form.submit(class="btn btn-primary") }}
-            <a href="{{ url_for('index') }}" class="btn btn-secondary">Back</a>
-        </form>
-        {% with messages = get_flashed_messages(with_categories=True) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <p class="message text-{{ 'success' if category == 'success' else 'danger' }}">{{ message }}</p>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-    </div>
-</body>
-</html>
-    ''', form=form)
+    return render_template('import_ig.html', form=form, site_name='FLARE FHIR IG Toolkit', now=datetime.now())
 
 @app.route('/view-igs')
 def view_igs():
@@ -194,7 +135,8 @@ def view_igs():
 
     return render_template('cp_downloaded_igs.html', packages=packages, processed_list=igs, 
                          processed_ids=processed_ids, duplicate_names=duplicate_names, 
-                         duplicate_groups=duplicate_groups, group_colors=group_colors)
+                         duplicate_groups=duplicate_groups, group_colors=group_colors,
+                         site_name='FLARE FHIR IG Toolkit', now=datetime.now())
 
 @app.route('/process-igs', methods=['POST'])
 def process_ig():
@@ -283,7 +225,8 @@ def view_ig(processed_ig_id):
     base_list = [t for t in processed_ig.resource_types_info if not t.get('is_profile')]
     examples_by_type = processed_ig.examples or {}
     return render_template('cp_view_processed_ig.html', title=f"View {processed_ig.package_name}#{processed_ig.version}",
-                          processed_ig=processed_ig, profile_list=profile_list, base_list=base_list, examples_by_type=examples_by_type)
+                          processed_ig=processed_ig, profile_list=profile_list, base_list=base_list,
+                          examples_by_type=examples_by_type, site_name='FLARE FHIR IG Toolkit', now=datetime.now())
 
 @app.route('/get-structure')
 def get_structure_definition():
@@ -331,6 +274,11 @@ with app.app_context():
     logger.debug(f"Creating database at: {app.config['SQLALCHEMY_DATABASE_URI']}")
     db.create_all()
     logger.debug("Database initialization complete")
+
+# Add route to serve favicon
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 if __name__ == '__main__':
     app.run(debug=True)

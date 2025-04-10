@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY services.py .
 COPY templates/ templates/
+COPY static/ static/
 
 # Ensure /tmp is writable as a fallback
 RUN mkdir -p /tmp && chmod 777 /tmp

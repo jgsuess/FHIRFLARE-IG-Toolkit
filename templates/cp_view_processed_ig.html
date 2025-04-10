@@ -1,12 +1,22 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>{{ title }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
-</head>
-<body>
+{% extends "base.html" %}
+
+{% block content %}
+<div class="px-4 py-5 my-5 text “
+
+center">
+    <img class="d-block mx-auto mb-4" src="{{ url_for('static', filename='FHIRFLARE.png') }}" alt="FHIRFLARE Ig Toolkit" width="192" height="192">
+    <h1 class="display-5 fw-bold text-body-emphasis">{{ title }}</h1>
+    <div class="col-lg-6 mx-auto">
+        <p class="lead mb-4">
+            View details of the processed FHIR Implementation Guide.
+        </p>
+        <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+            <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg px-4 gap-3">Back to Home</a>
+            <a href="{{ url_for('view_igs') }}" class="btn btn-outline-secondary btn-lg px-4">Manage FHIR Packages</a>
+        </div>
+    </div>
+</div>
+
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2><i class="bi bi-info-circle me-2"></i>{{ title }}</h2>
@@ -50,6 +60,8 @@
                                 </a>
                             {% endfor %}
                         </div>
+                    {% else %}
+                        <p class="text-muted"><em>No profiles defined.</em></p>
                     {% endif %}
                     {% if base_list %}
                         <h6>Base Resource Types Referenced ({{ base_list|length }}):</h6>
@@ -68,6 +80,8 @@
                                 </a>
                             {% endfor %}
                         </div>
+                    {% else %}
+                        <p class="text-muted"><em>No base resource types referenced.</em></p>
                     {% endif %}
                 {% else %}
                     <p class="text-muted"><em>No resource type information extracted or stored.</em></p>
@@ -132,255 +146,293 @@
     {% else %}
         <div class="alert alert-warning" role="alert">Processed IG details not available.</div>
     {% endif %}
+
+    <!-- Debugging: Display raw data for verification -->
+    <div class="mt-4">
+        <details>
+            <summary class="text-muted small">Debug: Raw Data (Click to Expand)</summary>
+            <pre class="p-2 border bg-light">Resource Types Info: {{ processed_ig.resource_types_info | tojson | safe }}</pre>
+            <pre class="p-2 border bg-light">Examples: {{ processed_ig.examples | tojson | safe }}</pre>
+        </details>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>const examplesData = {{ examples_by_type | tojson | safe }};</script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const structureDisplayWrapper = document.getElementById('structure-display-wrapper');
-    const structureDisplay = document.getElementById('structure-content');
-    const structureTitle = document.getElementById('structure-title');
-    const structureLoading = document.getElementById('structure-loading');
-    const exampleDisplayWrapper = document.getElementById('example-display-wrapper');
-    const exampleSelectorWrapper = document.getElementById('example-selector-wrapper');
-    const exampleSelect = document.getElementById('example-select');
-    const exampleResourceTypeTitle = document.getElementById('example-resource-type-title');
-    const exampleLoading = document.getElementById('example-loading');
-    const exampleContentWrapper = document.getElementById('example-content-wrapper');
-    const exampleFilename = document.getElementById('example-filename');
-    const exampleContentRaw = document.getElementById('example-content-raw');
-    const exampleContentJson = document.getElementById('example-content-json');
-    const rawStructureWrapper = document.getElementById('raw-structure-wrapper');
-    const rawStructureTitle = document.getElementById('raw-structure-title');
-    const rawStructureContent = document.getElementById('raw-structure-content');
-    const rawStructureLoading = document.getElementById('raw-structure-loading');
+    try {
+        const structureDisplayWrapper = document.getElementById('structure-display-wrapper');
+        const structureDisplay = document.getElementById('structure-content');
+        const structureTitle = document.getElementById('structure-title');
+        const structureLoading = document.getElementById('structure-loading');
+        const exampleDisplayWrapper = document.getElementById('example-display-wrapper');
+        const exampleSelectorWrapper = document.getElementById('example-selector-wrapper');
+        const exampleSelect = document.getElementById('example-select');
+        const exampleResourceTypeTitle = document.getElementById('example-resource-type-title');
+        const exampleLoading = document.getElementById('example-loading');
+        const exampleContentWrapper = document.getElementById('example-content-wrapper');
+        const exampleFilename = document.getElementById('example-filename');
+        const exampleContentRaw = document.getElementById('example-content-raw');
+        const exampleContentJson = document.getElementById('example-content-json');
+        const rawStructureWrapper = document.getElementById('raw-structure-wrapper');
+        const rawStructureTitle = document.getElementById('raw-structure-title');
+        const rawStructureContent = document.getElementById('raw-structure-content');
+        const rawStructureLoading = document.getElementById('raw-structure-loading');
 
-    const structureBaseUrl = "{{ url_for('get_structure_definition') }}";
-    const exampleBaseUrl = "{{ url_for('get_example_content') }}";
+        const structureBaseUrl = "{{ url_for('get_structure_definition') }}";
+        const exampleBaseUrl = "{{ url_for('get_example_content') }}";
 
-    document.body.addEventListener('click', function(event) {
-        const link = event.target.closest('.resource-type-link');
-        if (!link) return;
-        event.preventDefault();
+        // Debugging: Log initial data
+        console.log("Examples Data:", examplesData);
 
-        const pkgName = link.dataset.packageName;
-        const pkgVersion = link.dataset.packageVersion;
-        const resourceType = link.dataset.resourceType;
-        if (!pkgName || !pkgVersion || !resourceType) return;
+        document.body.addEventListener('click', function(event) {
+            const link = event.target.closest('.resource-type-link');
+            if (!link) return;
+            event.preventDefault();
 
-        const structureParams = new URLSearchParams({ package_name: pkgName, package_version: pkgVersion, resource_type: resourceType });
-        const structureFetchUrl = `${structureBaseUrl}?${structureParams.toString()}`;
+            const pkgName = link.dataset.packageName;
+            const pkgVersion = link.dataset.packageVersion;
+            const resourceType = link.dataset.resourceType;
+            if (!pkgName || !pkgVersion || !resourceType) {
+                console.error("Missing data attributes:", { pkgName, pkgVersion, resourceType });
+                return;
+            }
 
-        structureTitle.textContent = `${resourceType} (${pkgName}#${pkgVersion})`;
-        rawStructureTitle.textContent = `${resourceType} (${pkgName}#${pkgVersion})`;
-        structureDisplay.innerHTML = '';
-        rawStructureContent.textContent = '';
-        structureLoading.style.display = 'block';
-        rawStructureLoading.style.display = 'block';
-        structureDisplayWrapper.style.display = 'block';
-        rawStructureWrapper.style.display = 'block';
-        exampleDisplayWrapper.style.display = 'none';
+            const structureParams = new URLSearchParams({ package_name: pkgName, package_version: pkgVersion, resource_type: resourceType });
+            const structureFetchUrl = `${structureBaseUrl}?${structureParams.toString()}`;
+            console.log("Fetching structure from:", structureFetchUrl);
 
-        fetch(structureFetchUrl)
-            .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
-            .then(result => {
-                if (!result.ok) throw new Error(result.data.error || `HTTP error ${result.status}`);
-                renderStructureTree(result.data.elements, result.data.must_support_paths || []);
-                rawStructureContent.textContent = JSON.stringify(result.data, null, 2);
-                populateExampleSelector(resourceType);
-            })
-            .catch(error => {
-                structureDisplay.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
-                rawStructureContent.textContent = `Error: ${error.message}`;
-            })
-            .finally(() => {
-                structureLoading.style.display = 'none';
-                rawStructureLoading.style.display = 'none';
-            });
-    });
-
-    function populateExampleSelector(resourceOrProfileIdentifier) {
-        exampleResourceTypeTitle.textContent = resourceOrProfileIdentifier;
-        const availableExamples = examplesData[resourceOrProfileIdentifier] || [];
-        exampleSelect.innerHTML = '<option selected value="">-- Select --</option>';
-        exampleContentWrapper.style.display = 'none';
-        exampleFilename.textContent = '';
-        exampleContentRaw.textContent = '';
-        exampleContentJson.textContent = '';
-        if (availableExamples.length > 0) {
-            availableExamples.forEach(filePath => {
-                const filename = filePath.split('/').pop();
-                const option = document.createElement('option');
-                option.value = filePath;
-                option.textContent = filename;
-                exampleSelect.appendChild(option);
-            });
-            exampleSelectorWrapper.style.display = 'block';
-            exampleDisplayWrapper.style.display = 'block';
-        } else {
-            exampleSelectorWrapper.style.display = 'none';
+            structureTitle.textContent = `${resourceType} (${pkgName}#${pkgVersion})`;
+            rawStructureTitle.textContent = `${resourceType} (${pkgName}#${pkgVersion})`;
+            structureDisplay.innerHTML = '';
+            rawStructureContent.textContent = '';
+            structureLoading.style.display = 'block';
+            rawStructureLoading.style.display = 'block';
+            structureDisplayWrapper.style.display = 'block';
+            rawStructureWrapper.style.display = 'block';
             exampleDisplayWrapper.style.display = 'none';
-        }
-    }
 
-    if(exampleSelect) {
-        exampleSelect.addEventListener('change', function(event) {
-            const selectedFilePath = this.value;
-            exampleContentRaw.textContent = '';
-            exampleContentJson.textContent = '';
-            exampleFilename.textContent = '';
-            exampleContentWrapper.style.display = 'none';
-            if (!selectedFilePath) return;
-
-            const exampleParams = new URLSearchParams({
-                package_name: "{{ processed_ig.package_name }}",
-                package_version: "{{ processed_ig.version }}",
-                filename: selectedFilePath
-            });
-            const exampleFetchUrl = `${exampleBaseUrl}?${exampleParams.toString()}`;
-            exampleLoading.style.display = 'block';
-            fetch(exampleFetchUrl)
+            fetch(structureFetchUrl)
                 .then(response => {
-                    if (!response.ok) {
-                        return response.text().then(errText => { throw new Error(errText || `HTTP error ${response.status}`); });
-                    }
-                    return response.text();
+                    console.log("Structure fetch response status:", response.status);
+                    return response.json().then(data => ({ ok: response.ok, status: response.status, data }));
                 })
-                .then(content => {
-                    exampleFilename.textContent = `Source: ${selectedFilePath.split('/').pop()}`;
-                    exampleContentRaw.textContent = content;
-                    try {
-                        const jsonContent = JSON.parse(content);
-                        exampleContentJson.textContent = JSON.stringify(jsonContent, null, 2);
-                    } catch (e) {
-                        exampleContentJson.textContent = 'Not valid JSON';
-                    }
-                    exampleContentWrapper.style.display = 'block';
+                .then(result => {
+                    if (!result.ok) throw new Error(result.data.error || `HTTP error ${result.status}`);
+                    console.log("Structure data received:", result.data);
+                    renderStructureTree(result.data.elements, result.data.must_support_paths || []);
+                    rawStructureContent.textContent = JSON.stringify(result.data, null, 2);
+                    populateExampleSelector(resourceType);
                 })
                 .catch(error => {
-                    exampleFilename.textContent = 'Error';
-                    exampleContentRaw.textContent = `Error: ${error.message}`;
-                    exampleContentJson.textContent = `Error: ${error.message}`;
-                    exampleContentWrapper.style.display = 'block';
+                    console.error("Error fetching structure:", error);
+                    structureDisplay.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+                    rawStructureContent.textContent = `Error: ${error.message}`;
                 })
                 .finally(() => {
-                    exampleLoading.style.display = 'none';
+                    structureLoading.style.display = 'none';
+                    rawStructureLoading.style.display = 'none';
                 });
         });
-    }
 
-    function buildTreeData(elements) {
-        const treeRoot = { children: {}, element: null, name: 'Root' };
-        const nodeMap = {'Root': treeRoot};
-        elements.forEach(el => {
-            const path = el.path;
-            if (!path) return;
-            const parts = path.split('.');
-            let currentPath = '';
-            let parentNode = treeRoot;
-            for(let i = 0; i < parts.length; i++) {
-                const part = parts[i];
-                const currentPartName = part.includes('[') ? part.substring(0, part.indexOf('[')) : part;
-                currentPath = i === 0 ? currentPartName : `${currentPath}.${part}`;
-                if (!nodeMap[currentPath]) {
-                    const newNode = { children: {}, element: null, name: part, path: currentPath };
-                    parentNode.children[part] = newNode;
-                    nodeMap[currentPath] = newNode;
-                }
-                if (i === parts.length - 1) {
-                    nodeMap[currentPath].element = el;
-                }
-                parentNode = nodeMap[currentPath];
+        function populateExampleSelector(resourceOrProfileIdentifier) {
+            console.log("Populating examples for:", resourceOrProfileIdentifier);
+            exampleResourceTypeTitle.textContent = resourceOrProfileIdentifier;
+            const availableExamples = examplesData[resourceOrProfileIdentifier] || [];
+            console.log("Available examples:", availableExamples);
+            exampleSelect.innerHTML = '<option selected value="">-- Select --</option>';
+            exampleContentWrapper.style.display = 'none';
+            exampleFilename.textContent = '';
+            exampleContentRaw.textContent = '';
+            exampleContentJson.textContent = '';
+            if (availableExamples.length > 0) {
+                availableExamples.forEach(filePath => {
+                    const filename = filePath.split('/').pop();
+                    const option = document.createElement('option');
+                    option.value = filePath;
+                    option.textContent = filename;
+                    exampleSelect.appendChild(option);
+                });
+                exampleSelectorWrapper.style.display = 'block';
+                exampleDisplayWrapper.style.display = 'block';
+            } else {
+                exampleSelectorWrapper.style.display = 'none';
+                exampleDisplayWrapper.style.display = 'none';
             }
-        });
-        return Object.values(treeRoot.children);
-    }
+        }
 
-    function renderNodeAsLi(node, mustSupportPathsSet, level = 0) {
-        if (!node || !node.element) return '';
-        const el = node.element;
-        const path = el.path || 'N/A';
-        const min = el.min !== undefined ? el.min : '';
-        const max = el.max || '';
-        const short = el.short || '';
-        const definition = el.definition || '';
-        const isMustSupport = mustSupportPathsSet.has(path);
-        const mustSupportDisplay = isMustSupport ? '<i class="bi bi-check-circle-fill text-warning"></i>' : '';
-        const hasChildren = Object.keys(node.children).length > 0;
-        const collapseId = `collapse-${path.replace(/[\.\:]/g, '-')}`;
-        const padding = level * 20;
-        const pathStyle = `padding-left: ${padding}px; white-space: nowrap;`;
-        let typeString = 'N/A';
-        if (el.type && el.type.length > 0) {
-            typeString = el.type.map(t => {
-                let s = t.code || '';
-                if (t.targetProfile && t.targetProfile.length > 0) {
-                    const targetTypes = t.targetProfile.map(p => p.split('/').pop());
-                    s += `(<span class="text-muted">${targetTypes.join('|')}</span>)`;
+        if (exampleSelect) {
+            exampleSelect.addEventListener('change', function(event) {
+                const selectedFilePath = this.value;
+                console.log("Selected example file:", selectedFilePath);
+                exampleContentRaw.textContent = '';
+                exampleContentJson.textContent = '';
+                exampleFilename.textContent = '';
+                exampleContentWrapper.style.display = 'none';
+                if (!selectedFilePath) return;
+
+                const exampleParams = new URLSearchParams({
+                    package_name: "{{ processed_ig.package_name }}",
+                    package_version: "{{ processed_ig.version }}",
+                    filename: selectedFilePath
+                });
+                const exampleFetchUrl = `${exampleBaseUrl}?${exampleParams.toString()}`;
+                console.log("Fetching example from:", exampleFetchUrl);
+                exampleLoading.style.display = 'block';
+                fetch(exampleFetchUrl)
+                    .then(response => {
+                        console.log("Example fetch response status:", response.status);
+                        if (!response.ok) {
+                            return response.text().then(errText => { throw new Error(errText || `HTTP error ${response.status}`); });
+                        }
+                        return response.text();
+                    })
+                    .then(content => {
+                        console.log("Example content received:", content);
+                        exampleFilename.textContent = `Source: ${selectedFilePath.split('/').pop()}`;
+                        exampleContentRaw.textContent = content;
+                        try {
+                            const jsonContent = JSON.parse(content);
+                            exampleContentJson.textContent = JSON.stringify(jsonContent, null, 2);
+                        } catch (e) {
+                            console.error("Error parsing JSON:", e);
+                            exampleContentJson.textContent = 'Not valid JSON';
+                        }
+                        exampleContentWrapper.style.display = 'block';
+                    })
+                    .catch(error => {
+                        console.error("Error fetching example:", error);
+                        exampleFilename.textContent = 'Error';
+                        exampleContentRaw.textContent = `Error: ${error.message}`;
+                        exampleContentJson.textContent = `Error: ${error.message}`;
+                        exampleContentWrapper.style.display = 'block';
+                    })
+                    .finally(() => {
+                        exampleLoading.style.display = 'none';
+                    });
+            });
+        }
+
+        function buildTreeData(elements) {
+            const treeRoot = { children: {}, element: null, name: 'Root' };
+            const nodeMap = { 'Root': treeRoot };
+            elements.forEach(el => {
+                const path = el.path;
+                if (!path) return;
+                const parts = path.split('.');
+                let currentPath = '';
+                let parentNode = treeRoot;
+                for (let i = 0; i < parts.length; i++) {
+                    const part = parts[i];
+                    const currentPartName = part.includes('[') ? part.substring(0, part.indexOf('[')) : part;
+                    currentPath = i === 0 ? currentPartName : `${currentPath}.${part}`;
+                    if (!nodeMap[currentPath]) {
+                        const newNode = { children: {}, element: null, name: part, path: currentPath };
+                        parentNode.children[part] = newNode;
+                        nodeMap[currentPath] = newNode;
+                    }
+                    if (i === parts.length - 1) {
+                        nodeMap[currentPath].element = el;
+                    }
+                    parentNode = nodeMap[currentPath];
                 }
-                return s;
-            }).join(' | ');
-        }
-        const liClass = isMustSupport ? 'list-group-item py-1 px-2 list-group-item-warning' : 'list-group-item py-1 px-2';
-        let childrenHtml = '';
-        if (hasChildren) {
-            childrenHtml += `<ul class="collapse list-group list-group-flush" id="${collapseId}">`;
-            Object.values(node.children).sort((a,b) => a.name.localeCompare(b.name)).forEach(childNode => {
-                childrenHtml += renderNodeAsLi(childNode, mustSupportPathsSet, level + 1);
             });
-            childrenHtml += `</ul>`;
+            return Object.values(treeRoot.children);
         }
-        let itemHtml = `<li class="${liClass}">`;
-        itemHtml += `<div class="row gx-2 align-items-center ${hasChildren ? 'collapse-toggle' : ''}" ${hasChildren ? `data-bs-toggle="collapse" href="#${collapseId}" role="button" aria-expanded="false" aria-controls="${collapseId}"` : ''}>`;
-        itemHtml += `<div class="col-lg-4 col-md-3 text-truncate" style="${pathStyle}"><span style="display: inline-block; width: 1.2em; text-align: center;">`;
-        if (hasChildren) {
-            itemHtml += `<i class="bi bi-chevron-right small toggle-icon"></i>`;
-        }
-        itemHtml += `</span><code class="fw-bold ms-1">${node.name}</code></div>`;
-        itemHtml += `<div class="col-lg-1 col-md-1 text-center text-muted small"><code>${min}..${max}</code></div>`;
-        itemHtml += `<div class="col-lg-3 col-md-3 text-truncate small">${typeString}</div>`;
-        itemHtml += `<div class="col-lg-1 col-md-1 text-center">${mustSupportDisplay}</div>`;
-        let descriptionTooltipAttrs = '';
-        if (definition) {
-            const escapedDefinition = definition.replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-            descriptionTooltipAttrs = `data-bs-toggle="tooltip" data-bs-placement="top" title="${escapedDefinition}"`;
-        }
-        itemHtml += `<div class="col-lg-3 col-md-4 text-muted text-truncate small" ${descriptionTooltipAttrs}>${short}</div>`;
-        itemHtml += `</div>`;
-        itemHtml += childrenHtml;
-        itemHtml += `</li>`;
-        return itemHtml;
-    }
 
-    function renderStructureTree(elements, mustSupportPaths) {
-        if (!elements || elements.length === 0) {
-            structureDisplay.innerHTML = '<p class="text-muted"><em>No elements found.</em></p>';
-            return;
+        function renderNodeAsLi(node, mustSupportPathsSet, level = 0) {
+            if (!node || !node.element) return '';
+            const el = node.element;
+            const path = el.path || 'N/A';
+            const min = el.min !== undefined ? el.min : '';
+            const max = el.max || '';
+            const short = el.short || '';
+            const definition = el.definition || '';
+            const isMustSupport = mustSupportPathsSet.has(path);
+            const mustSupportDisplay = isMustSupport ? '<i class="bi bi-check-circle-fill text-warning"></i>' : '';
+            const hasChildren = Object.keys(node.children).length > 0;
+            const collapseId = `collapse-${path.replace(/[\.\:]/g, '-')}`;
+            const padding = level * 20;
+            const pathStyle = `padding-left: ${padding}px; white-space: nowrap;`;
+            let typeString = 'N/A';
+            if (el.type && el.type.length > 0) {
+                typeString = el.type.map(t => {
+                    let s = t.code || '';
+                    if (t.targetProfile && t.targetProfile.length > 0) {
+                        const targetTypes = t.targetProfile.map(p => p.split('/').pop());
+                        s += `(<span class="text-muted">${targetTypes.join('|')}</span>)`;
+                    }
+                    return s;
+                }).join(' | ');
+            }
+            const liClass = isMustSupport ? 'list-group-item py-1 px-2 list-group-item-warning' : 'list-group-item py-1 px-2';
+            let childrenHtml = '';
+            if (hasChildren) {
+                childrenHtml += `<ul class="collapse list-group list-group-flush" id="${collapseId}">`;
+                Object.values(node.children).sort((a, b) => a.name.localeCompare(b.name)).forEach(childNode => {
+                    childrenHtml += renderNodeAsLi(childNode, mustSupportPathsSet, level + 1);
+                });
+                childrenHtml += `</ul>`;
+            }
+            let itemHtml = `<li class="${liClass}">`;
+            itemHtml += `<div class="row gx-2 align-items-center ${hasChildren ? 'collapse-toggle' : ''}" ${hasChildren ? `data-bs-toggle="collapse" href="#${collapseId}" role="button" aria-expanded="false" aria-controls="${collapseId}"` : ''}>`;
+            itemHtml += `<div class="col-lg-4 col-md-3 text-truncate" style="${pathStyle}"><span style="display: inline-block; width: 1.2em; text-align: center;">`;
+            if (hasChildren) {
+                itemHtml += `<i class="bi bi-chevron-right small toggle-icon"></i>`;
+            }
+            itemHtml += `</span><code class="fw-bold ms-1">${node.name}</code></div>`;
+            itemHtml += `<div class="col-lg-1 col-md-1 text-center text-muted small"><code>${min}..${max}</code></div>`;
+            itemHtml += `<div class="col-lg-3 col-md-3 text-truncate small">${typeString}</div>`;
+            itemHtml += `<div class="col-lg-1 col-md-1 text-center">${mustSupportDisplay}</div>`;
+            let descriptionTooltipAttrs = '';
+            if (definition) {
+                const escapedDefinition = definition
+                    .replace(/\\/g, '\\\\') // Escape backslashes
+                    .replace(/"/g, '\\"')   // Escape double quotes
+                    .replace(/'/g, "\\'")   // Escape single quotes
+                    .replace(/\n/g, '\\n')  // Escape newlines
+                    .replace(/\r/g, '\\r')  // Escape carriage returns
+                    .replace(/\t/g, '\\t'); // Escape tabs
+                descriptionTooltipAttrs = `data-bs-toggle="tooltip" data-bs-placement="top" title="${escapedDefinition}"`;
+            }
+            itemHtml += `<div class="col-lg-3 col-md-4 text-muted text-truncate small" ${descriptionTooltipAttrs}>${short}</div>`;
+            itemHtml += `</div>`;
+            itemHtml += childrenHtml;
+            itemHtml += `</li>`;
+            return itemHtml;
         }
-        const mustSupportPathsSet = new Set(mustSupportPaths || []);
-        let html = '<p><small><span class="badge bg-warning text-dark border me-1">MS</span> = Must Support (Row Highlighted)</small></p>';
-        html += `<div class="row gx-2 small fw-bold border-bottom mb-1 d-none d-md-flex"><div class="col-lg-4 col-md-3">Path</div><div class="col-lg-1 col-md-1 text-center">Card.</div><div class="col-lg-3 col-md-3">Type(s)</div><div class="col-lg-1 col-md-1 text-center">MS</div><div class="col-lg-3 col-md-4">Description</div></div>`;
-        html += '<ul class="list-group list-group-flush">';
-        buildTreeData(elements).sort((a,b) => a.name.localeCompare(b.name)).forEach(rootNode => {
-            html += renderNodeAsLi(rootNode, mustSupportPathsSet, 0);
-        });
-        html += '</ul>';
-        structureDisplay.innerHTML = html;
-        var tooltipTriggerList = [].slice.call(structureDisplay.querySelectorAll('[data-bs-toggle="tooltip"]'));
-        tooltipTriggerList.forEach(function (tooltipTriggerEl) {
-            new bootstrap.Tooltip(tooltipTriggerEl);
-        });
-        structureDisplay.querySelectorAll('.collapse').forEach(collapseEl => {
-            collapseEl.addEventListener('show.bs.collapse', event => {
-                event.target.previousElementSibling.querySelector('.toggle-icon')?.classList.replace('bi-chevron-right', 'bi-chevron-down');
+
+        function renderStructureTree(elements, mustSupportPaths) {
+            if (!elements || elements.length === 0) {
+                structureDisplay.innerHTML = '<p class="text-muted"><em>No elements found.</em></p>';
+                return;
+            }
+            const mustSupportPathsSet = new Set(mustSupportPaths || []);
+            let html = '<p><small><span class="badge bg-warning text-dark border me-1">MS</span> = Must Support (Row Highlighted)</small></p>';
+            html += `<div class="row gx-2 small fw-bold border-bottom mb-1 d-none d-md-flex"><div class="col-lg-4 col-md-3">Path</div><div class="col-lg-1 col-md-1 text-center">Card.</div><div class="col-lg-3 col-md-3">Type(s)</div><div class="col-lg-1 col-md-1 text-center">MS</div><div class="col-lg-3 col-md-4">Description</div></div>`;
+            html += '<ul class="list-group list-group-flush">';
+            buildTreeData(elements).sort((a, b) => a.name.localeCompare(b.name)).forEach(rootNode => {
+                html += renderNodeAsLi(rootNode, mustSupportPathsSet, 0);
             });
-            collapseEl.addEventListener('hide.bs.collapse', event => {
-                event.target.previousElementSibling.querySelector('.toggle-icon')?.classList.replace('bi-chevron-down', 'bi-chevron-right');
+            html += '</ul>';
+            structureDisplay.innerHTML = html;
+            var tooltipTriggerList = [].slice.call(structureDisplay.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+                new bootstrap.Tooltip(tooltipTriggerEl);
             });
-        });
+            structureDisplay.querySelectorAll('.collapse').forEach(collapseEl => {
+                collapseEl.addEventListener('show.bs.collapse', event => {
+                    event.target.previousElementSibling.querySelector('.toggle-icon')?.classList.replace('bi-chevron-right', 'bi-chevron-down');
+                });
+                collapseEl.addEventListener('hide.bs.collapse', event => {
+                    event.target.previousElementSibling.querySelector('.toggle-icon')?.classList.replace('bi-chevron-down', 'bi-chevron-right');
+                });
+            });
+        }
+    } catch (e) {
+        console.error("JavaScript error in cp_view_processed_ig.html:", e);
     }
 });
 </script>
-</body>
-</html>
+{% endblock %}

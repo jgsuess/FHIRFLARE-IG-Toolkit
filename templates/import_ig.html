@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% from "_form_helpers.html" import render_field %}
+
+{% block content %}
+<div class="px-4 py-5 my-5 text-center">
+    <img class="d-block mx-auto mb-4" src="{{ url_for('static', filename='FHIRFLARE.png') }}" alt="FHIRFLARE Ig Toolkit" width="192" height="192">
+    <h1 class="display-5 fw-bold text-body-emphasis">Import FHIR Implementation Guides</h1>
+    <div class="col-lg-6 mx-auto">
+        <p class="lead mb-4">
+            Import new FHIR Implementation Guides to the system for viewing.
+        </p>
+        <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+            <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg px-4 gap-3">Back to Home</a>
+            <a href="{{ url_for('view_igs') }}" class="btn btn-outline-secondary btn-lg px-4">View Downloaded IGs</a>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-4">
+    <h2><i class="bi bi-download me-2"></i>Import a New IG</h2>
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <form method="POST" class="form">
+                        {{ form.hidden_tag() }}
+                        {{ render_field(form.package_name) }}
+                        {{ render_field(form.package_version) }}
+                        <div class="d-grid gap-2 d-sm-flex">
+                            {{ form.submit(class="btn btn-success") }}
+                            <a href="{{ url_for('index') }}" class="btn btn-secondary">Back</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="px-4 py-5 my-5 text-center">
+    <img class="d-block mx-auto mb-4" src="{{ url_for('static', filename='FHIRFLARE.png') }}" alt="FHIRFLARE Ig Toolkit" width="512" height="512">
+    <h1 class="display-5 fw-bold text-body-emphasis">Welcome to {{ site_name }}</h1>
+    <div class="col-lg-6 mx-auto">
+        <p class="lead mb-4">
+            Simple tool for importing and viewing FHIR Implementation Guides.
+        </p>
+        <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+            <a href="{{ url_for('import_ig') }}" class="btn btn-primary btn-lg px-4 gap-3">Import FHIR IG</a>
+            <a href="{{ url_for('view_igs') }}" class="btn btn-outline-secondary btn-lg px-4">View Downloaded IGs</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
