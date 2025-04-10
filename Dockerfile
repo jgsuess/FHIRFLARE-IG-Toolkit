@@ -1,27 +1,30 @@
-# 1. Base Image: Use an official Python runtime as a parent image
-FROM python:3.10-slim AS base
+FROM python:3.9-slim
 
-# Set environment variables
-# Prevents python creating .pyc files
-ENV PYTHONDONTWRITEBYTECODE=1
-# Prevents python buffering stdout/stderr
-ENV PYTHONUNBUFFERED=1
-
-# 2. Set Work Directory: Create and set the working directory in the container
+# Set working directory
 WORKDIR /app
 
-# 3. Install Dependencies: Copy only the requirements file first to leverage Docker cache
+# Install system dependencies (if any needed by services.py, e.g., for FHIR processing)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements file and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 4. Copy Application Code: Copy the rest of your application code into the work directory
-COPY . .
+# Copy application files
+COPY app.py .
+COPY services.py .  # Assuming you have this; replace with actual file if different
+COPY instance/ instance/  # Pre-create instance dir if needed for SQLite/packages
 
-# 5. Expose Port: Tell Docker the container listens on port 5000
+# Ensure instance directory exists for SQLite DB and FHIR packages
+RUN mkdir -p /app/instance/fhir_packages
+
+# Expose Flask port
 EXPOSE 5000
 
-# 6. Run Command: Specify the command to run when the container starts
-#    Using "flask run --host=0.0.0.0" makes the app accessible from outside the container
-#    Note: FLASK_APP should be set, often via ENV or run.py structure
-#    Note: For development, FLASK_DEBUG=1 might be useful (e.g., ENV FLASK_DEBUG=1)
+# Set environment variables
+ENV FLASK_APP=app.py
+ENV FLASK_ENV=development
+
+# Run the app
 CMD ["flask", "run", "--host=0.0.0.0"]

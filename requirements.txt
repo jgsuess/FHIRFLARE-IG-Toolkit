@@ -1,17 +1,3 @@
-# requirements.txt
-# List of Python packages required for the project
-
-Flask
-Flask-SQLAlchemy
-Flask-Migrate
-python-dotenv
-Flask-WTF
-email-validator
-requests>=2.20 # Or later version
-Flask-Login  # <-- ADD THIS LINE
-pytest>=7.0  # Or a specific later version
-# Optional, but helpful for Flask fixtures later:
-# pytest-flask>=1.0
-
-
-# We will add Flask-SQLAlchemy later when we set up the database
+Flask==2.3.3
+Flask-SQLAlchemy==3.0.5
+Werkzeug==2.3.7
