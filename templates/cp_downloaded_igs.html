@@ -3,7 +3,7 @@
 {% block content %}
 <div class="px-4 py-5 my-5 text-center">
     <img class="d-block mx-auto mb-4" src="{{ url_for('static', filename='FHIRFLARE.png') }}" alt="FHIRFLARE Ig Toolkit" width="192" height="192">
-    <h1 class="display-5 fw-bold text-body-emphasis">Welcome to {{ site_name }}</h1>
+    <h1 class="display-5 fw-bold text-body-emphasis">Manage & Process FHIR Packages</h1>
     <div class="col-lg-6 mx-auto">
         <p class="lead mb-4">
             This is the starting Point for your Journey through the IG's
@@ -16,6 +16,39 @@
 </div>
 
 <div class="container mt-4">
+    <!-- Add custom CSS for badge and table row colors -->
+    <style>
+        .badge.bg-warning {
+            background-color: #ffc107 !important;
+        }
+        .badge.bg-info {
+            background-color: #0dcaf0 !important;
+        }
+        .badge.bg-secondary {
+            background-color: #6c757d !important;
+        }
+        .badge.bg-danger {
+            background-color: #dc3545 !important;
+        }
+        /* Ensure table rows with custom background colors are not overridden by Bootstrap */
+        .table tr.bg-warning {
+            background-color: #ffc107 !important;
+        }
+        .table tr.bg-info {
+            background-color: #0dcaf0 !important;
+        }
+        .table tr.bg-secondary {
+            background-color: #6c757d !important;
+        }
+        .table tr.bg-danger {
+            background-color: #dc3545 !important;
+        }
+        /* Override Bootstrap's table background to allow custom row colors to show */
+        .table-custom-bg {
+            --bs-table-bg: transparent !important;
+        }
+    </style>
+
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2><i class="bi bi-journal-arrow-down me-2"></i>Manage FHIR Packages</h2>
         <div>
@@ -30,8 +63,10 @@
                 <div class="card-body">
                     {% if packages %}
                         <div class="table-responsive">
+                            <!-- remove this warning and move it down the bottom-----------------------------------------------------------------------------------------
                             <p class="mb-2"><small><span class="badge bg-danger text-light border me-1">Risk:</span> Duplicate Dependency with Different Versions</small></p>
-                            <table class="table table-sm table-hover">
+                            --------------------------------------------------------------------------------------------------------------------------------------------->
+                            <table class="table table-sm table-hover table-custom-bg">
                                 <thead>
                                     <tr><th>Package Name</th><th>Version</th><th>Actions</th></tr>
                                 </thead>
@@ -39,7 +74,7 @@
                                     {% for pkg in packages %}
                                         {% set is_processed = (pkg.name, pkg.version) in processed_ids %}
                                         {% set is_duplicate = pkg.name in duplicate_names and duplicate_names[pkg.name]|length > 1 %}
-                                        {% set group_color = group_colors[pkg.name] if is_duplicate else 'bg-light' %}
+                                        {% set group_color = group_colors[pkg.name] if (is_duplicate and pkg.name in group_colors) else 'bg-warning' if is_duplicate else 'bg-light' %}
                                         <tr class="{% if is_duplicate %}{{ group_color }} text-dark{% endif %}">
                                             <td>
                                                 <code>{{ pkg.name }}</code>
@@ -70,12 +105,11 @@
                             </table>
                         </div>
                         {% if duplicate_groups %}
-                            <p class="mt-2 small text-muted">Duplicates detected: 
+                            <p class="mb-2"><small><span class="badge bg-danger text-light border me-1">Risk:</span> = Duplicate Dependencies</small></p>
+                            <p class="mt-2 small text-muted">Duplicate dependencies detected: 
                                 {% for name, versions in duplicate_groups.items() %}
-                                    {% if versions|length > 1 %}
-                                        {% set group_color = group_colors[name] if name in group_colors else 'bg-warning' %}
-                                        <span class="badge {{ group_color }} text-dark">{{ name }} ({{ versions|join(', ') }})</span>
-                                    {% endif %}
+                                    {% set group_color = group_colors[name] if name in group_colors else 'bg-warning' %}
+                                    <span class="badge {{ group_color }} text-dark">{{ name }} ({{ versions|join(', ') }})</span>
                                 {% endfor %}
                             </p>
                         {% else %}
@@ -94,6 +128,7 @@
                 <div class="card-body">
                     {% if processed_list %}
                         <p class="mb-2"><small><span class="badge bg-warning text-dark border me-1">MS</span> = Contains Must Support Elements</small></p>
+                        <p class="mb-2 small text-muted">Resource Types in the list will be both Profile and Base Type:
                         <div class="table-responsive">
                             <table class="table table-sm table-hover">
                                 <thead>

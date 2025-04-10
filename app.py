@@ -116,22 +116,25 @@ def view_igs():
     else:
         logger.warning(f"Packages directory not found: {packages_dir}")
 
+    # Calculate duplicate_names
     duplicate_names = {}
-    duplicate_groups = {}
     for pkg in packages:
         name = pkg['name']
-        if name in duplicate_names:
-            duplicate_names[name].append(pkg)
-            duplicate_groups.setdefault(name, []).append(pkg['version'])
-        else:
-            duplicate_names[name] = [pkg]
+        if name not in duplicate_names:
+            duplicate_names[name] = []
+        duplicate_names[name].append(pkg)
+
+    # Calculate duplicate_groups
+    duplicate_groups = {}
+    for name, pkgs in duplicate_names.items():
+        if len(pkgs) > 1:  # Only include packages with multiple versions
+            duplicate_groups[name] = [pkg['version'] for pkg in pkgs]
 
     # Precompute group colors
     colors = ['bg-warning', 'bg-info', 'bg-success', 'bg-danger']
     group_colors = {}
-    for i, name in enumerate(duplicate_groups):
-        if len(duplicate_groups[name]) > 1:  # Only color duplicates
-            group_colors[name] = colors[i % len(colors)]
+    for i, name in enumerate(duplicate_groups.keys()):
+        group_colors[name] = colors[i % len(colors)]
 
     return render_template('cp_downloaded_igs.html', packages=packages, processed_list=igs, 
                          processed_ids=processed_ids, duplicate_names=duplicate_names, 
