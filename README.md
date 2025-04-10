@@ -215,6 +215,59 @@ test_app.py::TestFHIRFlareIGToolkit::test_get_example_content_invalid_path PASSE
 - **Missing Templates**: If tests fail with `TemplateNotFound`, ensure all required templates (`index.html`, `import_ig.html`, etc.) are in the `/app/templates/` directory.
 - **Missing Dependencies**: If tests fail due to missing `services.py` or its functions, ensure `services.py` is present in `/app/` and contains the required functions (`import_package_and_dependencies`, `process_package_file`, etc.).
 
+## Development Notes
+
+### Background
+
+The FHIRFLARE IG Toolkit was developed to address the need for a user-friendly tool to manage FHIR Implementation Guides. The project focuses on providing a seamless experience for importing, processing, and analyzing FHIR packages, with a particular emphasis on handling duplicate dependencies—a common challenge in FHIR development.
+
+### Technical Decisions
+
+- **Flask**: Chosen for its lightweight and flexible nature, making it ideal for a small to medium-sized web application.
+- **SQLite**: Used as the database for simplicity and ease of setup. For production use, consider switching to a more robust database like PostgreSQL.
+- **Bootstrap**: Integrated for a responsive and professional UI, with custom CSS to handle duplicate package highlighting.
+- **Docker Support**: Added to simplify deployment and ensure consistency across development and production environments.
+
+### Known Issues and Workarounds
+
+- **Bootstrap CSS Conflicts**: Early versions of the application had issues with Bootstrap’s table background styles (`--bs-table-bg`) overriding custom row colors for duplicate packages. This was resolved by setting `--bs-table-bg` to `transparent` for the affected table (see `templates/cp_downloaded_igs.html`).
+- **Database Permissions**: The `instance` directory must be writable by the application. If you encounter permission errors, ensure the directory has the correct permissions (`chmod -R 777 instance`).
+- **Package Parsing**: Some FHIR package filenames may not follow the expected `name-version.tgz` format, leading to parsing issues. The application includes a fallback to treat such files as name-only packages, but this may need further refinement.
+
+### Future Improvements
+
+- [ ] **Sorting Versions**: Add sorting for package versions in the "Manage FHIR Packages" view to display them in a consistent order (e.g., ascending or descending).
+- [ ] **Advanced Duplicate Handling**: Implement options to resolve duplicates (e.g., keep the latest version, merge resources).
+- [ ] **Production Database**: Support for PostgreSQL or MySQL for better scalability in production environments.
+
+**Completed Items** (Removed from the list as they are done):
+- ~~Testing: Add unit tests using pytest to cover core functionality, especially package processing and database operations.~~ (Implemented in `tests/test_app.py` with 27 test cases covering UI, API, database, and file operations.)
+- ~~Inbound API for IG Packages: Develop API endpoints to allow external tools to push IG packages to FHIRFLARE. The API should automatically resolve dependencies, return a list of dependencies, and identify any duplicate dependencies.~~ (Implemented as `POST /api/import-ig`.)
+- ~~Outbound API for Pushing IGs to FHIR Servers: Create an outbound API to push a chosen IG (with its dependencies) to a FHIR server, or allow pushing a single IG without dependencies. The API should process the server’s responses and provide feedback.~~ (Implemented as `POST /api/push-ig`.)
+
+### Far-Distant Improvements
+
+- **Cache Service for IGs**: Implement a cache service to store all IGs, allowing for quick querying of package metadata without reprocessing. This could use an in-memory store like Redis to improve performance.
+- **Database Index Optimization**: Modify the database structure to use a composite index on `package_name` and `version` (e.g., `ProcessedIg.package_name` + `ProcessedIg.version` as a unique key). This would allow the `/view-igs` page and API endpoints to directly query specific packages (e.g., `/api/ig/hl7.fhir.us.core/1.0.0`) without scanning the entire table.
+
+### Contributing
+
+Contributions are welcome! To contribute:
+
+1. Fork the repository.
+2. Create a new branch (`git checkout -b feature/your-feature`).
+3. Make your changes and commit them (`git commit -m "Add your feature"`).
+4. Push to your branch (`git push origin feature/your-feature`).
+5. Open a Pull Request.
+
+Please ensure your code follows the project’s coding style and includes appropriate tests.
+
+### Troubleshooting
+
+- **Database Issues**: If the SQLite database (`instance/fhir_ig.db`) cannot be created, ensure the `instance` directory is writable. You may need to adjust permissions (`chmod -R 777 instance`).
+- **Package Download Fails**: Verify your internet connection and ensure the package name and version are correct.
+- **Colors Not Displaying**: If table row colors for duplicates are not showing, inspect the page with browser developer tools (F12) to check for CSS conflicts with Bootstrap.
+
 ## Directory Structure
 
 - `app.py`: Main Flask application file.
