@@ -232,7 +232,7 @@ Please ensure your code follows the project’s coding style and includes approp
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License, Version 2.0.  See the [LICENSE.md](LICENSE.md) file for details.
 
 ## Contact
 
