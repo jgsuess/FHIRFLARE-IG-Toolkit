@@ -30,27 +30,6 @@ The FHIRFLARE IG Toolkit is built using the following technologies:
 - **Tarfile**: Python library for handling `.tgz` package files.
 - **Logging**: Python's built-in logging for debugging and monitoring.
 
-## Technology Stack
-
-This application is built using the following technologies:
-
-* **Backend:**
-    * **Python:** The primary programming language.
-    * **Flask:** A lightweight web framework for building the application.
-    * **SQLAlchemy:** An ORM (Object-Relational Mapper) for interacting with the database.
-* **Frontend:**
-    * **HTML:** For structuring the web pages.
-    * **CSS:** Styling is primarily provided by Bootstrap.
-    * **Bootstrap 5.3.3:** A CSS framework for responsive and consistent design.
-    * **Bootstrap Icons 1.11.3:** A library of icons for use within the user interface.
-    * **JavaScript:** For client-side interactivity, particularly in the IG details view.
-* **Data Storage:**
-    * **SQLite:** (Example -  *You should specify your actual database here if different*) A lightweight, file-based database.
-* **Other:**
-    * **tarfile:** Python's built-in module for working with tar archives.
-    * **requests:** A Python library for making HTTP requests.
-    * **json:** Python's built-in module for working with JSON data.
-
 ## Prerequisites
 
 - **Python 3.9+**: Ensure Python is installed on your system.
@@ -253,12 +232,4 @@ Contributions are welcome! Please fork the repository, create a feature branch, 
 
 ## License
 
-<<<<<<< Updated upstream
-This project is licensed under the Apache License, Version 2.0.  See the [LICENSE.md](LICENSE.md) file for details.
-
-## Contact
-
-For questions or support, please open an issue on GitHub or contact the maintainers at [your-email@example.com](mailto:your-email@example.com).
-=======
 This project is licensed under the Apache 2.0 License. See the `LICENSE` file for details.
->>>>>>> Stashed changes
