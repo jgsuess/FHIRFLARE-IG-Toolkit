@@ -5,47 +5,6 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import json
 
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(64), index=True, unique=True)
-    email = db.Column(db.String(120), index=True, unique=True)
-    password_hash = db.Column(db.String(256))
-    # --- ADDED ROLE COLUMN ---
-    role = db.Column(db.String(20), index=True, default='user', nullable=False)
-
-    # Optional: Add a helper property for easy checking
-    @property
-    def is_admin(self):
-        return self.role == 'admin'
-    # --- END ROLE COLUMN ---
-
-    def __repr__(self):
-        # You might want to include the role in the representation
-        return f'<User {self.username} ({self.role})>'
-
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        # Ensure password_hash is not None before checking
-        if self.password_hash is None:
-            return False
-        return check_password_hash(self.password_hash, password)
-
-# Add this new model
-class ModuleRegistry(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    module_id = db.Column(db.String(100), unique=True, nullable=False, index=True) # Matches folder name
-    is_enabled = db.Column(db.Boolean, default=False, nullable=False)
-    display_name = db.Column(db.String(100), nullable=True) # Optional override from metadata
-    description = db.Column(db.Text, nullable=True) # Optional override from metadata
-    version = db.Column(db.String(30), nullable=True) # Store version discovered
-    # Add timestamp for when it was first discovered or last updated?
-    # last_seen = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    def __repr__(self):
-        return f"<ModuleRegistry {self.module_id} (Enabled: {self.is_enabled})>"
-
 # --- ProcessedIg Model (MODIFIED for Examples) ---
 class ProcessedIg(db.Model):
     id = db.Column(db.Integer, primary_key=True)
