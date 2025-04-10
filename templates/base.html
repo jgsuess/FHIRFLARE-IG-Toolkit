@@ -26,6 +26,9 @@
                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.endpoint == 'import_ig' else '' }}" href="{{ url_for('import_ig') }}"><i class="bi bi-download me-1"></i> Import IGs</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ 'active' if request.endpoint == 'push_igs' else '' }}" href="{{ url_for('push_igs') }}"><i class="bi bi-upload me-1"></i> Push IGs</a>
+                    </li>
                 </ul>
             </div>
         </div>

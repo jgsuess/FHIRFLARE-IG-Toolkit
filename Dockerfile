@@ -12,6 +12,7 @@ COPY app.py .
 COPY services.py .
 COPY templates/ templates/
 COPY static/ static/
+COPY tests/ tests/
 
 # Ensure /tmp is writable as a fallback
 RUN mkdir -p /tmp && chmod 777 /tmp

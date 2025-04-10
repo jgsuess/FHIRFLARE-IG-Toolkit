@@ -189,7 +189,14 @@ def import_package_and_dependencies(initial_name, initial_version):
     # --- FIX: Ensure consistent indentation ---
     logger = logging.getLogger(__name__)
     logger.info(f"Starting recursive import for {initial_name}#{initial_version}")
-    results = {'requested': (initial_name, initial_version), 'processed': set(), 'downloaded': {}, 'all_dependencies': {}, 'errors': [] }
+    results = {
+        'requested': (initial_name, initial_version),
+        'processed': set(),
+        'downloaded': {},
+        'all_dependencies': {},
+        'dependencies': [],  # New field to store dependencies as a list
+        'errors': []
+    }
     pending_queue = [(initial_name, initial_version)]
     processed_lookup = set()
 
@@ -223,15 +230,17 @@ def import_package_and_dependencies(initial_name, initial_version):
                 results['all_dependencies'][package_id_tuple] = dependencies
                 results['processed'].add(package_id_tuple)
                 logger.debug(f"Dependencies for {name}#{version}: {list(dependencies.keys())}")
+                # Add dependencies to the new 'dependencies' list
                 for dep_name, dep_version in dependencies.items():
-                     if isinstance(dep_name, str) and isinstance(dep_version, str) and dep_name and dep_version:
-                          dep_tuple = (dep_name, dep_version)
-                          if dep_tuple not in processed_lookup:
-                              if dep_tuple not in pending_queue:
-                                   pending_queue.append(dep_tuple)
-                                   logger.debug(f"Added to queue: {dep_name}#{dep_version}")
-                     else:
-                          logger.warning(f"Skipping invalid dependency '{dep_name}': '{dep_version}' in {name}#{version}")
+                    if isinstance(dep_name, str) and isinstance(dep_version, str) and dep_name and dep_version:
+                        dep_tuple = (dep_name, dep_version)
+                        results['dependencies'].append({"name": dep_name, "version": dep_version})
+                        if dep_tuple not in processed_lookup:
+                            if dep_tuple not in pending_queue:
+                                pending_queue.append(dep_tuple)
+                                logger.debug(f"Added to queue: {dep_name}#{dep_version}")
+                    else:
+                        logger.warning(f"Skipping invalid dependency '{dep_name}': '{dep_version}' in {name}#{version}")
             # --- End Correctly indented block ---
 
     proc_count=len(results['processed']); dl_count=len(results['downloaded']); err_count=len(results['errors'])
