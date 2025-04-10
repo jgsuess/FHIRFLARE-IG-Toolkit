@@ -39,17 +39,10 @@
                                     <tr><th>Package Name</th><th>Version</th><th>Actions</th></tr>
                                 </thead>
                                 <tbody>
-                                    {% set colors = ['bg-warning', 'bg-info', 'bg-success', 'bg-danger'] %}
-                                    {% set group_idx = {} %}
-                                    {% for name in duplicate_groups %}
-                                        {% if duplicate_groups[name]|length > 1 %}
-                                            {% set group_idx[name] = loop.index0 % colors|length %}
-                                        {% endif %}
-                                    {% endfor %}
                                     {% for pkg in packages %}
                                         {% set is_processed = (pkg.name, pkg.version) in processed_ids %}
                                         {% set is_duplicate = pkg.name in duplicate_names and duplicate_names[pkg.name]|length > 1 %}
-                                        {% set group_color = colors[group_idx[pkg.name]] if is_duplicate and duplicate_groups|length > 1 else 'bg-warning' %}
+                                        {% set group_color = group_colors[pkg.name] if is_duplicate else 'bg-warning' %}
                                         <tr {% if is_duplicate %}class="{{ group_color }} text-dark"{% endif %}>
                                             <td>
                                                 <code>{{ pkg.name }}</code>
@@ -83,7 +76,7 @@
                             <p class="mt-2 small text-muted">Duplicates detected: 
                                 {% for name, versions in duplicate_groups.items() %}
                                     {% if versions|length > 1 %}
-                                        <span class="badge {{ colors[group_idx[name] if duplicate_groups|length > 1 else 0] }} text-dark">{{ name }} ({{ versions|join(', ') }})</span>
+                                        <span class="badge {{ group_colors[name] }} text-dark">{{ name }} ({{ versions|join(', ') }})</span>
                                     {% endif %}
                                 {% endfor %}
                             </p>

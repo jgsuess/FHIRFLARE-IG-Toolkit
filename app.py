@@ -154,23 +154,22 @@ def view_igs():
     if os.path.exists(packages_dir):
         for filename in os.listdir(packages_dir):
             if filename.endswith('.tgz'):
-                # Remove .tgz and split on the last segment that looks like a version
                 name_version = filename[:-4]  # Remove .tgz
                 parts = name_version.split('-')
-                # Assume version starts with a digit or common version keywords
-                version_idx = -1
-                for i, part in enumerate(parts[::-1]):
+                version_start = -1
+                for i, part in enumerate(parts):
                     if part[0].isdigit() or part in ('preview', 'current', 'latest'):
-                        version_idx = len(parts) - i - 1
+                        version_start = i
                         break
-                if version_idx >= 0:
-                    name = '-'.join(parts[:version_idx + 1])
-                    version = '-'.join(parts[version_idx + 1:])
+                if version_start > 0:  # Ensure there's a name before version
+                    name = '.'.join(parts[:version_start])
+                    version = '-'.join(parts[version_start:])
                     packages.append({'name': name, 'version': version, 'filename': filename})
                 else:
-                    # Fallback: treat last part as version
-                    name = '-'.join(parts[:-1])
-                    version = parts[-1]
+                    # Fallback: treat as name only, log warning
+                    name = name_version
+                    version = ''
+                    logger.warning(f"Could not parse version from {filename}, treating as name only")
                     packages.append({'name': name, 'version': version, 'filename': filename})
         logger.debug(f"Found packages: {packages}")
     else:
@@ -186,11 +185,18 @@ def view_igs():
         else:
             duplicate_names[name] = [pkg]
 
+    # Precompute group colors
+    colors = ['bg-warning', 'bg-info', 'bg-success', 'bg-danger']
+    group_colors = {}
+    for i, name in enumerate(duplicate_groups):
+        if len(duplicate_groups[name]) > 1:  # Only color duplicates
+            group_colors[name] = colors[i % len(colors)]
+
     return render_template('cp_downloaded_igs.html', packages=packages, processed_list=igs, 
                          processed_ids=processed_ids, duplicate_names=duplicate_names, 
-                         duplicate_groups=duplicate_groups)
+                         duplicate_groups=duplicate_groups, group_colors=group_colors)
 
-@app.route('/process-ig', methods=['POST'])
+@app.route('/process-igs', methods=['POST'])
 def process_ig():
     filename = request.form.get('filename')
     if not filename or not filename.endswith('.tgz'):
@@ -203,14 +209,20 @@ def process_ig():
         return redirect(url_for('view_igs'))
     
     try:
-        parts = filename[:-4].split('-')
-        version_idx = -1
-        for i, part in enumerate(parts[::-1]):
+        name_version = filename[:-4]
+        parts = name_version.split('-')
+        version_start = -1
+        for i, part in enumerate(parts):
             if part[0].isdigit() or part in ('preview', 'current', 'latest'):
-                version_idx = len(parts) - i - 1
+                version_start = i
                 break
-        name = '-'.join(parts[:version_idx + 1]) if version_idx >= 0 else '-'.join(parts[:-1])
-        version = '-'.join(parts[version_idx + 1:]) if version_idx >= 0 else parts[-1]
+        if version_start > 0:
+            name = '.'.join(parts[:version_start])
+            version = '-'.join(parts[version_start:])
+        else:
+            name = name_version
+            version = ''
+            logger.warning(f"Could not parse version from {filename} during processing")
         package_info = services.process_package_file(tgz_path)
         processed_ig = ProcessedIg(
             package_name=name,
