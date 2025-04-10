@@ -1,0 +1,15 @@
+{% extends "base.html" %} {% block content %} <div class="px-4 py-5 my-5 text-center">
+        <img class="d-block mx-auto mb-4" src="https://placehold.co/72x57/0d6efd/white?text=PAS" alt="PAS Logo Placeholder" width="72" height="57">
+
+        <h1 class="display-5 fw-bold text-body-emphasis">Welcome to FLARE FHIR IG TOOLKIT</h1>
+        <div class="col-lg-6 mx-auto">
+          <p class="lead mb-4">
+            This is the starting point for a Journey into FHIR IG's from an implementors view!.
+          </p>
+          <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+            <a href="/import-ig"><button type="button" class="btn btn-primary btn-lg px-4 gap-3">Import FHIR IG</button>
+            <a href="/downloaded-igs"><button type="button" class="btn btn-outline-secondary btn-lg px-4">View Downloaded IGs</button>
+          </div>
+        </div>
+      </div>
+{% endblock %}

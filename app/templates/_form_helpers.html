@@ -1,0 +1,26 @@
+{# app/templates/_form_helpers.html #}
+{% macro render_field(field, label_visible=true) %}
+  <div class="form-group mb-3"> {# Add margin bottom for spacing #}
+    {% if label_visible and field.label %}
+      {{ field.label(class="form-label") }} {# Render label with Bootstrap class #}
+    {% endif %}
+
+    {# Add is-invalid class if errors exist #}
+    {% set css_class = 'form-control ' + kwargs.pop('class', '') %}
+    {% if field.errors %}
+        {% set css_class = css_class + ' is-invalid' %}
+    {% endif %}
+
+    {# Render the field itself, passing any extra attributes #}
+    {{ field(class=css_class, **kwargs) }}
+
+    {# Display validation errors #}
+    {% if field.errors %}
+      <div class="invalid-feedback">
+        {% for error in field.errors %}
+          {{ error }}<br>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% endmacro %}
