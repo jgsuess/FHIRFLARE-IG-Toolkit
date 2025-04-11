@@ -27,5 +27,7 @@
       "name": "hl7.fhir.uv.ipa",
       "version": "1.0.0"
     }
-  ]
+  ],
+  "complies_with_profiles": [],
+  "imposed_profiles": []
 }
