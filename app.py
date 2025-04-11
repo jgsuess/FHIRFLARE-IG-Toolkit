@@ -10,7 +10,7 @@ from datetime import datetime
 import services
 import logging
 import requests
-import re  # Added for regex validation
+import re
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -21,7 +21,9 @@ app.config['SECRET_KEY'] = 'your-secret-key-here'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////app/instance/fhir_ig.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['FHIR_PACKAGES_DIR'] = os.path.join(app.instance_path, 'fhir_packages')
-app.config['API_KEY'] = 'your-api-key-here'  # Hardcoded API key for now; replace with a secure solution
+app.config['API_KEY'] = 'your-api-key-here'
+app.config['VALIDATE_IMPOSED_PROFILES'] = True  # Enable/disable imposed profile validation
+app.config['DISPLAY_PROFILE_RELATIONSHIPS'] = True  # Enable/disable UI display of relationships
 
 # Ensure directories exist and are writable
 instance_path = '/app/instance'
@@ -98,7 +100,6 @@ def import_ig():
             result = services.import_package_and_dependencies(name, version, dependency_mode=dependency_mode)
             if result['errors'] and not result['downloaded']:
                 error_msg = result['errors'][0]
-                # Simplify the error message by taking the last part after the last colon
                 simplified_msg = error_msg.split(": ")[-1] if ": " in error_msg else error_msg
                 flash(f"Failed to import {name}#{version}: {simplified_msg}", "error - check the name and version!")
                 return redirect(url_for('import_ig'))
@@ -119,24 +120,19 @@ def view_igs():
     if os.path.exists(packages_dir):
         for filename in os.listdir(packages_dir):
             if filename.endswith('.tgz'):
-                # Split on the last hyphen to separate name and version
                 last_hyphen_index = filename.rfind('-')
                 if last_hyphen_index != -1 and filename.endswith('.tgz'):
                     name = filename[:last_hyphen_index]
-                    version = filename[last_hyphen_index + 1:-4]  # Remove .tgz
-                    # Validate that the version looks reasonable (e.g., starts with a digit or is a known keyword)
+                    version = filename[last_hyphen_index + 1:-4]
                     if version[0].isdigit() or version in ('preview', 'current', 'latest'):
-                        # Replace underscores with dots to match FHIR package naming convention
                         name = name.replace('_', '.')
                         packages.append({'name': name, 'version': version, 'filename': filename})
                     else:
-                        # Fallback: treat as name only, log warning
                         name = filename[:-4]
                         version = ''
                         logger.warning(f"Could not parse version from {filename}, treating as name only")
                         packages.append({'name': name, 'version': version, 'filename': filename})
                 else:
-                    # Fallback: treat as name only, log warning
                     name = filename[:-4]
                     version = ''
                     logger.warning(f"Could not parse version from {filename}, treating as name only")
@@ -156,7 +152,7 @@ def view_igs():
     # Calculate duplicate_groups
     duplicate_groups = {}
     for name, pkgs in duplicate_names.items():
-        if len(pkgs) > 1:  # Only include packages with multiple versions
+        if len(pkgs) > 1:
             duplicate_groups[name] = [pkg['version'] for pkg in pkgs]
 
     # Precompute group colors
@@ -165,10 +161,11 @@ def view_igs():
     for i, name in enumerate(duplicate_groups.keys()):
         group_colors[name] = colors[i % len(colors)]
 
-    return render_template('cp_downloaded_igs.html', packages=packages, processed_list=igs, 
-                         processed_ids=processed_ids, duplicate_names=duplicate_names, 
+    return render_template('cp_downloaded_igs.html', packages=packages, processed_list=igs,
+                         processed_ids=processed_ids, duplicate_names=duplicate_names,
                          duplicate_groups=duplicate_groups, group_colors=group_colors,
-                         site_name='FLARE FHIR IG Toolkit', now=datetime.now())
+                         site_name='FLARE FHIR IG Toolkit', now=datetime.now(),
+                         config=app.config)
 
 @app.route('/push-igs', methods=['GET', 'POST'])
 def push_igs():
@@ -181,24 +178,19 @@ def push_igs():
     if os.path.exists(packages_dir):
         for filename in os.listdir(packages_dir):
             if filename.endswith('.tgz'):
-                # Split on the last hyphen to separate name and version
                 last_hyphen_index = filename.rfind('-')
                 if last_hyphen_index != -1 and filename.endswith('.tgz'):
                     name = filename[:last_hyphen_index]
-                    version = filename[last_hyphen_index + 1:-4]  # Remove .tgz
-                    # Validate that the version looks reasonable (e.g., starts with a digit or is a known keyword)
+                    version = filename[last_hyphen_index + 1:-4]
                     if version[0].isdigit() or version in ('preview', 'current', 'latest'):
-                        # Replace underscores with dots to match FHIR package naming convention
                         name = name.replace('_', '.')
                         packages.append({'name': name, 'version': version, 'filename': filename})
                     else:
-                        # Fallback: treat as name only, log warning
                         name = filename[:-4]
                         version = ''
                         logger.warning(f"Could not parse version from {filename}, treating as name only")
                         packages.append({'name': name, 'version': version, 'filename': filename})
                 else:
-                    # Fallback: treat as name only, log warning
                     name = filename[:-4]
                     version = ''
                     logger.warning(f"Could not parse version from {filename}, treating as name only")
@@ -218,7 +210,7 @@ def push_igs():
     # Calculate duplicate_groups
     duplicate_groups = {}
     for name, pkgs in duplicate_names.items():
-        if len(pkgs) > 1:  # Only include packages with multiple versions
+        if len(pkgs) > 1:
             duplicate_groups[name] = [pkg['version'] for pkg in pkgs]
 
     # Precompute group colors
@@ -227,11 +219,12 @@ def push_igs():
     for i, name in enumerate(duplicate_groups.keys()):
         group_colors[name] = colors[i % len(colors)]
 
-    return render_template('cp_push_igs.html', packages=packages, processed_list=igs, 
-                         processed_ids=processed_ids, duplicate_names=duplicate_names, 
+    return render_template('cp_push_igs.html', packages=packages, processed_list=igs,
+                         processed_ids=processed_ids, duplicate_names=duplicate_names,
                          duplicate_groups=duplicate_groups, group_colors=group_colors,
                          site_name='FLARE FHIR IG Toolkit', now=datetime.now(),
-                         api_key=app.config['API_KEY'])  # Pass the API key to the template
+                         api_key=app.config['API_KEY'],
+                         config=app.config)
 
 @app.route('/process-igs', methods=['POST'])
 def process_ig():
@@ -246,12 +239,10 @@ def process_ig():
         return redirect(url_for('view_igs'))
     
     try:
-        # Parse name and version from filename
         last_hyphen_index = filename.rfind('-')
         if last_hyphen_index != -1 and filename.endswith('.tgz'):
             name = filename[:last_hyphen_index]
             version = filename[last_hyphen_index + 1:-4]
-            # Replace underscores with dots to match FHIR package naming convention
             name = name.replace('_', '.')
         else:
             name = filename[:-4]
@@ -320,9 +311,25 @@ def view_ig(processed_ig_id):
     profile_list = [t for t in processed_ig.resource_types_info if t.get('is_profile')]
     base_list = [t for t in processed_ig.resource_types_info if not t.get('is_profile')]
     examples_by_type = processed_ig.examples or {}
+
+    # Load metadata to get profile relationships
+    package_name = processed_ig.package_name
+    version = processed_ig.version
+    metadata_filename = f"{services.sanitize_filename_part(package_name)}-{services.sanitize_filename_part(version)}.metadata.json"
+    metadata_path = os.path.join(app.config['FHIR_PACKAGES_DIR'], metadata_filename)
+    complies_with_profiles = []
+    imposed_profiles = []
+    if os.path.exists(metadata_path):
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+            complies_with_profiles = metadata.get('complies_with_profiles', [])
+            imposed_profiles = metadata.get('imposed_profiles', [])
+
     return render_template('cp_view_processed_ig.html', title=f"View {processed_ig.package_name}#{processed_ig.version}",
                           processed_ig=processed_ig, profile_list=profile_list, base_list=base_list,
-                          examples_by_type=examples_by_type, site_name='FLARE FHIR IG Toolkit', now=datetime.now())
+                          examples_by_type=examples_by_type, site_name='FLARE FHIR IG Toolkit', now=datetime.now(),
+                          complies_with_profiles=complies_with_profiles, imposed_profiles=imposed_profiles,
+                          config=app.config)
 
 @app.route('/get-structure')
 def get_structure_definition():
@@ -332,7 +339,6 @@ def get_structure_definition():
     if not all([package_name, package_version, resource_identifier]):
         return jsonify({"error": "Missing query parameters"}), 400
     
-    # First, try to get the structure definition from the specified package
     tgz_path = os.path.join(app.config['FHIR_PACKAGES_DIR'], services._construct_tgz_filename(package_name, package_version))
     sd_data = None
     fallback_used = False
@@ -340,13 +346,11 @@ def get_structure_definition():
     if os.path.exists(tgz_path):
         sd_data, _ = services.find_and_extract_sd(tgz_path, resource_identifier)
     
-    # If not found, fall back to the core FHIR package (hl7.fhir.r4.core#4.0.1)
     if sd_data is None:
         logger.debug(f"Structure definition for '{resource_identifier}' not found in {package_name}#{package_version}, attempting fallback to hl7.fhir.r4.core#4.0.1")
         core_package_name = "hl7.fhir.r4.core"
         core_package_version = "4.0.1"
         
-        # Ensure the core package is downloaded
         core_tgz_path = os.path.join(app.config['FHIR_PACKAGES_DIR'], services._construct_tgz_filename(core_package_name, core_package_version))
         if not os.path.exists(core_tgz_path):
             logger.debug(f"Core package {core_package_name}#{core_package_version} not found, attempting to download")
@@ -359,7 +363,6 @@ def get_structure_definition():
                 logger.error(f"Error downloading core package: {str(e)}")
                 return jsonify({"error": f"SD for '{resource_identifier}' not found in {package_name}#{package_version}, and error downloading core package: {str(e)}"}), 500
         
-        # Try to extract the structure definition from the core package
         if os.path.exists(core_tgz_path):
             sd_data, _ = services.find_and_extract_sd(core_tgz_path, resource_identifier)
             if sd_data is None:
@@ -418,39 +421,46 @@ def get_package_metadata():
 # API Endpoint: Import IG Package
 @app.route('/api/import-ig', methods=['POST'])
 def api_import_ig():
-    # Check API key
     auth_error = check_api_key()
     if auth_error:
         return auth_error
 
-    # Validate request
     if not request.is_json:
         return jsonify({"status": "error", "message": "Request must be JSON"}), 400
 
     data = request.get_json()
     package_name = data.get('package_name')
     version = data.get('version')
-    dependency_mode = data.get('dependency_mode', 'recursive')  # Default to recursive
+    dependency_mode = data.get('dependency_mode', 'recursive')
 
     if not package_name or not version:
         return jsonify({"status": "error", "message": "Missing package_name or version"}), 400
 
-    # Validate package name and version format using re
     if not (isinstance(package_name, str) and isinstance(version, str) and 
             re.match(r'^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+$', package_name) and 
             re.match(r'^[a-zA-Z0-9\.\-]+$', version)):
         return jsonify({"status": "error", "message": "Invalid package name or version format"}), 400
 
-    # Validate dependency mode
     valid_modes = ['recursive', 'patch-canonical', 'tree-shaking']
     if dependency_mode not in valid_modes:
         return jsonify({"status": "error", "message": f"Invalid dependency mode: {dependency_mode}. Must be one of {valid_modes}"}), 400
 
     try:
-        # Import package and dependencies
         result = services.import_package_and_dependencies(package_name, version, dependency_mode=dependency_mode)
         if result['errors'] and not result['downloaded']:
             return jsonify({"status": "error", "message": f"Failed to import {package_name}#{version}: {result['errors'][0]}"}), 500
+
+        # Process the package to get compliesWithProfile and imposeProfile
+        package_filename = f"{services.sanitize_filename_part(package_name)}-{services.sanitize_filename_part(version)}.tgz"
+        package_path = os.path.join(app.config['FHIR_PACKAGES_DIR'], package_filename)
+        complies_with_profiles = []
+        imposed_profiles = []
+        if os.path.exists(package_path):
+            process_result = services.process_package_file(package_path)
+            complies_with_profiles = process_result.get('complies_with_profiles', [])
+            imposed_profiles = process_result.get('imposed_profiles', [])
+        else:
+            logger.warning(f"Package file not found after import: {package_path}")
 
         # Check for duplicates
         packages = []
@@ -458,12 +468,10 @@ def api_import_ig():
         if os.path.exists(packages_dir):
             for filename in os.listdir(packages_dir):
                 if filename.endswith('.tgz'):
-                    # Split on the last hyphen to separate name and version
                     last_hyphen_index = filename.rfind('-')
                     if last_hyphen_index != -1 and filename.endswith('.tgz'):
                         name = filename[:last_hyphen_index]
                         version = filename[last_hyphen_index + 1:-4]
-                        # Replace underscores with dots to match FHIR package naming convention
                         name = name.replace('_', '.')
                         if version[0].isdigit() or version in ('preview', 'current', 'latest'):
                             packages.append({'name': name, 'version': version, 'filename': filename})
@@ -476,7 +484,6 @@ def api_import_ig():
                         version = ''
                         packages.append({'name': name, 'version': version, 'filename': filename})
 
-        # Calculate duplicates
         duplicate_names = {}
         for pkg in packages:
             name = pkg['name']
@@ -490,7 +497,6 @@ def api_import_ig():
                 versions = [pkg['version'] for pkg in pkgs]
                 duplicates.append(f"{name} (exists as {', '.join(versions)})")
 
-        # Deduplicate dependencies
         seen = set()
         unique_dependencies = []
         for dep in result.get('dependencies', []):
@@ -499,7 +505,6 @@ def api_import_ig():
                 seen.add(dep_str)
                 unique_dependencies.append(dep_str)
 
-        # Prepare response
         response = {
             "status": "success",
             "message": "Package imported successfully",
@@ -507,6 +512,8 @@ def api_import_ig():
             "version": version,
             "dependency_mode": dependency_mode,
             "dependencies": unique_dependencies,
+            "complies_with_profiles": complies_with_profiles,
+            "imposed_profiles": imposed_profiles,
             "duplicates": duplicates
         }
         return jsonify(response), 200
@@ -518,12 +525,10 @@ def api_import_ig():
 # API Endpoint: Push IG to FHIR Server with Streaming
 @app.route('/api/push-ig', methods=['POST'])
 def api_push_ig():
-    # Check API key
     auth_error = check_api_key()
     if auth_error:
         return auth_error
 
-    # Validate request
     if not request.is_json:
         return jsonify({"status": "error", "message": "Request must be JSON"}), 400
 
@@ -536,13 +541,11 @@ def api_push_ig():
     if not all([package_name, version, fhir_server_url]):
         return jsonify({"status": "error", "message": "Missing package_name, version, or fhir_server_url"}), 400
 
-    # Validate package name and version format using re
     if not (isinstance(package_name, str) and isinstance(version, str) and 
             re.match(r'^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+$', package_name) and 
             re.match(r'^[a-zA-Z0-9\.\-]+$', version)):
         return jsonify({"status": "error", "message": "Invalid package name or version format"}), 400
 
-    # Check if package exists
     tgz_filename = services._construct_tgz_filename(package_name, version)
     tgz_path = os.path.join(app.config['FHIR_PACKAGES_DIR'], tgz_filename)
     if not os.path.exists(tgz_path):
@@ -550,21 +553,10 @@ def api_push_ig():
 
     def generate_stream():
         try:
-            # Start message
             yield json.dumps({"type": "start", "message": f"Starting push for {package_name}#{version}..."}) + "\n"
 
-            # Extract resources from the main package
             resources = []
-            with tarfile.open(tgz_path, "r:gz") as tar:
-                for member in tar.getmembers():
-                    if member.name.startswith('package/') and member.name.endswith('.json') and not member.name.endswith('package.json'):
-                        with tar.extractfile(member) as f:
-                            resource_data = json.load(f)
-                            if 'resourceType' in resource_data:
-                                resources.append(resource_data)
-
-            # If include_dependencies is True, fetch dependencies from metadata
-            pushed_packages = [f"{package_name}#{version}"]
+            packages_to_push = [(package_name, version, tgz_path)]
             if include_dependencies:
                 yield json.dumps({"type": "progress", "message": "Processing dependencies..."}) + "\n"
                 metadata = services.get_package_metadata(package_name, version)
@@ -575,36 +567,44 @@ def api_push_ig():
                     dep_tgz_filename = services._construct_tgz_filename(dep_name, dep_version)
                     dep_tgz_path = os.path.join(app.config['FHIR_PACKAGES_DIR'], dep_tgz_filename)
                     if os.path.exists(dep_tgz_path):
-                        with tarfile.open(dep_tgz_path, "r:gz") as tar:
-                            for member in tar.getmembers():
-                                if member.name.startswith('package/') and member.name.endswith('.json') and not member.name.endswith('package.json'):
-                                    with tar.extractfile(member) as f:
-                                        resource_data = json.load(f)
-                                        if 'resourceType' in resource_data:
-                                            resources.append(resource_data)
-                        pushed_packages.append(f"{dep_name}#{dep_version}")
+                        packages_to_push.append((dep_name, dep_version, dep_tgz_path))
                         yield json.dumps({"type": "progress", "message": f"Added dependency {dep_name}#{dep_version}"}) + "\n"
                     else:
                         yield json.dumps({"type": "warning", "message": f"Dependency {dep_name}#{dep_version} not found, skipping"}) + "\n"
 
-            # Push resources to FHIR server
+            for pkg_name, pkg_version, pkg_path in packages_to_push:
+                with tarfile.open(pkg_path, "r:gz") as tar:
+                    for member in tar.getmembers():
+                        if member.name.startswith('package/') and member.name.endswith('.json') and not member.name.endswith('package.json'):
+                            with tar.extractfile(member) as f:
+                                resource_data = json.load(f)
+                                if 'resourceType' in resource_data:
+                                    resources.append((resource_data, pkg_name, pkg_version))
+
             server_response = []
             success_count = 0
             failure_count = 0
             total_resources = len(resources)
             yield json.dumps({"type": "progress", "message": f"Found {total_resources} resources to upload"}) + "\n"
 
-            for i, resource in enumerate(resources, 1):
+            pushed_packages = []
+            for i, (resource, pkg_name, pkg_version) in enumerate(resources, 1):
                 resource_type = resource.get('resourceType')
                 resource_id = resource.get('id')
                 if not resource_type or not resource_id:
-                    yield json.dumps({"type": "warning", "message": f"Skipping invalid resource at index {i}"}) + "\n"
+                    yield json.dumps({"type": "warning", "message": f"Skipping invalid resource at index {i} from {pkg_name}#{pkg_version}"}) + "\n"
                     failure_count += 1
                     continue
 
-                # Construct the FHIR server URL for the resource
+                # Validate against the profile and imposed profiles
+                validation_result = services.validate_resource_against_profile(resource, pkg_name, pkg_version, resource_type)
+                if not validation_result['valid']:
+                    yield json.dumps({"type": "error", "message": f"Validation failed for {resource_type}/{resource_id} in {pkg_name}#{pkg_version}: {', '.join(validation_result['errors'])}"}) + "\n"
+                    failure_count += 1
+                    continue
+
                 resource_url = f"{fhir_server_url.rstrip('/')}/{resource_type}/{resource_id}"
-                yield json.dumps({"type": "progress", "message": f"Uploading {resource_type}/{resource_id} ({i}/{total_resources})..."}) + "\n"
+                yield json.dumps({"type": "progress", "message": f"Uploading {resource_type}/{resource_id} ({i}/{total_resources}) from {pkg_name}#{pkg_version}..."}) + "\n"
 
                 try:
                     response = requests.put(resource_url, json=resource, headers={'Content-Type': 'application/fhir+json'})
@@ -612,13 +612,14 @@ def api_push_ig():
                     server_response.append(f"Uploaded {resource_type}/{resource_id} successfully")
                     yield json.dumps({"type": "success", "message": f"Uploaded {resource_type}/{resource_id} successfully"}) + "\n"
                     success_count += 1
+                    if f"{pkg_name}#{pkg_version}" not in pushed_packages:
+                        pushed_packages.append(f"{pkg_name}#{pkg_version}")
                 except requests.exceptions.RequestException as e:
                     error_msg = f"Failed to upload {resource_type}/{resource_id}: {str(e)}"
                     server_response.append(error_msg)
                     yield json.dumps({"type": "error", "message": error_msg}) + "\n"
                     failure_count += 1
 
-            # Final summary
             summary = {
                 "status": "success" if failure_count == 0 else "partial",
                 "message": f"Push completed: {success_count} resources uploaded, {failure_count} failed",

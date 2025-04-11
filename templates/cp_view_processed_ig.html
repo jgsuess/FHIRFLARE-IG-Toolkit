@@ -37,6 +37,35 @@
             </div>
         </div>
 
+        {% if config.DISPLAY_PROFILE_RELATIONSHIPS %}
+        <div class="card mt-4">
+            <div class="card-header">Profile Relationships</div>
+            <div class="card-body">
+                <h6>Complies With</h6>
+                {% if complies_with_profiles %}
+                    <ul>
+                        {% for profile in complies_with_profiles %}
+                            <li>{{ profile }}</li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted"><em>No profiles declared as compatible.</em></p>
+                {% endif %}
+
+                <h6>Required Dependent Profiles (Must Also Validate Against)</h6>
+                {% if imposed_profiles %}
+                    <ul>
+                        {% for profile in imposed_profiles %}
+                            <li>{{ profile }}</li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted"><em>No imposed profiles.</em></p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         <div class="card mt-4">
             <div class="card-header">Resource Types Found / Defined</div>
             <div class="card-body">
