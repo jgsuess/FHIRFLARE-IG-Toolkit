@@ -14,6 +14,7 @@ from collections import defaultdict
 # Constants
 FHIR_REGISTRY_BASE_URL = "https://packages.fhir.org"
 DOWNLOAD_DIR_NAME = "fhir_packages"
+CANONICAL_PACKAGE = ("hl7.fhir.r4.core", "4.0.1")  # Define the canonical FHIR package
 
 # --- Helper Functions ---
 
@@ -22,33 +23,27 @@ def _get_download_dir():
     logger = logging.getLogger(__name__)
     instance_path = None # Initialize
     try:
-        # --- FIX: Indent code inside try block ---
         instance_path = current_app.instance_path
         logger.debug(f"Using instance path from current_app: {instance_path}")
     except RuntimeError:
-        # --- FIX: Indent code inside except block ---
         logger.warning("No app context for instance_path, constructing relative path.")
         instance_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'instance'))
         logger.debug(f"Constructed instance path: {instance_path}")
 
-    # This part depends on instance_path being set above
     if not instance_path:
          logger.error("Fatal Error: Could not determine instance path.")
          return None
 
     download_dir = os.path.join(instance_path, DOWNLOAD_DIR_NAME)
     try:
-        # --- FIX: Indent code inside try block ---
         os.makedirs(download_dir, exist_ok=True)
         return download_dir
     except OSError as e:
-        # --- FIX: Indent code inside except block ---
         logger.error(f"Fatal Error creating dir {download_dir}: {e}", exc_info=True)
         return None
 
 def sanitize_filename_part(text): # Public version
     """Basic sanitization for name/version parts of filename."""
-    # --- FIX: Indent function body ---
     safe_text = "".join(c if c.isalnum() or c in ['.', '-'] else '_' for c in text)
     safe_text = re.sub(r'_+', '_', safe_text) # Uses re
     safe_text = safe_text.strip('_-.')
@@ -56,12 +51,10 @@ def sanitize_filename_part(text): # Public version
 
 def _construct_tgz_filename(name, version):
     """Constructs the standard filename using the sanitized parts."""
-    # --- FIX: Indent function body ---
     return f"{sanitize_filename_part(name)}-{sanitize_filename_part(version)}.tgz"
 
 def find_and_extract_sd(tgz_path, resource_identifier): # Public version
     """Helper to find and extract SD json from a given tgz path by ID, Name, or Type."""
-    # --- FIX: Ensure consistent indentation ---
     sd_data = None
     found_path = None
     logger = logging.getLogger(__name__)
@@ -113,11 +106,54 @@ def find_and_extract_sd(tgz_path, resource_identifier): # Public version
         raise
     return sd_data, found_path
 
+def save_package_metadata(name, version, dependency_mode, dependencies):
+    """Saves the dependency mode and imported dependencies as metadata alongside the package."""
+    logger = logging.getLogger(__name__)
+    download_dir = _get_download_dir()
+    if not download_dir:
+        logger.error("Could not get download directory for metadata saving.")
+        return False
+
+    metadata = {
+        'package_name': name,
+        'version': version,
+        'dependency_mode': dependency_mode,
+        'imported_dependencies': dependencies  # List of {'name': ..., 'version': ...}
+    }
+    metadata_filename = f"{sanitize_filename_part(name)}-{sanitize_filename_part(version)}.metadata.json"
+    metadata_path = os.path.join(download_dir, metadata_filename)
+    try:
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        logger.info(f"Saved metadata for {name}#{version} at {metadata_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save metadata for {name}#{version}: {e}")
+        return False
+
+def get_package_metadata(name, version):
+    """Retrieves the metadata for a given package."""
+    logger = logging.getLogger(__name__)
+    download_dir = _get_download_dir()
+    if not download_dir:
+        logger.error("Could not get download directory for metadata retrieval.")
+        return None
+
+    metadata_filename = f"{sanitize_filename_part(name)}-{sanitize_filename_part(version)}.metadata.json"
+    metadata_path = os.path.join(download_dir, metadata_filename)
+    if os.path.exists(metadata_path):
+        try:
+            with open(metadata_path, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to read metadata for {name}#{version}: {e}")
+            return None
+    return None
+
 # --- Core Service Functions ---
 
 def download_package(name, version):
     """ Downloads a single FHIR package. Returns (save_path, error_message) """
-    # --- FIX: Ensure consistent indentation ---
     logger = logging.getLogger(__name__)
     download_dir = _get_download_dir()
     if not download_dir:
@@ -152,7 +188,6 @@ def download_package(name, version):
 
 def extract_dependencies(tgz_path):
     """ Extracts dependencies dict from package.json. Returns (dep_dict or None on error, error_message) """
-    # --- FIX: Ensure consistent indentation ---
     logger = logging.getLogger(__name__)
     package_json_path = "package/package.json"
     dependencies = {}
@@ -165,7 +200,7 @@ def extract_dependencies(tgz_path):
             package_json_fileobj = tar.extractfile(package_json_member)
             if package_json_fileobj:
                 try:
-                    package_data = json.loads(package_json_fileobj.read().decode('utf-8-sig'))
+                    package_data = json.load(package_json_fileobj)
                     dependencies = package_data.get('dependencies', {})
                 finally:
                     package_json_fileobj.close()
@@ -182,23 +217,178 @@ def extract_dependencies(tgz_path):
         error_message = f"Unexpected error extracting deps: {e}"; logger.error(error_message, exc_info=True); dependencies = None
     return dependencies, error_message
 
-# --- Recursive Import Orchestrator ---
-def import_package_and_dependencies(initial_name, initial_version):
-    """Orchestrates recursive download and dependency extraction."""
-    # --- FIX: Ensure consistent indentation ---
+def extract_used_types(tgz_path):
+    """ Extracts all resource types and referenced types from the package to determine used dependencies. """
     logger = logging.getLogger(__name__)
-    logger.info(f"Starting recursive import for {initial_name}#{initial_version}")
+    used_types = set()
+    try:
+        with tarfile.open(tgz_path, "r:gz") as tar:
+            for member in tar:
+                if not (member.isfile() and member.name.startswith('package/') and member.name.lower().endswith('.json')):
+                    continue
+                if os.path.basename(member.name).lower() in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']:
+                    continue
+
+                fileobj = None
+                try:
+                    fileobj = tar.extractfile(member)
+                    if fileobj:
+                        content_bytes = fileobj.read()
+                        content_string = content_bytes.decode('utf-8-sig')
+                        data = json.loads(content_string)
+                        resource_type = data.get('resourceType')
+
+                        # Add the resource type itself
+                        if resource_type:
+                            used_types.add(resource_type)
+
+                        # If this is a StructureDefinition, extract referenced types
+                        if resource_type == 'StructureDefinition':
+                            sd_type = data.get('type')
+                            if sd_type:
+                                used_types.add(sd_type)
+
+                            # Extract types from elements
+                            for element_list in [data.get('snapshot', {}).get('element', []), data.get('differential', {}).get('element', [])]:
+                                for element in element_list:
+                                    if 'type' in element:
+                                        for t in element['type']:
+                                            if 'code' in t:
+                                                used_types.add(t['code'])
+                                            if 'targetProfile' in t:
+                                                for profile in t['targetProfile']:
+                                                    type_name = profile.split('/')[-1]
+                                                    used_types.add(type_name)
+
+                        # If this is another resource (e.g., ValueSet, CodeSystem), extract referenced types
+                        else:
+                            # Look for meta.profile for referenced profiles
+                            profiles = data.get('meta', {}).get('profile', [])
+                            for profile in profiles:
+                                type_name = profile.split('/')[-1]
+                                used_types.add(type_name)
+
+                            # For ValueSet, check compose.include.system
+                            if resource_type == 'ValueSet':
+                                for include in data.get('compose', {}).get('include', []):
+                                    system = include.get('system')
+                                    if system and system.startswith('http://hl7.org/fhir/'):
+                                        type_name = system.split('/')[-1]
+                                        used_types.add(type_name)
+
+                except Exception as e:
+                    logger.warning(f"Could not process member {member.name} for used types: {e}")
+                finally:
+                    if fileobj:
+                        fileobj.close()
+
+    except Exception as e:
+        logger.error(f"Error extracting used types from {tgz_path}: {e}")
+    return used_types
+
+def map_types_to_packages(used_types, all_dependencies):
+    """ Maps used types to the packages that provide them based on dependency lists. """
+    logger = logging.getLogger(__name__)
+    type_to_package = {}
+    for (pkg_name, pkg_version), deps in all_dependencies.items():
+        # Simplified mapping: assume package names indicate the types they provide
+        # In a real implementation, you'd need to inspect each package's contents
+        for dep_name, dep_version in deps.items():
+            # Heuristic: map types to packages based on package name
+            for t in used_types:
+                if t.lower() in dep_name.lower():
+                    type_to_package[t] = (dep_name, dep_version)
+        # Special case for the package itself
+        for t in used_types:
+            if t.lower() in pkg_name.lower():
+                type_to_package[t] = (pkg_name, pkg_version)
+
+    # Fallback: map remaining types to the canonical package
+    for t in used_types:
+        if t not in type_to_package:
+            type_to_package[t] = CANONICAL_PACKAGE
+
+    return type_to_package
+
+# --- Recursive Import Orchestrator ---
+def import_package_and_dependencies(initial_name, initial_version, dependency_mode='recursive'):
+    """Orchestrates recursive download and dependency extraction based on the dependency mode."""
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting import for {initial_name}#{initial_version} with dependency_mode={dependency_mode}")
     results = {
         'requested': (initial_name, initial_version),
         'processed': set(),
         'downloaded': {},
         'all_dependencies': {},
-        'dependencies': [],  # New field to store dependencies as a list
+        'dependencies': [],  # Store dependencies as a list
         'errors': []
     }
     pending_queue = [(initial_name, initial_version)]
     processed_lookup = set()
 
+    # Always download the initial package
+    name, version = initial_name, initial_version
+    package_id_tuple = (name, version)
+    logger.info(f"Processing initial package: {name}#{version}")
+    processed_lookup.add(package_id_tuple)
+    save_path, dl_error = download_package(name, version)
+
+    if dl_error:
+        error_msg = f"Download failed for {name}#{version}: {dl_error}"
+        results['errors'].append(error_msg)
+        logger.error("Aborting import: Initial package download failed.")
+        return results
+    else:
+        results['downloaded'][package_id_tuple] = save_path
+        dependencies, dep_error = extract_dependencies(save_path)
+        if dep_error:
+            results['errors'].append(f"Dependency extraction failed for {name}#{version}: {dep_error}")
+        elif dependencies is not None:
+            results['all_dependencies'][package_id_tuple] = dependencies
+            results['processed'].add(package_id_tuple)
+            logger.debug(f"Dependencies for {name}#{version}: {list(dependencies.keys())}")
+            for dep_name, dep_version in dependencies.items():
+                if isinstance(dep_name, str) and isinstance(dep_version, str) and dep_name and dep_version:
+                    results['dependencies'].append({"name": dep_name, "version": dep_version})
+
+    # Save metadata for the initial package
+    save_package_metadata(initial_name, initial_version, dependency_mode, results['dependencies'])
+
+    # Handle dependency pulling based on mode
+    if dependency_mode == 'recursive':
+        # Current behavior: recursively download all dependencies
+        for dep in results['dependencies']:
+            dep_name, dep_version = dep['name'], dep['version']
+            dep_tuple = (dep_name, dep_version)
+            if dep_tuple not in processed_lookup:
+                pending_queue.append(dep_tuple)
+                logger.debug(f"Added to queue (recursive): {dep_name}#{dep_version}")
+
+    elif dependency_mode == 'patch-canonical':
+        # Patch Canonical: Only download the canonical package if needed
+        canonical_name, canonical_version = CANONICAL_PACKAGE
+        canonical_tuple = (canonical_name, canonical_version)
+        if canonical_tuple not in processed_lookup:
+            pending_queue.append(canonical_tuple)
+            logger.debug(f"Added canonical package to queue: {canonical_name}#{canonical_version}")
+
+    elif dependency_mode == 'tree-shaking':
+        # Tree Shaking: Analyze the initial package to determine used types
+        used_types = extract_used_types(save_path)
+        logger.debug(f"Used types in {initial_name}#{initial_version}: {used_types}")
+
+        # Map used types to packages
+        type_to_package = map_types_to_packages(used_types, results['all_dependencies'])
+        logger.debug(f"Type to package mapping: {type_to_package}")
+
+        # Add only the necessary packages to the queue
+        for t, (dep_name, dep_version) in type_to_package.items():
+            dep_tuple = (dep_name, dep_version)
+            if dep_tuple not in processed_lookup and dep_tuple != package_id_tuple:
+                pending_queue.append(dep_tuple)
+                logger.debug(f"Added to queue (tree-shaking): {dep_name}#{dep_version}")
+
+    # Process the queue
     while pending_queue:
         name, version = pending_queue.pop(0)
         package_id_tuple = (name, version)
@@ -214,14 +404,9 @@ def import_package_and_dependencies(initial_name, initial_version):
         if dl_error:
             error_msg = f"Download failed for {name}#{version}: {dl_error}"
             results['errors'].append(error_msg)
-            if package_id_tuple == results['requested']:
-                 logger.error("Aborting import: Initial package download failed.")
-                 break
-            else:
-                 continue
-        else: # Download OK
+            continue
+        else:
             results['downloaded'][package_id_tuple] = save_path
-            # --- Correctly indented block ---
             dependencies, dep_error = extract_dependencies(save_path)
             if dep_error:
                 results['errors'].append(f"Dependency extraction failed for {name}#{version}: {dep_error}")
@@ -229,18 +414,15 @@ def import_package_and_dependencies(initial_name, initial_version):
                 results['all_dependencies'][package_id_tuple] = dependencies
                 results['processed'].add(package_id_tuple)
                 logger.debug(f"Dependencies for {name}#{version}: {list(dependencies.keys())}")
-                # Add dependencies to the new 'dependencies' list
+                # Add dependencies to the list
                 for dep_name, dep_version in dependencies.items():
                     if isinstance(dep_name, str) and isinstance(dep_version, str) and dep_name and dep_version:
                         dep_tuple = (dep_name, dep_version)
                         results['dependencies'].append({"name": dep_name, "version": dep_version})
-                        if dep_tuple not in processed_lookup:
-                            if dep_tuple not in pending_queue:
-                                pending_queue.append(dep_tuple)
-                                logger.debug(f"Added to queue: {dep_name}#{dep_version}")
-                    else:
-                        logger.warning(f"Skipping invalid dependency '{dep_name}': '{dep_version}' in {name}#{version}")
-            # --- End Correctly indented block ---
+                        # For recursive mode, add to queue
+                        if dependency_mode == 'recursive' and dep_tuple not in processed_lookup:
+                            pending_queue.append(dep_tuple)
+                            logger.debug(f"Added to queue: {dep_name}#{dep_version}")
 
     proc_count=len(results['processed']); dl_count=len(results['downloaded']); err_count=len(results['errors'])
     logger.info(f"Import finished. Processed: {proc_count}, Downloaded/Verified: {dl_count}, Errors: {err_count}")

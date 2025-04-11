@@ -12,7 +12,9 @@
                         <tr>
                             <th>Package Name</th>
                             <th>Version</th>
+                            <!--------------------------------------------------------------------------------------------------------------if you unhide buttons unhide this--------------------------------------------
                             <th>Actions</th>
+                            --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------->
                         </tr>
                     </thead>
                     <tbody>
@@ -25,6 +27,7 @@
                             <tr {% if duplicate_group %}class="{{ group_colors[name] }}"{% endif %}>
                                 <td>{{ name }}</td>
                                 <td>{{ version }}</td>
+                                <!--------------------------------------------------------------------------------------------------------------Dont need the buttons here--------------------------------------------------
                                 <td>
                                     {% if not processed %}
                                         <form method="POST" action="{{ url_for('process_ig') }}" style="display:inline;">
@@ -37,6 +40,7 @@
                                         <button type="submit" class="btn btn-danger btn-sm">Delete</button>
                                     </form>
                                 </td>
+                                --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------->
                             </tr>
                         {% endfor %}
                     </tbody>
@@ -69,6 +73,10 @@
                             <option value="{{ pkg.name }}#{{ pkg.version }}">{{ pkg.name }}#{{ pkg.version }}</option>
                         {% endfor %}
                     </select>
+                </div>
+                <div class="mb-3">
+                    <label for="dependencyMode" class="form-label">Dependency Mode Used During Import</label>
+                    <input type="text" class="form-control" id="dependencyMode" readonly>
                 </div>
                 <div class="mb-3">
                     <label for="fhirServerUrl" class="form-label">FHIR Server URL</label>
@@ -104,6 +112,39 @@
 </div>
 
 <script>
+document.addEventListener('DOMContentLoaded', function() {
+    const packageSelect = document.getElementById('packageSelect');
+    const dependencyModeField = document.getElementById('dependencyMode');
+
+    // Update dependency mode when package selection changes
+    packageSelect.addEventListener('change', function() {
+        const packageId = this.value;
+        if (packageId) {
+            const [packageName, version] = packageId.split('#');
+            fetch(`/get-package-metadata?package_name=${packageName}&version=${version}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.dependency_mode) {
+                        dependencyModeField.value = data.dependency_mode;
+                    } else {
+                        dependencyModeField.value = 'Unknown';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching metadata:', error);
+                    dependencyModeField.value = 'Error';
+                });
+        } else {
+            dependencyModeField.value = '';
+        }
+    });
+
+    // Trigger change event on page load if a package is pre-selected
+    if (packageSelect.value) {
+        packageSelect.dispatchEvent(new Event('change'));
+    }
+});
+
 document.getElementById('pushIgForm').addEventListener('submit', async function(event) {
     event.preventDefault();
 

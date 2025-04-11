@@ -1,7 +1,7 @@
 from flask import Flask, render_template, render_template_string, request, redirect, url_for, flash, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
-from wtforms import StringField, SubmitField
+from wtforms import StringField, SubmitField, SelectField
 from wtforms.validators import DataRequired, Regexp
 import os
 import tarfile
@@ -55,6 +55,11 @@ class IgImportForm(FlaskForm):
         DataRequired(),
         Regexp(r'^[a-zA-Z0-9\.\-]+$', message='Invalid version format.')
     ])
+    dependency_mode = SelectField('Dependency Pulling Mode', choices=[
+        ('recursive', 'Current Recursive'),
+        ('patch-canonical', 'Patch Canonical Versions'),
+        ('tree-shaking', 'Tree Shaking (Only Used Dependencies)')
+    ], default='recursive')
     submit = SubmitField('Fetch & Download IG')
 
 class ProcessedIg(db.Model):
@@ -88,12 +93,16 @@ def import_ig():
     if form.validate_on_submit():
         name = form.package_name.data
         version = form.package_version.data
+        dependency_mode = form.dependency_mode.data
         try:
-            result = services.import_package_and_dependencies(name, version)
+            result = services.import_package_and_dependencies(name, version, dependency_mode=dependency_mode)
             if result['errors'] and not result['downloaded']:
-                flash(f"Failed to import {name}#{version}: {result['errors'][0]}", "error")
+                error_msg = result['errors'][0]
+                # Simplify the error message by taking the last part after the last colon
+                simplified_msg = error_msg.split(": ")[-1] if ": " in error_msg else error_msg
+                flash(f"Failed to import {name}#{version}: {simplified_msg}", "error - check the name and version!")
                 return redirect(url_for('import_ig'))
-            flash(f"Successfully downloaded {name}#{version} and dependencies!", "success")
+            flash(f"Successfully downloaded {name}#{version} and dependencies! Mode: {dependency_mode}", "success")
             return redirect(url_for('view_igs'))
         except Exception as e:
             flash(f"Error downloading IG: {str(e)}", "error")
@@ -272,9 +281,13 @@ def delete_ig():
         return redirect(url_for('view_igs'))
     
     tgz_path = os.path.join(app.config['FHIR_PACKAGES_DIR'], filename)
+    metadata_path = tgz_path.replace('.tgz', '.metadata.json')
     if os.path.exists(tgz_path):
         try:
             os.remove(tgz_path)
+            if os.path.exists(metadata_path):
+                os.remove(metadata_path)
+                logger.debug(f"Deleted metadata file: {metadata_path}")
             flash(f"Deleted {filename}", "success")
         except Exception as e:
             flash(f"Error deleting {filename}: {str(e)}", "error")
@@ -391,6 +404,17 @@ def get_example_content():
     except tarfile.TarError as e:
         return jsonify({"error": f"Error reading {tgz_path}: {e}"}), 500
 
+@app.route('/get-package-metadata')
+def get_package_metadata():
+    package_name = request.args.get('package_name')
+    version = request.args.get('version')
+    if not package_name or not version:
+        return jsonify({'error': 'Missing package_name or version'}), 400
+    metadata = services.get_package_metadata(package_name, version)
+    if metadata:
+        return jsonify({'dependency_mode': metadata['dependency_mode']})
+    return jsonify({'error': 'Metadata not found'}), 404
+
 # API Endpoint: Import IG Package
 @app.route('/api/import-ig', methods=['POST'])
 def api_import_ig():
@@ -406,6 +430,7 @@ def api_import_ig():
     data = request.get_json()
     package_name = data.get('package_name')
     version = data.get('version')
+    dependency_mode = data.get('dependency_mode', 'recursive')  # Default to recursive
 
     if not package_name or not version:
         return jsonify({"status": "error", "message": "Missing package_name or version"}), 400
@@ -416,9 +441,14 @@ def api_import_ig():
             re.match(r'^[a-zA-Z0-9\.\-]+$', version)):
         return jsonify({"status": "error", "message": "Invalid package name or version format"}), 400
 
+    # Validate dependency mode
+    valid_modes = ['recursive', 'patch-canonical', 'tree-shaking']
+    if dependency_mode not in valid_modes:
+        return jsonify({"status": "error", "message": f"Invalid dependency mode: {dependency_mode}. Must be one of {valid_modes}"}), 400
+
     try:
         # Import package and dependencies
-        result = services.import_package_and_dependencies(package_name, version)
+        result = services.import_package_and_dependencies(package_name, version, dependency_mode=dependency_mode)
         if result['errors'] and not result['downloaded']:
             return jsonify({"status": "error", "message": f"Failed to import {package_name}#{version}: {result['errors'][0]}"}), 500
 
@@ -475,6 +505,7 @@ def api_import_ig():
             "message": "Package imported successfully",
             "package_name": package_name,
             "version": version,
+            "dependency_mode": dependency_mode,
             "dependencies": unique_dependencies,
             "duplicates": duplicates
         }
@@ -522,23 +553,22 @@ def api_push_ig():
             # Start message
             yield json.dumps({"type": "start", "message": f"Starting push for {package_name}#{version}..."}) + "\n"
 
-            # Extract resources from the package
+            # Extract resources from the main package
             resources = []
             with tarfile.open(tgz_path, "r:gz") as tar:
                 for member in tar.getmembers():
-                    if member.name.startswith('package/') and member.name.endswith('.json'):
+                    if member.name.startswith('package/') and member.name.endswith('.json') and not member.name.endswith('package.json'):
                         with tar.extractfile(member) as f:
                             resource_data = json.load(f)
                             if 'resourceType' in resource_data:
                                 resources.append(resource_data)
 
-            # If include_dependencies is True, find and include dependencies
+            # If include_dependencies is True, fetch dependencies from metadata
             pushed_packages = [f"{package_name}#{version}"]
             if include_dependencies:
                 yield json.dumps({"type": "progress", "message": "Processing dependencies..."}) + "\n"
-                # Re-import to get dependencies (simulating dependency resolution)
-                import_result = services.import_package_and_dependencies(package_name, version)
-                dependencies = import_result.get('dependencies', [])
+                metadata = services.get_package_metadata(package_name, version)
+                dependencies = metadata.get('imported_dependencies', []) if metadata else []
                 for dep in dependencies:
                     dep_name = dep['name']
                     dep_version = dep['version']
@@ -547,7 +577,7 @@ def api_push_ig():
                     if os.path.exists(dep_tgz_path):
                         with tarfile.open(dep_tgz_path, "r:gz") as tar:
                             for member in tar.getmembers():
-                                if member.name.startswith('package/') and member.name.endswith('.json'):
+                                if member.name.startswith('package/') and member.name.endswith('.json') and not member.name.endswith('package.json'):
                                     with tar.extractfile(member) as f:
                                         resource_data = json.load(f)
                                         if 'resourceType' in resource_data:

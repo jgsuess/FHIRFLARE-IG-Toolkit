@@ -28,6 +28,15 @@
                         {{ form.hidden_tag() }}
                         {{ render_field(form.package_name) }}
                         {{ render_field(form.package_version) }}
+                        <!-- Dependency Pulling Mode Toggle -->
+                        <div class="mb-3">
+                            <label for="dependency_mode" class="form-label">Dependency Pulling Mode:</label>
+                            <select class="form-select" id="dependency_mode" name="dependency_mode">
+                                <option value="recursive" selected>Current Recursive</option>
+                                <option value="patch-canonical">Patch Canonical Versions</option>
+                                <option value="tree-shaking">Tree Shaking (Only Used Dependencies)</option>
+                            </select>
+                        </div>
                         <div class="d-grid gap-2 d-sm-flex">
                             {{ form.submit(class="btn btn-success") }}
                             <a href="{{ url_for('index') }}" class="btn btn-secondary">Back</a>
