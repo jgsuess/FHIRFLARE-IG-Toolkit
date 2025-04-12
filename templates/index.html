@@ -6,13 +6,13 @@
     <h1 class="display-5 fw-bold text-body-emphasis">Welcome to {{ site_name }}</h1>
     <div class="col-lg-6 mx-auto">
         <p class="lead mb-4">
-            Simple tool for importing and viewing FHIR Implementation Guides.
+            Simple tool for importing, viewing, and validating FHIR Implementation Guides.
         </p>
         <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
             <a href="{{ url_for('import_ig') }}" class="btn btn-primary btn-lg px-4 gap-3">Import FHIR IG</a>
             <a href="{{ url_for('view_igs') }}" class="btn btn-outline-secondary btn-lg px-4">View Downloaded IGs</a>
-            <a href="{{ url_for('push_igs') }}" class="btn btn-outline-secondary btn-lg px-4">Upload IG's</a>
-
+            <a href="{{ url_for('push_igs') }}" class="btn btn-outline-secondary btn-lg px-4">Upload IGs</a>
+            <a href="{{ url_for('validate_sample') }}" class="btn btn-outline-secondary btn-lg px-4">Validate FHIR Sample</a>
         </div>
     </div>
 </div>

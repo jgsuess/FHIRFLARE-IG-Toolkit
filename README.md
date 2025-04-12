@@ -8,10 +8,12 @@ The FHIRFLARE IG Toolkit is a Flask-based web application designed to simplify t
 
 - **Import IGs**: Download FHIR IG packages and their dependencies from a package registry.
 - **Manage IGs**: View, process, and delete downloaded IGs, with duplicate detection.
-- **Process IGs**: Extract resource types, profiles, must-support elements, and examples from IGs.
-- **Push IGs**: Upload IG resources to a FHIR server with real-time console output.
-- **API Support**: Provides RESTful API endpoints for importing and pushing IGs.
+- **Process IGs**: Extract resource types, profiles, must-support elements, examples, and profile relationships (`compliesWithProfile` and `imposeProfile`) from IGs.
+- **Push IGs**: Upload IG resources to a FHIR server with real-time console output, including validation against imposed profiles.
+- **Profile Relationships**: Support for `structuredefinition-compliesWithProfile` and `structuredefinition-imposeProfile` extensions, with validation and UI display.
+- **API Support**: Provides RESTful API endpoints for importing and pushing IGs, including profile relationship metadata.
 - **Live Console**: Displays real-time logs during push operations.
+- **Configurable Behavior**: Options to enable/disable imposed profile validation and UI display of profile relationships.
 
 ## Technology Stack
 
@@ -85,18 +87,23 @@ The FHIRFLARE IG Toolkit is built using the following technologies:
    - Go to the "Manage FHIR Packages" tab to view downloaded IGs.
    - Process, delete, or view details of IGs. Duplicates are highlighted for resolution.
 
-3. **Push IGs to a FHIR Server**:
+3. **View Processed IGs**:
+   - After processing an IG, view its details, including resource types, profiles, must-support elements, examples, and profile relationships (`compliesWithProfile` and `imposeProfile`).
+   - Profile relationships are displayed if enabled via the `DISPLAY_PROFILE_RELATIONSHIPS` configuration.
+
+4. **Push IGs to a FHIR Server**:
    - Navigate to the "Push IGs" tab.
    - Select a package, enter a FHIR server URL (e.g., `http://hapi.fhir.org/baseR4`), and choose whether to include dependencies.
-   - Click "Push to FHIR Server" to upload resources, with progress shown in the live console.
+   - Click "Push to FHIR Server" to upload resources, with validation against imposed profiles (if enabled via `VALIDATE_IMPOSED_PROFILES`) and progress shown in the live console.
 
-4. **API Usage**:
+5. **API Usage**:
    - **Import IG**: `POST /api/import-ig`
      ```bash
      curl -X POST http://localhost:5000/api/import-ig \
      -H "Content-Type: application/json" \
      -d '{"package_name": "hl7.fhir.us.core", "version": "3.1.1", "api_key": "your-api-key"}'
      ```
+     Response includes `complies_with_profiles` and `imposed_profiles` if present.
    - **Push IG**: `POST /api/push-ig`
      ```bash
      curl -X POST http://localhost:5000/api/push-ig \
@@ -104,6 +111,18 @@ The FHIRFLARE IG Toolkit is built using the following technologies:
      -H "Accept: application/x-ndjson" \
      -d '{"package_name": "hl7.fhir.us.core", "version": "3.1.1", "fhir_server_url": "http://hapi.fhir.org/baseR4", "include_dependencies": true, "api_key": "your-api-key"}'
      ```
+     Resources are validated against imposed profiles before pushing.
+
+## Configuration Options
+
+- **`VALIDATE_IMPOSED_PROFILES`**: Set to `True` (default) to validate resources against imposed profiles during the push operation. Set to `False` to skip this validation.
+  ```python
+  app.config['VALIDATE_IMPOSED_PROFILES'] = False
+  ```
+- **`DISPLAY_PROFILE_RELATIONSHIPS`**: Set to `True` (default) to display `compliesWithProfile` and `imposeProfile` relationships in the UI. Set to `False` to hide them.
+  ```python
+  app.config['DISPLAY_PROFILE_RELATIONSHIPS'] = False
+  ```
 
 ## Testing
 
@@ -147,11 +166,11 @@ The test suite includes 27 test cases covering the following areas:
   - Import IG page (`/import-ig`): Form rendering and submission (success, failure, invalid input).
   - Manage IGs page (`/view-igs`): Rendering with and without packages.
   - Push IGs page (`/push-igs`): Rendering and live console.
-  - View Processed IG page (`/view-ig/<id>`): Rendering processed IG details.
+  - View Processed IG page (`/view-ig/<id>`): Rendering processed IG details, including profile relationships.
 
 - **API Endpoints**:
-  - `POST /api/import-ig`: Success, invalid API key, missing parameters.
-  - `POST /api/push-ig`: Success, invalid API key, package not found.
+  - `POST /api/import-ig`: Success, invalid API key, missing parameters, profile relationships in response.
+  - `POST /api/push-ig`: Success, invalid API key, package not found, imposed profile validation.
   - `GET /get-structure`: Fetching structure definitions (success, not found).
   - `GET /get-example`: Fetching example content (success, invalid path).
 
@@ -161,7 +180,7 @@ The test suite includes 27 test cases covering the following areas:
   - Viewing processed IGs: Retrieving and displaying processed IG data.
 
 - **File Operations**:
-  - Processing IG packages: Extracting data from `.tgz` files.
+  - Processing IG packages: Extracting data from `.tgz` files, including profile relationships.
   - Deleting IG packages: Removing `.tgz` files from the filesystem.
 
 - **Security**:
@@ -219,7 +238,7 @@ test_app.py::TestFHIRFlareIGToolkit::test_get_example_content_invalid_path PASSE
 
 ### Background
 
-The FHIRFLARE IG Toolkit was developed to address the need for a user-friendly tool to manage FHIR Implementation Guides. The project focuses on providing a seamless experience for importing, processing, and analyzing FHIR packages, with a particular emphasis on handling duplicate dependencies—a common challenge in FHIR development.
+The FHIRFLARE IG Toolkit was developed to address the need for a user-friendly tool to manage FHIR Implementation Guides. The project focuses on providing a seamless experience for importing, processing, and analyzing FHIR packages, with a particular emphasis on handling duplicate dependencies and profile relationships—a common challenge in FHIR development.
 
 ### Technical Decisions
 
@@ -227,18 +246,21 @@ The FHIRFLARE IG Toolkit was developed to address the need for a user-friendly t
 - **SQLite**: Used as the database for simplicity and ease of setup. For production use, consider switching to a more robust database like PostgreSQL.
 - **Bootstrap**: Integrated for a responsive and professional UI, with custom CSS to handle duplicate package highlighting.
 - **Docker Support**: Added to simplify deployment and ensure consistency across development and production environments.
+- **Profile Validation**: Added support for `structuredefinition-compliesWithProfile` and `structuredefinition-imposeProfile` to ensure resources comply with required profiles during push operations.
 
 ### Known Issues and Workarounds
 
 - **Bootstrap CSS Conflicts**: Early versions of the application had issues with Bootstrap’s table background styles (`--bs-table-bg`) overriding custom row colors for duplicate packages. This was resolved by setting `--bs-table-bg` to `transparent` for the affected table (see `templates/cp_downloaded_igs.html`).
 - **Database Permissions**: The `instance` directory must be writable by the application. If you encounter permission errors, ensure the directory has the correct permissions (`chmod -R 777 instance`).
 - **Package Parsing**: Some FHIR package filenames may not follow the expected `name-version.tgz` format, leading to parsing issues. The application includes a fallback to treat such files as name-only packages, but this may need further refinement.
+- **Profile Validation Overhead**: Validating against imposed profiles can increase processing time during push operations. This can be disabled via the `VALIDATE_IMPOSED_PROFILES` configuration if performance is a concern.
 
 ### Future Improvements
 
 - [ ] **Sorting Versions**: Add sorting for package versions in the "Manage FHIR Packages" view to display them in a consistent order (e.g., ascending or descending).
 - [ ] **Advanced Duplicate Handling**: Implement options to resolve duplicates (e.g., keep the latest version, merge resources).
 - [ ] **Production Database**: Support for PostgreSQL or MySQL for better scalability in production environments.
+- [ ] **Profile Validation Enhancements**: Add more detailed validation reports for imposed profiles, including specific element mismatches.
 
 **Completed Items** (Removed from the list as they are done):
 - ~~Testing: Add unit tests using pytest to cover core functionality, especially package processing and database operations.~~ (Implemented in `tests/test_app.py` with 27 test cases covering UI, API, database, and file operations.)
@@ -267,11 +289,12 @@ Please ensure your code follows the project’s coding style and includes approp
 - **Database Issues**: If the SQLite database (`instance/fhir_ig.db`) cannot be created, ensure the `instance` directory is writable. You may need to adjust permissions (`chmod -R 777 instance`).
 - **Package Download Fails**: Verify your internet connection and ensure the package name and version are correct.
 - **Colors Not Displaying**: If table row colors for duplicates are not showing, inspect the page with browser developer tools (F12) to check for CSS conflicts with Bootstrap.
+- **Profile Relationships Not Displaying**: Ensure `DISPLAY_PROFILE_RELATIONSHIPS` is set to `True` in the application configuration.
 
 ## Directory Structure
 
 - `app.py`: Main Flask application file.
-- `services.py`: Business logic for importing, processing, and pushing IGs.
+- `services.py`: Business logic for importing, processing, and pushing IGs, including profile relationship handling.
 - `templates/`: HTML templates for the UI.
 - `instance/`: Directory for SQLite database and downloaded packages.
 - `tests/`: Directory for test files.
