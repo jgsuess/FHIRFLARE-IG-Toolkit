@@ -29,6 +29,9 @@
                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.endpoint == 'push_igs' else '' }}" href="{{ url_for('push_igs') }}"><i class="bi bi-upload me-1"></i> Push IGs</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ 'active' if request.endpoint == 'validate_sample' else '' }}" href="{{ url_for('validate_sample') }}"><i class="bi bi-check-circle me-1"></i> Validate FHIR Sample</a>
+                    </li>
                 </ul>
             </div>
         </div>

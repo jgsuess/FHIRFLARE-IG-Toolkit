@@ -12,9 +12,6 @@
                         <tr>
                             <th>Package Name</th>
                             <th>Version</th>
-                            <!--------------------------------------------------------------------------------------------------------------if you unhide buttons unhide this--------------------------------------------
-                            <th>Actions</th>
-                            --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------->
                         </tr>
                     </thead>
                     <tbody>
@@ -27,20 +24,6 @@
                             <tr {% if duplicate_group %}class="{{ group_colors[name] }}"{% endif %}>
                                 <td>{{ name }}</td>
                                 <td>{{ version }}</td>
-                                <!--------------------------------------------------------------------------------------------------------------Dont need the buttons here--------------------------------------------------
-                                <td>
-                                    {% if not processed %}
-                                        <form method="POST" action="{{ url_for('process_ig') }}" style="display:inline;">
-                                            <input type="hidden" name="filename" value="{{ filename }}">
-                                            <button type="submit" class="btn btn-primary btn-sm">Process</button>
-                                        </form>
-                                    {% endif %}
-                                    <form method="POST" action="{{ url_for('delete_ig') }}" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete {{ name }}#{{ version }}?');">
-                                        <input type="hidden" name="filename" value="{{ filename }}">
-                                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-                                    </form>
-                                </td>
-                                --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------->
                             </tr>
                         {% endfor %}
                     </tbody>
@@ -65,6 +48,7 @@
         <div class="col-md-6">
             <h2>Push IGs to FHIR Server</h2>
             <form id="pushIgForm" method="POST">
+                {{ form.csrf_token }}
                 <div class="mb-3">
                     <label for="packageSelect" class="form-label">Select Package to Push</label>
                     <select class="form-select" id="packageSelect" name="package_id" required>
@@ -115,6 +99,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     const packageSelect = document.getElementById('packageSelect');
     const dependencyModeField = document.getElementById('dependencyMode');
+    const csrfToken = "{{ form.csrf_token._value() }}";
 
     // Update dependency mode when package selection changes
     packageSelect.addEventListener('change', function() {
@@ -143,70 +128,135 @@ document.addEventListener('DOMContentLoaded', function() {
     if (packageSelect.value) {
         packageSelect.dispatchEvent(new Event('change'));
     }
-});
 
-document.getElementById('pushIgForm').addEventListener('submit', async function(event) {
-    event.preventDefault();
+    document.getElementById('pushIgForm').addEventListener('submit', async function(event) {
+        event.preventDefault();
 
-    const form = event.target;
-    const pushButton = document.getElementById('pushButton');
-    const formData = new FormData(form);
-    const packageId = formData.get('package_id');
-    const [packageName, version] = packageId.split('#');
-    const fhirServerUrl = formData.get('fhir_server_url');
-    const includeDependencies = formData.get('include_dependencies') === 'on';
+        const form = event.target;
+        const pushButton = document.getElementById('pushButton');
+        const formData = new FormData(form);
+        const packageId = formData.get('package_id');
+        const [packageName, version] = packageId.split('#');
+        const fhirServerUrl = formData.get('fhir_server_url');
+        const includeDependencies = formData.get('include_dependencies') === 'on';
 
-    // Disable the button to prevent multiple submissions
-    pushButton.disabled = true;
-    pushButton.textContent = 'Pushing...';
+        // Disable the button to prevent multiple submissions
+        pushButton.disabled = true;
+        pushButton.textContent = 'Pushing...';
 
-    // Clear the console and response area
-    const liveConsole = document.getElementById('liveConsole');
-    const responseDiv = document.getElementById('pushResponse');
-    liveConsole.innerHTML = '<div>Starting push operation...</div>';
-    responseDiv.innerHTML = '';
+        // Clear the console and response area
+        const liveConsole = document.getElementById('liveConsole');
+        const responseDiv = document.getElementById('pushResponse');
+        liveConsole.innerHTML = '<div>Starting push operation...</div>';
+        responseDiv.innerHTML = '';
 
-    try {
-        const response = await fetch('/api/push-ig', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/x-ndjson'
-            },
-            body: JSON.stringify({
-                package_name: packageName,
-                version: version,
-                fhir_server_url: fhirServerUrl,
-                include_dependencies: includeDependencies,
-                api_key: '{{ api_key | safe }}'  // Use the API key passed from the server
-            })
-        });
+        try {
+            const response = await fetch('/api/push-ig', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/x-ndjson',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({
+                    package_name: packageName,
+                    version: version,
+                    fhir_server_url: fhirServerUrl,
+                    include_dependencies: includeDependencies,
+                    api_key: '{{ api_key | safe }}'
+                })
+            });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || 'Failed to push package');
-        }
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Failed to push package');
+            }
 
-        // Stream the response
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
+            // Stream the response
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
 
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
 
-            // Decode the chunk and append to buffer
-            buffer += decoder.decode(value, { stream: true });
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
 
-            // Process each line (newline-separated JSON)
-            const lines = buffer.split('\n');
-            buffer = lines.pop(); // Keep the last (possibly incomplete) line in the buffer
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const data = JSON.parse(line);
+                        const timestamp = new Date().toLocaleTimeString();
+                        let messageClass = '';
+                        let prefix = '';
 
-            for (const line of lines) {
-                if (!line.trim()) continue; // Skip empty lines
+                        switch (data.type) {
+                            case 'start':
+                            case 'progress':
+                                messageClass = 'text-info';
+                                prefix = '[INFO]';
+                                break;
+                            case 'success':
+                                messageClass = 'text-success';
+                                prefix = '[SUCCESS]';
+                                break;
+                            case 'error':
+                                messageClass = 'text-danger';
+                                prefix = '[ERROR]';
+                                break;
+                            case 'warning':
+                                messageClass = 'text-warning';
+                                prefix = '[WARNING]';
+                                break;
+                            case 'complete':
+                                if (data.data.status === 'success') {
+                                    responseDiv.innerHTML = `
+                                        <div class="alert alert-success">
+                                            <strong>Success:</strong> ${data.data.message}<br>
+                                            <strong>Pushed Packages:</strong> ${data.data.pushed_packages.join(', ')}<br>
+                                            <strong>Server Response:</strong> ${data.data.server_response}
+                                        </div>
+                                    `;
+                                } else if (data.data.status === 'partial') {
+                                    responseDiv.innerHTML = `
+                                        <div class="alert alert-warning">
+                                            <strong>Partial Success:</strong> ${data.data.message}<br>
+                                            <strong>Pushed Packages:</strong> ${data.data.pushed_packages.join(', ')}<br>
+                                            <strong>Server Response:</strong> ${data.data.server_response}
+                                        </div>
+                                    `;
+                                } else {
+                                    responseDiv.innerHTML = `
+                                        <div class="alert alert-danger">
+                                            <strong>Error:</strong> ${data.data.message}
+                                        </div>
+                                    `;
+                                }
+                                messageClass = data.data.status === 'success' ? 'text-success' : (data.data.status === 'partial' ? 'text-warning' : 'text-danger');
+                                prefix = data.data.status === 'success' ? '[SUCCESS]' : (data.data.status === 'partial' ? '[PARTIAL]' : '[ERROR]');
+                                break;
+                            default:
+                                messageClass = 'text-light';
+                                prefix = '[INFO]';
+                        }
+
+                        const messageDiv = document.createElement('div');
+                        messageDiv.className = messageClass;
+                        messageDiv.textContent = `${timestamp} ${prefix} ${data.message || (data.data && data.data.message) || 'Unknown message'}`;
+                        liveConsole.appendChild(messageDiv);
+                        liveConsole.scrollTop = liveConsole.scrollHeight;
+                    } catch (parseError) {
+                        console.error('Error parsing streamed message:', parseError, 'Line:', line);
+                    }
+                }
+            }
+
+            if (buffer.trim()) {
                 try {
-                    const data = JSON.parse(line);
+                    const data = JSON.parse(buffer);
                     const timestamp = new Date().toLocaleTimeString();
                     let messageClass = '';
                     let prefix = '';
@@ -230,7 +280,6 @@ document.getElementById('pushIgForm').addEventListener('submit', async function(
                             prefix = '[WARNING]';
                             break;
                         case 'complete':
-                            // Display the final summary in the response area
                             if (data.data.status === 'success') {
                                 responseDiv.innerHTML = `
                                     <div class="alert alert-success">
@@ -254,7 +303,6 @@ document.getElementById('pushIgForm').addEventListener('submit', async function(
                                     </div>
                                 `;
                             }
-                            // Also log the completion in the console
                             messageClass = data.data.status === 'success' ? 'text-success' : (data.data.status === 'partial' ? 'text-warning' : 'text-danger');
                             prefix = data.data.status === 'success' ? '[SUCCESS]' : (data.data.status === 'partial' ? '[PARTIAL]' : '[ERROR]');
                             break;
@@ -267,103 +315,30 @@ document.getElementById('pushIgForm').addEventListener('submit', async function(
                     messageDiv.className = messageClass;
                     messageDiv.textContent = `${timestamp} ${prefix} ${data.message || (data.data && data.data.message) || 'Unknown message'}`;
                     liveConsole.appendChild(messageDiv);
-
-                    // Auto-scroll to the bottom
                     liveConsole.scrollTop = liveConsole.scrollHeight;
                 } catch (parseError) {
-                    console.error('Error parsing streamed message:', parseError, 'Line:', line);
+                    console.error('Error parsing final streamed message:', parseError, 'Buffer:', buffer);
                 }
             }
+
+        } catch (error) {
+            const timestamp = new Date().toLocaleTimeString();
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'text-danger';
+            errorDiv.textContent = `${timestamp} [ERROR] Failed to push package: ${error.message}`;
+            liveConsole.appendChild(errorDiv);
+            liveConsole.scrollTop = liveConsole.scrollHeight;
+
+            responseDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> Failed to push package: ${error.message}
+                </div>
+            `;
+        } finally {
+            pushButton.disabled = false;
+            pushButton.textContent = 'Push to FHIR Server';
         }
-
-        // Process any remaining buffer
-        if (buffer.trim()) {
-            try {
-                const data = JSON.parse(buffer);
-                const timestamp = new Date().toLocaleTimeString();
-                let messageClass = '';
-                let prefix = '';
-
-                switch (data.type) {
-                    case 'start':
-                    case 'progress':
-                        messageClass = 'text-info';
-                        prefix = '[INFO]';
-                        break;
-                    case 'success':
-                        messageClass = 'text-success';
-                        prefix = '[SUCCESS]';
-                        break;
-                    case 'error':
-                        messageClass = 'text-danger';
-                        prefix = '[ERROR]';
-                        break;
-                    case 'warning':
-                        messageClass = 'text-warning';
-                        prefix = '[WARNING]';
-                        break;
-                    case 'complete':
-                        if (data.data.status === 'success') {
-                            responseDiv.innerHTML = `
-                                <div class="alert alert-success">
-                                    <strong>Success:</strong> ${data.data.message}<br>
-                                    <strong>Pushed Packages:</strong> ${data.data.pushed_packages.join(', ')}<br>
-                                    <strong>Server Response:</strong> ${data.data.server_response}
-                                </div>
-                            `;
-                        } else if (data.data.status === 'partial') {
-                            responseDiv.innerHTML = `
-                                <div class="alert alert-warning">
-                                    <strong>Partial Success:</strong> ${data.data.message}<br>
-                                    <strong>Pushed Packages:</strong> ${data.data.pushed_packages.join(', ')}<br>
-                                    <strong>Server Response:</strong> ${data.data.server_response}
-                                </div>
-                            `;
-                        } else {
-                            responseDiv.innerHTML = `
-                                <div class="alert alert-danger">
-                                    <strong>Error:</strong> ${data.data.message}
-                                </div>
-                            `;
-                        }
-                        messageClass = data.data.status === 'success' ? 'text-success' : (data.data.status === 'partial' ? 'text-warning' : 'text-danger');
-                        prefix = data.data.status === 'success' ? '[SUCCESS]' : (data.data.status === 'partial' ? '[PARTIAL]' : '[ERROR]');
-                        break;
-                    default:
-                        messageClass = 'text-light';
-                        prefix = '[INFO]';
-                }
-
-                const messageDiv = document.createElement('div');
-                messageDiv.className = messageClass;
-                messageDiv.textContent = `${timestamp} ${prefix} ${data.message || (data.data && data.data.message) || 'Unknown message'}`;
-                liveConsole.appendChild(messageDiv);
-
-                // Auto-scroll to the bottom
-                liveConsole.scrollTop = liveConsole.scrollHeight;
-            } catch (parseError) {
-                console.error('Error parsing final streamed message:', parseError, 'Buffer:', buffer);
-            }
-        }
-
-    } catch (error) {
-        const timestamp = new Date().toLocaleTimeString();
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'text-danger';
-        errorDiv.textContent = `${timestamp} [ERROR] Failed to push package: ${error.message}`;
-        liveConsole.appendChild(errorDiv);
-        liveConsole.scrollTop = liveConsole.scrollHeight;
-
-        responseDiv.innerHTML = `
-            <div class="alert alert-danger">
-                <strong>Error:</strong> Failed to push package: ${error.message}
-            </div>
-        `;
-    } finally {
-        // Re-enable the button
-        pushButton.disabled = false;
-        pushButton.textContent = 'Push to FHIR Server';
-    }
+    });
 });
 </script>
 {% endblock %}

@@ -1,9 +1,11 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+
 from flask import Flask, render_template, render_template_string, request, redirect, url_for, flash, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
-from wtforms import StringField, SubmitField, SelectField
-from wtforms.validators import DataRequired, Regexp
-import os
+from flask_wtf.csrf import CSRFProtect
 import tarfile
 import json
 from datetime import datetime
@@ -11,6 +13,7 @@ import services
 import logging
 import requests
 import re
+from forms import IgImportForm, ValidationForm
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -20,14 +23,14 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-here'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////app/instance/fhir_ig.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['FHIR_PACKAGES_DIR'] = os.path.join(app.instance_path, 'fhir_packages')
+app.config['FHIR_PACKAGES_DIR'] = '/app/instance/fhir_packages'
 app.config['API_KEY'] = 'your-api-key-here'
-app.config['VALIDATE_IMPOSED_PROFILES'] = True  # Enable/disable imposed profile validation
-app.config['DISPLAY_PROFILE_RELATIONSHIPS'] = True  # Enable/disable UI display of relationships
+app.config['VALIDATE_IMPOSED_PROFILES'] = True
+app.config['DISPLAY_PROFILE_RELATIONSHIPS'] = True
 
 # Ensure directories exist and are writable
 instance_path = '/app/instance'
-db_path = os.path.join(instance_path, 'fhir_ig.db')
+db_path = '/app/instance/fhir_ig.db'
 packages_path = app.config['FHIR_PACKAGES_DIR']
 
 logger.debug(f"Instance path: {instance_path}")
@@ -37,9 +40,9 @@ logger.debug(f"Packages path: {packages_path}")
 try:
     os.makedirs(instance_path, exist_ok=True)
     os.makedirs(packages_path, exist_ok=True)
-    os.chmod(instance_path, 0o777)
-    os.chmod(packages_path, 0o777)
-    logger.debug(f"Directories created: {os.listdir('/app')}")
+    os.chmod(instance_path, 0o755)
+    os.chmod(packages_path, 0o755)
+    logger.debug(f"Directories created: {os.listdir(os.path.dirname(__file__))}")
     logger.debug(f"Instance contents: {os.listdir(instance_path)}")
 except Exception as e:
     logger.error(f"Failed to create directories: {e}")
@@ -47,22 +50,7 @@ except Exception as e:
     logger.warning("Falling back to /tmp/fhir_ig.db")
 
 db = SQLAlchemy(app)
-
-class IgImportForm(FlaskForm):
-    package_name = StringField('Package Name (e.g., hl7.fhir.us.core)', validators=[
-        DataRequired(),
-        Regexp(r'^[a-zAZ0-9]+(\.[a-zA-Z0-9]+)+$', message='Invalid package name format.')
-    ])
-    package_version = StringField('Package Version (e.g., 1.0.0 or current)', validators=[
-        DataRequired(),
-        Regexp(r'^[a-zA-Z0-9\.\-]+$', message='Invalid version format.')
-    ])
-    dependency_mode = SelectField('Dependency Pulling Mode', choices=[
-        ('recursive', 'Current Recursive'),
-        ('patch-canonical', 'Patch Canonical Versions'),
-        ('tree-shaking', 'Tree Shaking (Only Used Dependencies)')
-    ], default='recursive')
-    submit = SubmitField('Fetch & Download IG')
+csrf = CSRFProtect(app)
 
 class ProcessedIg(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -107,10 +95,11 @@ def import_ig():
             return redirect(url_for('view_igs'))
         except Exception as e:
             flash(f"Error downloading IG: {str(e)}", "error")
-    return render_template('import_ig.html', form=form, site_name='FLARE FHIR IG Toolkit', now=datetime.now())
+    return render_template('import_ig.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.now())
 
 @app.route('/view-igs')
 def view_igs():
+    form = FlaskForm()
     igs = ProcessedIg.query.all()
     processed_ids = {(ig.package_name, ig.version) for ig in igs}
 
@@ -161,14 +150,15 @@ def view_igs():
     for i, name in enumerate(duplicate_groups.keys()):
         group_colors[name] = colors[i % len(colors)]
 
-    return render_template('cp_downloaded_igs.html', packages=packages, processed_list=igs,
+    return render_template('cp_downloaded_igs.html', form=form, packages=packages, processed_list=igs,
                          processed_ids=processed_ids, duplicate_names=duplicate_names,
                          duplicate_groups=duplicate_groups, group_colors=group_colors,
-                         site_name='FLARE FHIR IG Toolkit', now=datetime.now(),
+                         site_name='FHIRFLARE IG Toolkit', now=datetime.now(),
                          config=app.config)
 
 @app.route('/push-igs', methods=['GET', 'POST'])
 def push_igs():
+    form = FlaskForm()
     igs = ProcessedIg.query.all()
     processed_ids = {(ig.package_name, ig.version) for ig in igs}
 
@@ -219,90 +209,102 @@ def push_igs():
     for i, name in enumerate(duplicate_groups.keys()):
         group_colors[name] = colors[i % len(colors)]
 
-    return render_template('cp_push_igs.html', packages=packages, processed_list=igs,
+    return render_template('cp_push_igs.html', form=form, packages=packages, processed_list=igs,
                          processed_ids=processed_ids, duplicate_names=duplicate_names,
                          duplicate_groups=duplicate_groups, group_colors=group_colors,
-                         site_name='FLARE FHIR IG Toolkit', now=datetime.now(),
+                         site_name='FHIRFLARE IG Toolkit', now=datetime.now(),
                          api_key=app.config['API_KEY'],
                          config=app.config)
 
 @app.route('/process-igs', methods=['POST'])
 def process_ig():
-    filename = request.form.get('filename')
-    if not filename or not filename.endswith('.tgz'):
-        flash("Invalid package file.", "error")
-        return redirect(url_for('view_igs'))
-    
-    tgz_path = os.path.join(app.config['FHIR_PACKAGES_DIR'], filename)
-    if not os.path.exists(tgz_path):
-        flash(f"Package file not found: {filename}", "error")
-        return redirect(url_for('view_igs'))
-    
-    try:
-        last_hyphen_index = filename.rfind('-')
-        if last_hyphen_index != -1 and filename.endswith('.tgz'):
-            name = filename[:last_hyphen_index]
-            version = filename[last_hyphen_index + 1:-4]
-            name = name.replace('_', '.')
-        else:
-            name = filename[:-4]
-            version = ''
-            logger.warning(f"Could not parse version from {filename} during processing")
-        package_info = services.process_package_file(tgz_path)
-        processed_ig = ProcessedIg(
-            package_name=name,
-            version=version,
-            processed_date=datetime.now(),
-            resource_types_info=package_info['resource_types_info'],
-            must_support_elements=package_info.get('must_support_elements'),
-            examples=package_info.get('examples')
-        )
-        db.session.add(processed_ig)
-        db.session.commit()
-        flash(f"Successfully processed {name}#{version}!", "success")
-    except Exception as e:
-        flash(f"Error processing IG: {str(e)}", "error")
+    form = FlaskForm()
+    if form.validate_on_submit():
+        filename = request.form.get('filename')
+        if not filename or not filename.endswith('.tgz'):
+            flash("Invalid package file.", "error")
+            return redirect(url_for('view_igs'))
+        
+        tgz_path = os.path.join(app.config['FHIR_PACKAGES_DIR'], filename)
+        if not os.path.exists(tgz_path):
+            flash(f"Package file not found: {filename}", "error")
+            return redirect(url_for('view_igs'))
+        
+        try:
+            last_hyphen_index = filename.rfind('-')
+            if last_hyphen_index != -1 and filename.endswith('.tgz'):
+                name = filename[:last_hyphen_index]
+                version = filename[last_hyphen_index + 1:-4]
+                name = name.replace('_', '.')
+            else:
+                name = filename[:-4]
+                version = ''
+                logger.warning(f"Could not parse version from {filename} during processing")
+            package_info = services.process_package_file(tgz_path)
+            processed_ig = ProcessedIg(
+                package_name=name,
+                version=version,
+                processed_date=datetime.now(),
+                resource_types_info=package_info['resource_types_info'],
+                must_support_elements=package_info.get('must_support_elements'),
+                examples=package_info.get('examples')
+            )
+            db.session.add(processed_ig)
+            db.session.commit()
+            flash(f"Successfully processed {name}#{version}!", "success")
+        except Exception as e:
+            flash(f"Error processing IG: {str(e)}", "error")
+    else:
+        flash("CSRF token missing or invalid.", "error")
     return redirect(url_for('view_igs'))
 
 @app.route('/delete-ig', methods=['POST'])
 def delete_ig():
-    filename = request.form.get('filename')
-    if not filename or not filename.endswith('.tgz'):
-        flash("Invalid package file.", "error")
-        return redirect(url_for('view_igs'))
-    
-    tgz_path = os.path.join(app.config['FHIR_PACKAGES_DIR'], filename)
-    metadata_path = tgz_path.replace('.tgz', '.metadata.json')
-    if os.path.exists(tgz_path):
-        try:
-            os.remove(tgz_path)
-            if os.path.exists(metadata_path):
-                os.remove(metadata_path)
-                logger.debug(f"Deleted metadata file: {metadata_path}")
-            flash(f"Deleted {filename}", "success")
-        except Exception as e:
-            flash(f"Error deleting {filename}: {str(e)}", "error")
+    form = FlaskForm()
+    if form.validate_on_submit():
+        filename = request.form.get('filename')
+        if not filename or not filename.endswith('.tgz'):
+            flash("Invalid package file.", "error")
+            return redirect(url_for('view_igs'))
+        
+        tgz_path = os.path.join(app.config['FHIR_PACKAGES_DIR'], filename)
+        metadata_path = tgz_path.replace('.tgz', '.metadata.json')
+        if os.path.exists(tgz_path):
+            try:
+                os.remove(tgz_path)
+                if os.path.exists(metadata_path):
+                    os.remove(metadata_path)
+                    logger.debug(f"Deleted metadata file: {metadata_path}")
+                flash(f"Deleted {filename}", "success")
+            except Exception as e:
+                flash(f"Error deleting {filename}: {str(e)}", "error")
+        else:
+            flash(f"File not found: {filename}", "error")
     else:
-        flash(f"File not found: {filename}", "error")
+        flash("CSRF token missing or invalid.", "error")
     return redirect(url_for('view_igs'))
 
 @app.route('/unload-ig', methods=['POST'])
 def unload_ig():
-    ig_id = request.form.get('ig_id')
-    if not ig_id:
-        flash("Invalid package ID.", "error")
-        return redirect(url_for('view_igs'))
-    
-    processed_ig = db.session.get(ProcessedIg, ig_id)
-    if processed_ig:
-        try:
-            db.session.delete(processed_ig)
-            db.session.commit()
-            flash(f"Unloaded {processed_ig.package_name}#{processed_ig.version}", "success")
-        except Exception as e:
-            flash(f"Error unloading package: {str(e)}", "error")
+    form = FlaskForm()
+    if form.validate_on_submit():
+        ig_id = request.form.get('ig_id')
+        if not ig_id:
+            flash("Invalid package ID.", "error")
+            return redirect(url_for('view_igs'))
+        
+        processed_ig = db.session.get(ProcessedIg, ig_id)
+        if processed_ig:
+            try:
+                db.session.delete(processed_ig)
+                db.session.commit()
+                flash(f"Unloaded {processed_ig.package_name}#{processed_ig.version}", "success")
+            except Exception as e:
+                flash(f"Error unloading package: {str(e)}", "error")
+        else:
+            flash(f"Package not found with ID: {ig_id}", "error")
     else:
-        flash(f"Package not found with ID: {ig_id}", "error")
+        flash("CSRF token missing or invalid.", "error")
     return redirect(url_for('view_igs'))
 
 @app.route('/view-ig/<int:processed_ig_id>')
@@ -327,7 +329,7 @@ def view_ig(processed_ig_id):
 
     return render_template('cp_view_processed_ig.html', title=f"View {processed_ig.package_name}#{processed_ig.version}",
                           processed_ig=processed_ig, profile_list=profile_list, base_list=base_list,
-                          examples_by_type=examples_by_type, site_name='FLARE FHIR IG Toolkit', now=datetime.now(),
+                          examples_by_type=examples_by_type, site_name='FHIRFLARE IG Toolkit', now=datetime.now(),
                           complies_with_profiles=complies_with_profiles, imposed_profiles=imposed_profiles,
                           config=app.config)
 
@@ -418,7 +420,6 @@ def get_package_metadata():
         return jsonify({'dependency_mode': metadata['dependency_mode']})
     return jsonify({'error': 'Metadata not found'}), 404
 
-# API Endpoint: Import IG Package
 @app.route('/api/import-ig', methods=['POST'])
 def api_import_ig():
     auth_error = check_api_key()
@@ -522,7 +523,6 @@ def api_import_ig():
         logger.error(f"Error in api_import_ig: {str(e)}")
         return jsonify({"status": "error", "message": f"Error importing package: {str(e)}"}), 500
 
-# API Endpoint: Push IG to FHIR Server with Streaming
 @app.route('/api/push-ig', methods=['POST'])
 def api_push_ig():
     auth_error = check_api_key()
@@ -597,7 +597,7 @@ def api_push_ig():
                     continue
 
                 # Validate against the profile and imposed profiles
-                validation_result = services.validate_resource_against_profile(resource, pkg_name, pkg_version, resource_type)
+                validation_result = services.validate_resource_against_profile(pkg_name, pkg_version, resource, include_dependencies=False)
                 if not validation_result['valid']:
                     yield json.dumps({"type": "error", "message": f"Validation failed for {resource_type}/{resource_id} in {pkg_name}#{pkg_version}: {', '.join(validation_result['errors'])}"}) + "\n"
                     failure_count += 1
@@ -643,10 +643,71 @@ def api_push_ig():
 
     return Response(generate_stream(), mimetype='application/x-ndjson')
 
+@app.route('/validate-sample', methods=['GET', 'POST'])
+def validate_sample():
+    form = ValidationForm()
+    validation_report = None
+    packages = []
+    
+    # Load available packages
+    packages_dir = app.config['FHIR_PACKAGES_DIR']
+    if os.path.exists(packages_dir):
+        for filename in os.listdir(packages_dir):
+            if filename.endswith('.tgz'):
+                last_hyphen_index = filename.rfind('-')
+                if last_hyphen_index != -1 and filename.endswith('.tgz'):
+                    name = filename[:last_hyphen_index]
+                    version = filename[last_hyphen_index + 1:-4]
+                    name = name.replace('_', '.')
+                    try:
+                        with tarfile.open(os.path.join(packages_dir, filename), 'r:gz') as tar:
+                            package_json = tar.extractfile('package/package.json')
+                            pkg_info = json.load(package_json)
+                            packages.append({'name': pkg_info['name'], 'version': pkg_info['version']})
+                    except Exception as e:
+                        logger.warning(f"Error reading package {filename}: {e}")
+                        continue
+
+    if form.validate_on_submit():
+        package_name = form.package_name.data
+        version = form.version.data
+        include_dependencies = form.include_dependencies.data
+        mode = form.mode.data
+        try:
+            sample_input = json.loads(form.sample_input.data)
+            if mode == 'single':
+                validation_report = services.validate_resource_against_profile(
+                    package_name, version, sample_input, include_dependencies
+                )
+            else:  # mode == 'bundle'
+                validation_report = services.validate_bundle_against_profile(
+                    package_name, version, sample_input, include_dependencies
+                )
+            flash("Validation completed.", 'success')
+        except json.JSONDecodeError:
+            flash("Invalid JSON format in sample input.", 'error')
+        except Exception as e:
+            logger.error(f"Error validating sample: {e}")
+            flash(f"Error validating sample: {str(e)}", 'error')
+            validation_report = {'valid': False, 'errors': [str(e)], 'warnings': [], 'results': {}}
+
+    return render_template(
+        'validate_sample.html',
+        form=form,
+        packages=packages,
+        validation_report=validation_report,
+        site_name='FHIRFLARE IG Toolkit',
+        now=datetime.now()
+    )
+
 with app.app_context():
     logger.debug(f"Creating database at: {app.config['SQLALCHEMY_DATABASE_URI']}")
-    db.create_all()
-    logger.debug("Database initialization complete")
+    try:
+        db.create_all()
+        logger.debug("Database initialization complete")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        raise
 
 if __name__ == '__main__':
     app.run(debug=True)

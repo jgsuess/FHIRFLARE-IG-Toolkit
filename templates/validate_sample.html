@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="px-4 py-5 my-5 text-center">
+    <img class="d-block mx-auto mb-4" src="{{ url_for('static', filename='FHIRFLARE.png') }}" alt="FHIRFLARE IG Toolkit" width="192" height="192">
+    <h1 class="display-5 fw-bold text-body-emphasis">Validate FHIR Sample</h1>
+    <div class="col-lg-6 mx-auto">
+        <p class="lead mb-4">
+            Validate a FHIR resource or bundle against a selected Implementation Guide. (ALPHA - TEST Fhir pathing is complex and the logic is WIP, please report anomalies you find in Github issues alongside your sample json REMOVE PHI)
+        </p>
+        <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+            <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg px-4 gap-3">Back to Home</a>
+            <a href="{{ url_for('view_igs') }}" class="btn btn-outline-secondary btn-lg px-4">Manage FHIR Packages</a>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header">Validation Form</div>
+        <div class="card-body">
+            <form method="POST" id="validationForm">
+                {{ form.hidden_tag() }}
+                <div class="mb-3">
+                    <small class="form-text text-muted">
+                        Select a package from the list below or enter a new one (e.g., <code>hl7.fhir.us.core</code>).
+                    </small>
+                    <div class="mt-2">
+                        <select class="form-select" id="packageSelect" onchange="if(this.value) { let parts = this.value.split('#'); document.getElementById('{{ form.package_name.id }}').value = parts[0]; document.getElementById('{{ form.version.id }}').value = parts[1]; }">
+                            <option value="">-- Select a Package --</option>
+                            {% for pkg in packages %}
+                                <option value="{{ pkg.name }}#{{ pkg.version }}">{{ pkg.name }}#{{ pkg.version }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <label for="{{ form.package_name.id }}" class="form-label">Package Name</label>
+                    {{ form.package_name(class="form-control") }}
+                    {% for error in form.package_name.errors %}
+                        <div class="text-danger">{{ error }}</div>
+                    {% endfor %}                    
+                </div>
+                <div class="mb-3">
+                    <label for="{{ form.version.id }}" class="form-label">Package Version</label>
+                    {{ form.version(class="form-control") }}
+                    {% for error in form.version.errors %}
+                        <div class="text-danger">{{ error }}</div>
+                    {% endfor %}
+                </div>
+                <div class="mb-3">
+                    <label for="{{ form.include_dependencies.id }}" class="form-label">Include Dependencies</label>
+                    <div class="form-check">
+                        {{ form.include_dependencies(class="form-check-input") }}
+                        {{ form.include_dependencies.label(class="form-check-label") }}
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="{{ form.mode.id }}" class="form-label">Validation Mode</label>
+                    {{ form.mode(class="form-select") }}
+                </div>
+                <div class="mb-3">
+                    <label for="{{ form.sample_input.id }}" class="form-label">Sample FHIR Resource/Bundle (JSON)</label>
+                    {{ form.sample_input(class="form-control", rows=10, placeholder="Paste your FHIR JSON here...") }}
+                    {% for error in form.sample_input.errors %}
+                        <div class="text-danger">{{ error }}</div>
+                    {% endfor %}
+                </div>
+                {{ form.submit(class="btn btn-primary") }}
+            </form>
+        </div>
+    </div>
+
+    {% if validation_report %}
+        <div class="card mt-4">
+            <div class="card-header">Validation Report</div>
+            <div class="card-body">
+                <h5>Summary</h5>
+                <p><strong>Valid:</strong> {{ 'Yes' if validation_report.valid else 'No' }}</p>
+                {% if validation_report.errors %}
+                    <h6>Errors</h6>
+                    <ul class="text-danger">
+                        {% for error in validation_report.errors %}
+                            <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+                {% if validation_report.warnings %}
+                    <h6>Warnings</h6>
+                    <ul class="text-warning">
+                        {% for warning in validation_report.warnings %}
+                            <li>{{ warning }}</li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+
+                {% if validation_report.results %}
+                    <h5>Detailed Results</h5>
+                    {% for resource_id, result in validation_report.results.items() %}
+                        <h6>{{ resource_id }}</h6>
+                        <p><strong>Valid:</strong> {{ 'Yes' if result.valid else 'No' }}</p>
+                        {% if result.errors %}
+                            <ul class="text-danger">
+                                {% for error in result.errors %}
+                                    <li>{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                        {% if result.warnings %}
+                            <ul class="text-warning">
+                                {% for warning in result.warnings %}
+                                    <li>{{ warning }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('validationForm');
+    const sampleInput = document.getElementById('{{ form.sample_input.id }}');
+    
+    // Client-side JSON validation preview
+    sampleInput.addEventListener('input', function() {
+        try {
+            JSON.parse(this.value);
+            this.classList.remove('is-invalid');
+            this.classList.add('is-valid');
+        } catch (e) {
+            this.classList.remove('is-valid');
+            this.classList.add('is-invalid');
+        }
+    });
+});
+</script>
+{% endblock %}

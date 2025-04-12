@@ -31,7 +31,6 @@
         .badge.bg-danger {
             background-color: #dc3545 !important;
         }
-        /* Ensure table rows with custom background colors are not overridden by Bootstrap */
         .table tr.bg-warning {
             background-color: #ffc107 !important;
         }
@@ -44,7 +43,6 @@
         .table tr.bg-danger {
             background-color: #dc3545 !important;
         }
-        /* Override Bootstrap's table background to allow custom row colors to show */
         .table-custom-bg {
             --bs-table-bg: transparent !important;
         }
@@ -64,9 +62,7 @@
                 <div class="card-body">
                     {% if packages %}
                         <div class="table-responsive">
-                            <!-- remove this warning and move it down the bottom-----------------------------------------------------------------------------------------
-                            <p class="mb-2"><small><span class="badge bg-danger text-light border me-1">Risk:</span> Duplicate Dependency with Different Versions</small></p>
-                            --------------------------------------------------------------------------------------------------------------------------------------------->
+                            <p class="mb-2"><small><span class="badge bg-danger text-light border me-1">Risk:</span> = Duplicate Dependencies</small></p>
                             <table class="table table-sm table-hover table-custom-bg">
                                 <thead>
                                     <tr><th>Package Name</th><th>Version</th><th>Actions</th></tr>
@@ -90,11 +86,13 @@
                                                         <span class="btn btn-success disabled"><i class="bi bi-check-lg"></i> Processed</span>
                                                     {% else %}
                                                         <form method="POST" action="{{ url_for('process_ig') }}" style="display:inline;">
+                                                            {{ form.csrf_token }}
                                                             <input type="hidden" name="filename" value="{{ pkg.filename }}">
                                                             <button type="submit" class="btn btn-outline-primary"><i class="bi bi-gear"></i> Process</button>
                                                         </form>
                                                     {% endif %}
                                                     <form method="POST" action="{{ url_for('delete_ig') }}" style="display:inline;">
+                                                        {{ form.csrf_token }}
                                                         <input type="hidden" name="filename" value="{{ pkg.filename }}">
                                                         <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Are you sure you want to delete {{ pkg.name }}#{{ pkg.version }}?');"><i class="bi bi-trash"></i> Delete</button>
                                                     </form>
@@ -106,7 +104,6 @@
                             </table>
                         </div>
                         {% if duplicate_groups %}
-                            <p class="mb-2"><small><span class="badge bg-danger text-light border me-1">Risk:</span> = Duplicate Dependencies</small></p>
                             <p class="mt-2 small text-muted">Duplicate dependencies detected: 
                                 {% for name, versions in duplicate_groups.items() %}
                                     {% set group_color = group_colors[name] if name in group_colors else 'bg-warning' %}
@@ -158,6 +155,7 @@
                                                 <div class="btn-group-vertical btn-group-sm w-100">
                                                     <a href="{{ url_for('view_ig', processed_ig_id=processed_ig.id) }}" class="btn btn-outline-info w-100" title="View Details"><i class="bi bi-search"></i> View</a>
                                                     <form method="POST" action="{{ url_for('unload_ig') }}" style="display:inline;">
+                                                        {{ form.csrf_token }}
                                                         <input type="hidden" name="ig_id" value="{{ processed_ig.id }}">
                                                         <button type="submit" class="btn btn-outline-warning w-100 mt-1" onclick="return confirm('Are you sure you want to unload {{ processed_ig.package_name }}#{{ processed_ig.version }}?');"><i class="bi bi-x-lg"></i> Unload</button>
                                                     </form>
