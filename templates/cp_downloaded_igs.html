@@ -17,35 +17,16 @@
 </div>
 
 <div class="container mt-4">
-    <!-- Add custom CSS for badge and table row colors -->
     <style>
-        .badge.bg-warning {
-            background-color: #ffc107 !important;
-        }
-        .badge.bg-info {
-            background-color: #0dcaf0 !important;
-        }
-        .badge.bg-secondary {
-            background-color: #6c757d !important;
-        }
-        .badge.bg-danger {
-            background-color: #dc3545 !important;
-        }
-        .table tr.bg-warning {
-            background-color: #ffc107 !important;
-        }
-        .table tr.bg-info {
-            background-color: #0dcaf0 !important;
-        }
-        .table tr.bg-secondary {
-            background-color: #6c757d !important;
-        }
-        .table tr.bg-danger {
-            background-color: #dc3545 !important;
-        }
-        .table-custom-bg {
-            --bs-table-bg: transparent !important;
-        }
+        .badge.bg-warning { background-color: #ffc107 !important; }
+        .badge.bg-info { background-color: #0dcaf0 !important; }
+        .badge.bg-secondary { background-color: #6c757d !important; }
+        .badge.bg-danger { background-color: #dc3545 !important; }
+        .table tr.bg-warning { background-color: #ffc107 !important; }
+        .table tr.bg-info { background-color: #0dcaf0 !important; }
+        .table tr.bg-secondary { background-color: #6c757d !important; }
+        .table tr.bg-danger { background-color: #dc3545 !important; }
+        .table-custom-bg { --bs-table-bg: transparent !important; }
     </style>
 
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -56,6 +37,7 @@
     </div>
 
     <div class="row g-4">
+        <!-- LEFT: Downloaded Packages -->
         <div class="col-md-6">
             <div class="card h-100">
                 <div class="card-header"><i class="bi bi-folder-symlink me-1"></i> Downloaded Packages ({{ packages|length }})</div>
@@ -70,9 +52,10 @@
                                 <tbody>
                                     {% for pkg in packages %}
                                         {% set is_processed = (pkg.name, pkg.version) in processed_ids %}
-                                        {% set is_duplicate = pkg.name in duplicate_names and duplicate_names[pkg.name]|length > 1 %}
-                                        {% set group_color = group_colors[pkg.name] if (is_duplicate and pkg.name in group_colors) else 'bg-warning' if is_duplicate else 'bg-light' %}
-                                        <tr class="{% if is_duplicate %}{{ group_color }} text-dark{% endif %}">
+                                        <!---{% set is_duplicate = pkg.name in duplicate_names and duplicate_names[pkg.name]|length > 1 %}--->
+                                        {% set is_duplicate = pkg.name in duplicate_groups %}
+                                        {% set group_color = group_colors[pkg.name] if (is_duplicate and pkg.name in group_colors) else 'bg-warning' if is_duplicate else '' %}
+                                        <tr class="{% if group_color %}{{ group_color }} text-dark{% endif %}">
                                             <td>
                                                 <code>{{ pkg.name }}</code>
                                                 {% if is_duplicate %}
@@ -120,13 +103,14 @@
             </div>
         </div>
 
+        <!-- RIGHT: Processed Packages -->
         <div class="col-md-6">
             <div class="card h-100">
                 <div class="card-header"><i class="bi bi-check-circle me-1"></i> Processed Packages ({{ processed_list|length }})</div>
                 <div class="card-body">
                     {% if processed_list %}
                         <p class="mb-2"><small><span class="badge bg-warning text-dark border me-1">MS</span> = Contains Must Support Elements</small></p>
-                        <p class="mb-2 small text-muted">Resource Types in the list will be both Profile and Base Type:
+                        <p class="mb-2 small text-muted">Resource Types in the list will be both Profile and Base Type:</p>
                         <div class="table-responsive">
                             <table class="table table-sm table-hover">
                                 <thead>
@@ -135,21 +119,19 @@
                                 <tbody>
                                     {% for processed_ig in processed_list %}
                                         <tr>
-                                            <td>
-                                                <code>{{ processed_ig.package_name }}</code>
-                                            </td>
+                                            <td><code>{{ processed_ig.package_name }}</code></td>
                                             <td>{{ processed_ig.version }}</td>
                                             <td>
                                                 {% set types_info = processed_ig.resource_types_info %}
-                                                {% if types_info %}<div class="d-flex flex-wrap gap-1">
-                                                    {% for type_info in types_info %}
-                                                        {% if type_info.must_support %}
-                                                            <span class="badge bg-warning text-dark border" title="Has Must Support">{{ type_info.name }}</span>
-                                                        {% else %}
-                                                            <span class="badge bg-light text-dark border">{{ type_info.name }}</span>
-                                                        {% endif %}
-                                                    {% endfor %}
-                                                </div>{% else %}<small class="text-muted">N/A</small>{% endif %}
+                                                {% if types_info %}
+                                                    <div class="d-flex flex-wrap gap-1">
+                                                        {% for type_info in types_info %}
+                                                            <span class="badge {% if type_info.must_support %}bg-warning text-dark{% else %}bg-light text-dark{% endif %} border" title="{% if type_info.must_support %}Has Must Support{% endif %}">{{ type_info.name }}</span>
+                                                        {% endfor %}
+                                                    </div>
+                                                {% else %}
+                                                    <small class="text-muted">N/A</small>
+                                                {% endif %}
                                             </td>
                                             <td>
                                                 <div class="btn-group-vertical btn-group-sm w-100">

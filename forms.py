@@ -1,6 +1,8 @@
+# forms.py
 from flask_wtf import FlaskForm
 from wtforms import StringField, SelectField, TextAreaField, BooleanField, SubmitField
-from wtforms.validators import DataRequired, Regexp, Optional
+from wtforms.validators import DataRequired, Regexp, Optional, ValidationError
+import json
 
 class IgImportForm(FlaskForm):
     package_name = StringField('Package Name', validators=[
@@ -26,19 +28,21 @@ class ValidationForm(FlaskForm):
         ('single', 'Single Resource'),
         ('bundle', 'Bundle')
     ], default='single')
-    sample_input = TextAreaField('Sample Input', validators=[DataRequired()])
+    sample_input = TextAreaField('Sample Input', validators=[
+        DataRequired(),
+        lambda form, field: validate_json(field.data, form.mode.data)
+    ])
     submit = SubmitField('Validate')
 
-def validate_json(field, mode):
+def validate_json(data, mode):
     """Custom validator to ensure input is valid JSON and matches the selected mode."""
-    import json
     try:
-        data = json.loads(field)
-        if mode == 'single' and not isinstance(data, dict):
+        parsed = json.loads(data)
+        if mode == 'single' and not isinstance(parsed, dict):
             raise ValueError("Single resource mode requires a JSON object.")
-        if mode == 'bundle' and (not isinstance(data, dict) or data.get('resourceType') != 'Bundle'):
+        if mode == 'bundle' and (not isinstance(parsed, dict) or parsed.get('resourceType') != 'Bundle'):
             raise ValueError("Bundle mode requires a JSON object with resourceType 'Bundle'.")
     except json.JSONDecodeError:
-        raise ValueError("Invalid JSON format.")
+        raise ValidationError("Invalid JSON format.")
     except ValueError as e:
-        raise ValueError(str(e))
+        raise ValidationError(str(e))

@@ -1,0 +1,155 @@
+// Function to build the hierarchical data structure for the tree
+function buildTreeData(elements) {
+    const treeRoot = { children: {}, element: null, name: 'Root' };
+    const nodeMap = { 'Root': treeRoot };
+
+    console.log("Building tree with elements:", elements.length);
+    elements.forEach((el, index) => {
+        const path = el.path;
+        const id = el.id || null;
+        const sliceName = el.sliceName || null;
+
+        console.log(`Element ${index}: path=${path}, id=${id}, sliceName=${sliceName}`);
+
+        if (!path) {
+            console.warn(`Skipping element ${index} with no path`);
+            return;
+        }
+
+        const parts = path.split('.');
+        let currentPath = '';
+        let parentNode = treeRoot;
+
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            currentPath = i === 0 ? part : `${currentPath}.${part}`;
+
+            // For extensions, append sliceName to path if present
+            let nodeKey = part;
+            if (part === 'extension' && i === parts.length - 1 && sliceName) {
+                nodeKey = `${part}:${sliceName}`;
+                currentPath = id || currentPath; // Use id for precise matching in extensions
+            }
+
+            if (!nodeMap[currentPath]) {
+                const newNode = {
+                    children: {},
+                    element: null,
+                    name: nodeKey,
+                    path: currentPath
+                };
+                let parentPath = i === 0 ? 'Root' : parts.slice(0, i).join('.');
+                parentNode = nodeMap[parentPath] || treeRoot;
+                parentNode.children[nodeKey] = newNode;
+                nodeMap[currentPath] = newNode;
+                console.log(`Created node: path=${currentPath}, name=${nodeKey}`);
+            }
+
+            if (i === parts.length - 1) {
+                const targetNode = nodeMap[currentPath];
+                targetNode.element = el;
+                console.log(`Assigned element to node: path=${currentPath}, id=${id}, sliceName=${sliceName}`);
+            }
+
+            parentNode = nodeMap[currentPath];
+        }
+    });
+
+    const treeData = Object.values(treeRoot.children);
+    console.log("Tree data constructed:", treeData);
+    return treeData;
+}
+
+// Function to render a single node (and its children recursively) as an <li>
+function renderNodeAsLi(node, mustSupportPathsSet, level = 0) {
+    if (!node || !node.element) {
+        console.warn("Skipping render for invalid node:", node);
+        return '';
+    }
+    const el = node.element;
+    const path = el.path || 'N/A';
+    const id = el.id || null;
+    const sliceName = el.sliceName || null;
+    const min = el.min !== undefined ? el.min : '';
+    const max = el.max || '';
+    const short = el.short || '';
+    const definition = el.definition || '';
+
+    console.log(`Rendering node: path=${path}, id=${id}, sliceName=${sliceName}`);
+    console.log(`  MustSupportPathsSet contains path: ${mustSupportPathsSet.has(path)}`);
+    if (id) {
+        console.log(`  MustSupportPathsSet contains id: ${mustSupportPathsSet.has(id)}`);
+    }
+
+    // Check MS for path, id, or normalized extension path
+    let isMustSupport = mustSupportPathsSet.has(path) || (id && mustSupportPathsSet.has(id));
+    if (!isMustSupport && path.startsWith('Extension.extension')) {
+        const basePath = path.split(':')[0];
+        const baseId = id ? id.split(':')[0] : null;
+        isMustSupport = mustSupportPathsSet.has(basePath) || (baseId && mustSupportPathsSet.has(baseId));
+        console.log(`  Extension check: basePath=${basePath}, baseId=${baseId}, isMustSupport=${isMustSupport}`);
+    }
+
+    console.log(`  Final isMustSupport for ${path}: ${isMustSupport}`);
+
+    const liClass = isMustSupport ? 'list-group-item py-1 px-2 list-group-item-warning' : 'list-group-item py-1 px-2';
+    const mustSupportDisplay = isMustSupport ? '<i class="bi bi-check-circle-fill text-warning ms-1" title="Must Support"></i>' : '';
+    const hasChildren = Object.keys(node.children).length > 0;
+    const collapseId = `collapse-${path.replace(/[\.\:\/\[\]\(\)]/g, '-')}`;
+    const padding = level * 20;
+    const pathStyle = `padding-left: ${padding}px; white-space: nowrap;`;
+
+    let typeString = 'N/A';
+    if (el.type && el.type.length > 0) {
+        typeString = el.type.map(t => {
+            let s = t.code || '';
+            let profiles = t.targetProfile || t.profile || [];
+            if (profiles.length > 0) {
+                const targetTypes = profiles.map(p => (p || '').split('/').pop()).filter(Boolean).join(', ');
+                if (targetTypes) {
+                    s += `(<span class="text-muted fst-italic" title="${profiles.join(', ')}">${targetTypes}</span>)`;
+                }
+            }
+            return s;
+        }).join(' | ');
+    }
+
+    let childrenHtml = '';
+    if (hasChildren) {
+        childrenHtml += `<ul class="collapse list-group list-group-flush structure-subtree" id="${collapseId}">`;
+        Object.values(node.children).sort((a, b) => (a.element?.path ?? a.name).localeCompare(b.element?.path ?? b.name)).forEach(childNode => {
+            childrenHtml += renderNodeAsLi(childNode, mustSupportPathsSet, level + 1);
+        });
+        childrenHtml += `</ul>`;
+    }
+
+    let itemHtml = `<li class="${liClass}">`;
+    itemHtml += `<div class="row gx-2 align-items-center ${hasChildren ? 'collapse-toggle' : ''}" ${hasChildren ? `data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" aria-expanded="false" aria-controls="${collapseId}"` : ''}>`;
+    itemHtml += `<div class="col-lg-4 col-md-3 text-truncate" style="${pathStyle}">`;
+    itemHtml += `<span style="display: inline-block; width: 1.2em; text-align: center;">`;
+    if (hasChildren) {
+        itemHtml += `<i class="bi bi-chevron-right small toggle-icon"></i>`;
+    }
+    itemHtml += `</span>`;
+    itemHtml += `<code class="fw-bold ms-1" title="${path}">${node.name}</code>`;
+    itemHtml += `</div>`;
+    itemHtml += `<div class="col-lg-1 col-md-1 text-center text-muted small"><code>${min}..${max}</code></div>`;
+    itemHtml += `<div class="col-lg-3 col-md-3 text-truncate small">${typeString}</div>`;
+    itemHtml += `<div class="col-lg-1 col-md-1 text-center">${mustSupportDisplay}</div>`;
+    let descriptionTooltipAttrs = '';
+    if (definition) {
+        const escapedDefinition = definition
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/\n/g, ' ');
+        descriptionTooltipAttrs = `data-bs-toggle="tooltip" data-bs-placement="top" title="${escapedDefinition}"`;
+    }
+    itemHtml += `<div class="col-lg-3 col-md-4 text-muted text-truncate small" ${descriptionTooltipAttrs}>${short || (definition ? '(definition only)' : '')}</div>`;
+    itemHtml += `</div>`;
+    itemHtml += childrenHtml;
+    itemHtml += `</li>`;
+    return itemHtml;
+}

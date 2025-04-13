@@ -1,3 +1,4 @@
+<!-- templates/validate_sample.html -->
 {% extends "base.html" %}
 
 {% block content %}
@@ -26,11 +27,15 @@
                         Select a package from the list below or enter a new one (e.g., <code>hl7.fhir.us.core</code>).
                     </small>
                     <div class="mt-2">
-                        <select class="form-select" id="packageSelect" onchange="if(this.value) { let parts = this.value.split('#'); document.getElementById('{{ form.package_name.id }}').value = parts[0]; document.getElementById('{{ form.version.id }}').value = parts[1]; }">
+                        <select class="form-select" id="packageSelect" name="packageSelect" onchange="updatePackageFields(this)">
                             <option value="">-- Select a Package --</option>
-                            {% for pkg in packages %}
-                                <option value="{{ pkg.name }}#{{ pkg.version }}">{{ pkg.name }}#{{ pkg.version }}</option>
-                            {% endfor %}
+                            {% if packages %}
+                                {% for pkg in packages %}
+                                    <option value="{{ pkg.id }}">{{ pkg.text }}</option>
+                                {% endfor %}
+                            {% else %}
+                                <option value="" disabled>No packages available</option>
+                            {% endif %}
                         </select>
                     </div>
                     <label for="{{ form.package_name.id }}" class="form-label">Package Name</label>
@@ -122,7 +127,39 @@
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('validationForm');
     const sampleInput = document.getElementById('{{ form.sample_input.id }}');
-    
+    const packageSelect = document.getElementById('packageSelect');
+    const packageNameInput = document.getElementById('{{ form.package_name.id }}');
+    const versionInput = document.getElementById('{{ form.version.id }}');
+
+    // Update package_name and version fields from dropdown
+    function updatePackageFields(select) {
+        const value = select.value;
+        console.log('Selected package:', value);
+        if (value) {
+            const parts = value.split('#');
+            if (parts.length === 2 && parts[0] && parts[1]) {
+                packageNameInput.value = parts[0];
+                versionInput.value = parts[1];
+            } else {
+                console.warn('Invalid package format:', value);
+                packageNameInput.value = '';
+                versionInput.value = '';
+            }
+        } else {
+            packageNameInput.value = '';
+            versionInput.value = '';
+        }
+    }
+
+    // Initialize dropdown with current form values
+    if (packageNameInput.value && versionInput.value) {
+        const currentValue = `${packageNameInput.value}#${versionInput.value}`;
+        const option = packageSelect.querySelector(`option[value="${currentValue}"]`);
+        if (option) {
+            packageSelect.value = currentValue;
+        }
+    }
+
     // Client-side JSON validation preview
     sampleInput.addEventListener('input', function() {
         try {
@@ -134,6 +171,9 @@ document.addEventListener('DOMContentLoaded', function() {
             this.classList.add('is-invalid');
         }
     });
+
+    // Debug dropdown options
+    console.log('Dropdown options:', Array.from(packageSelect.options).map(opt => ({value: opt.value, text: opt.textContent})));
 });
 </script>
 {% endblock %}
