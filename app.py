@@ -614,7 +614,9 @@ def api_push_ig():
     package_name = data.get('package_name')
     version = data.get('version')
     fhir_server_url = data.get('fhir_server_url')
-    include_dependencies = data.get('include_dependencies', True)
+    include_dependencies = data.get('include_dependencies', True) # Default to True if not provided
+
+    # --- Input Validation ---
     if not all([package_name, version, fhir_server_url]):
         return jsonify({"status": "error", "message": "Missing package_name, version, or fhir_server_url"}), 400
     if not (isinstance(fhir_server_url, str) and fhir_server_url.startswith(('http://', 'https://'))):
@@ -623,26 +625,35 @@ def api_push_ig():
             re.match(r'^[a-zA-Z0-9\-\.]+$', package_name) and
             re.match(r'^[a-zA-Z0-9\.\-\+]+$', version)):
         return jsonify({"status": "error", "message": "Invalid characters in package name or version"}), 400
+
+    # --- File Path Setup ---
     packages_dir = current_app.config.get('FHIR_PACKAGES_DIR')
     if not packages_dir:
         logger.error("[API Push] FHIR_PACKAGES_DIR not configured.")
         return jsonify({"status": "error", "message": "Server configuration error: Package directory not set."}), 500
+
     tgz_filename = services.construct_tgz_filename(package_name, version)
     tgz_path = os.path.join(packages_dir, tgz_filename)
     if not os.path.exists(tgz_path):
         logger.error(f"[API Push] Main package not found: {tgz_path}")
         return jsonify({"status": "error", "message": f"Package not found locally: {package_name}#{version}"}), 404
+
+    # --- Streaming Response ---
     def generate_stream():
         pushed_packages_info = []
         success_count = 0
         failure_count = 0
-        validation_failure_count = 0
+        validation_failure_count = 0 # Note: This count is not currently incremented anywhere.
         total_resources_attempted = 0
         processed_resources = set()
+        failed_uploads_details = [] # <<<<< Initialize list for failure details
+
         try:
             yield json.dumps({"type": "start", "message": f"Starting push for {package_name}#{version} to {fhir_server_url}"}) + "\n"
             packages_to_push = [(package_name, version, tgz_path)]
             dependencies_to_include = []
+
+            # --- Dependency Handling ---
             if include_dependencies:
                 yield json.dumps({"type": "progress", "message": "Checking dependencies..."}) + "\n"
                 metadata = services.get_package_metadata(package_name, version)
@@ -657,14 +668,18 @@ def api_push_ig():
                         dep_tgz_filename = services.construct_tgz_filename(dep_name, dep_version)
                         dep_tgz_path = os.path.join(packages_dir, dep_tgz_filename)
                         if os.path.exists(dep_tgz_path):
-                            packages_to_push.append((dep_name, dep_version, dep_tgz_path))
-                            yield json.dumps({"type": "progress", "message": f"Queued dependency: {dep_name}#{dep_version}"}) + "\n"
+                            # Add dependency package to the list of packages to process
+                            if (dep_name, dep_version, dep_tgz_path) not in packages_to_push: # Avoid adding duplicates if listed multiple times
+                                packages_to_push.append((dep_name, dep_version, dep_tgz_path))
+                                yield json.dumps({"type": "progress", "message": f"Queued dependency: {dep_name}#{dep_version}"}) + "\n"
                         else:
                             yield json.dumps({"type": "warning", "message": f"Dependency package file not found, skipping: {dep_name}#{dep_version} ({dep_tgz_filename})"}) + "\n"
                 else:
                     yield json.dumps({"type": "info", "message": "No dependency metadata found or no dependencies listed."}) + "\n"
+
+            # --- Resource Extraction ---
             resources_to_upload = []
-            seen_resource_files = set()
+            seen_resource_files = set() # Track processed filenames to avoid duplicates across packages
             for pkg_name, pkg_version, pkg_path in packages_to_push:
                 yield json.dumps({"type": "progress", "message": f"Extracting resources from {pkg_name}#{pkg_version}..."}) + "\n"
                 try:
@@ -673,13 +688,16 @@ def api_push_ig():
                             if (member.isfile() and
                                 member.name.startswith('package/') and
                                 member.name.lower().endswith('.json') and
-                                os.path.basename(member.name).lower() not in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']):
-                                if member.name in seen_resource_files:
+                                os.path.basename(member.name).lower() not in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']): # Skip common metadata files
+
+                                if member.name in seen_resource_files: # Skip if already seen from another package (e.g., core resource in multiple IGs)
                                     continue
                                 seen_resource_files.add(member.name)
+
                                 try:
                                     with tar.extractfile(member) as f:
-                                        resource_data = json.load(f)
+                                        resource_data = json.load(f) # Read and parse JSON content
+                                        # Basic check for a valid FHIR resource structure
                                         if isinstance(resource_data, dict) and 'resourceType' in resource_data and 'id' in resource_data:
                                             resources_to_upload.append({
                                                 "data": resource_data,
@@ -690,34 +708,49 @@ def api_push_ig():
                                             yield json.dumps({"type": "warning", "message": f"Skipping invalid/incomplete resource in {member.name} from {pkg_name}#{pkg_version}"}) + "\n"
                                 except (json.JSONDecodeError, UnicodeDecodeError) as json_e:
                                     yield json.dumps({"type": "warning", "message": f"Skipping non-JSON or corrupt file {member.name} from {pkg_name}#{pkg_version}: {json_e}"}) + "\n"
-                                except Exception as extract_e:
+                                except Exception as extract_e: # Catch potential errors during file extraction within the tar
                                     yield json.dumps({"type": "warning", "message": f"Error extracting file {member.name} from {pkg_name}#{pkg_version}: {extract_e}"}) + "\n"
                 except (tarfile.TarError, FileNotFoundError) as tar_e:
-                    yield json.dumps({"type": "error", "message": f"Error reading package {pkg_name}#{pkg_version}: {tar_e}. Skipping its resources."}) + "\n"
-                    failure_count += 1
-                    continue
+                     # Error reading the package itself
+                     error_msg = f"Error reading package {pkg_name}#{pkg_version}: {tar_e}. Skipping its resources."
+                     yield json.dumps({"type": "error", "message": error_msg}) + "\n"
+                     failure_count += 1 # Increment general failure count
+                     failed_uploads_details.append({'resource': f"Package: {pkg_name}#{pkg_version}", 'error': f"TarError/FileNotFound: {tar_e}"}) # <<<<< ADDED package level error
+                     continue # Skip to the next package if one fails to open
+
             total_resources_attempted = len(resources_to_upload)
-            yield json.dumps({"type": "info", "message": f"Found {total_resources_attempted} potential resources to upload."}) + "\n"
-            session = requests.Session()
+            yield json.dumps({"type": "info", "message": f"Found {total_resources_attempted} potential resources to upload across all packages."}) + "\n"
+
+            # --- Resource Upload Loop ---
+            session = requests.Session() # Use a session for potential connection reuse
             headers = {'Content-Type': 'application/fhir+json', 'Accept': 'application/fhir+json'}
+
             for i, resource_info in enumerate(resources_to_upload, 1):
                 resource = resource_info["data"]
                 source_pkg = resource_info["source_package"]
-                source_file = resource_info["source_filename"]
+                # source_file = resource_info["source_filename"] # Available if needed
                 resource_type = resource.get('resourceType')
                 resource_id = resource.get('id')
                 resource_log_id = f"{resource_type}/{resource_id}"
+
+                # Skip if already processed (e.g., if same resource ID appeared in multiple packages)
                 if resource_log_id in processed_resources:
-                    yield json.dumps({"type": "info", "message": f"Skipping duplicate resource: {resource_log_id} (already uploaded or queued)"}) + "\n"
+                    yield json.dumps({"type": "info", "message": f"Skipping duplicate resource ID: {resource_log_id} (already attempted/uploaded)"}) + "\n"
                     continue
                 processed_resources.add(resource_log_id)
-                resource_url = f"{fhir_server_url.rstrip('/')}/{resource_type}/{resource_id}"
+
+                resource_url = f"{fhir_server_url.rstrip('/')}/{resource_type}/{resource_id}" # Construct PUT URL
                 yield json.dumps({"type": "progress", "message": f"Uploading {resource_log_id} ({i}/{total_resources_attempted}) from {source_pkg}..."}) + "\n"
+
                 try:
+                    # Attempt to PUT the resource
                     response = session.put(resource_url, json=resource, headers=headers, timeout=30)
-                    response.raise_for_status()
+                    response.raise_for_status() # Raises HTTPError for bad responses (4xx or 5xx)
+
                     yield json.dumps({"type": "success", "message": f"Uploaded {resource_log_id} successfully (Status: {response.status_code})"}) + "\n"
                     success_count += 1
+
+                    # Track which packages contributed successful uploads
                     if source_pkg not in [p["id"] for p in pushed_packages_info]:
                         pushed_packages_info.append({"id": source_pkg, "resource_count": 1})
                     else:
@@ -725,68 +758,88 @@ def api_push_ig():
                             if p["id"] == source_pkg:
                                 p["resource_count"] += 1
                                 break
+                # --- Error Handling for Upload ---
                 except requests.exceptions.Timeout:
                     error_msg = f"Timeout uploading {resource_log_id} to {resource_url}"
                     yield json.dumps({"type": "error", "message": error_msg}) + "\n"
                     failure_count += 1
+                    failed_uploads_details.append({'resource': resource_log_id, 'error': error_msg}) # <<<<< ADDED
                 except requests.exceptions.ConnectionError as e:
                     error_msg = f"Connection error uploading {resource_log_id}: {e}"
                     yield json.dumps({"type": "error", "message": error_msg}) + "\n"
                     failure_count += 1
+                    failed_uploads_details.append({'resource': resource_log_id, 'error': error_msg}) # <<<<< ADDED
                 except requests.exceptions.HTTPError as e:
                     outcome_text = ""
+                    # Try to parse OperationOutcome from response
                     try:
                         outcome = e.response.json()
                         if outcome and outcome.get('resourceType') == 'OperationOutcome' and outcome.get('issue'):
-                            outcome_text = "; ".join([f"{issue.get('severity')}: {issue.get('diagnostics')}" for issue in outcome['issue']])
-                    except:
-                        outcome_text = e.response.text[:200]
+                             outcome_text = "; ".join([f"{issue.get('severity', 'info')}: {issue.get('diagnostics') or issue.get('details', {}).get('text', 'No details')}" for issue in outcome['issue']])
+                    except ValueError: # Handle cases where response is not JSON
+                        outcome_text = e.response.text[:200] # Fallback to raw text
                     error_msg = f"Failed to upload {resource_log_id} (Status: {e.response.status_code}): {outcome_text or str(e)}"
                     yield json.dumps({"type": "error", "message": error_msg}) + "\n"
                     failure_count += 1
-                except requests.exceptions.RequestException as e:
-                    error_msg = f"Failed to upload {resource_log_id}: {str(e)}"
+                    failed_uploads_details.append({'resource': resource_log_id, 'error': error_msg}) # <<<<< ADDED
+                except requests.exceptions.RequestException as e: # Catch other potential request errors
+                    error_msg = f"Request error uploading {resource_log_id}: {str(e)}"
                     yield json.dumps({"type": "error", "message": error_msg}) + "\n"
                     failure_count += 1
-                except Exception as e:
+                    failed_uploads_details.append({'resource': resource_log_id, 'error': error_msg}) # <<<<< ADDED
+                except Exception as e: # Catch unexpected errors during the PUT request
                     error_msg = f"Unexpected error uploading {resource_log_id}: {str(e)}"
                     yield json.dumps({"type": "error", "message": error_msg}) + "\n"
                     failure_count += 1
-                    logger.error(f"[API Push] Unexpected upload error: {e}", exc_info=True)
+                    failed_uploads_details.append({'resource': resource_log_id, 'error': error_msg}) # <<<<< ADDED
+                    logger.error(f"[API Push] Unexpected upload error for {resource_log_id}: {e}", exc_info=True)
+
+            # --- Final Summary ---
+            # Determine overall status based on counts
             final_status = "success" if failure_count == 0 and total_resources_attempted > 0 else \
                            "partial" if success_count > 0 else \
                            "failure"
             summary_message = f"Push finished: {success_count} succeeded, {failure_count} failed out of {total_resources_attempted} resources attempted."
-            if validation_failure_count > 0:
-                summary_message += f" ({validation_failure_count} failed validation)."
+            if validation_failure_count > 0: # This count isn't used currently, but keeping structure
+                 summary_message += f" ({validation_failure_count} failed validation)."
+
+            # Create final summary payload
             summary = {
                 "status": final_status,
                 "message": summary_message,
                 "target_server": fhir_server_url,
-                "package_name": package_name,
-                "version": version,
+                "package_name": package_name, # Initial requested package
+                "version": version,           # Initial requested version
                 "included_dependencies": include_dependencies,
                 "resources_attempted": total_resources_attempted,
                 "success_count": success_count,
                 "failure_count": failure_count,
                 "validation_failure_count": validation_failure_count,
-                "pushed_packages_summary": pushed_packages_info
+                "failed_details": failed_uploads_details, # <<<<< ADDED Failure details list
+                "pushed_packages_summary": pushed_packages_info # Summary of packages contributing uploads
             }
             yield json.dumps({"type": "complete", "data": summary}) + "\n"
             logger.info(f"[API Push] Completed for {package_name}#{version}. Status: {final_status}. {summary_message}")
-        except Exception as e:
-            logger.error(f"[API Push] Critical error during push stream generation: {str(e)}", exc_info=True)
+
+        except Exception as e: # Catch critical errors during the entire stream generation
+            logger.error(f"[API Push] Critical error during push stream generation for {package_name}#{version}: {str(e)}", exc_info=True)
+            # Attempt to yield a final error message to the stream
             error_response = {
                 "status": "error",
                 "message": f"Server error during push operation: {str(e)}"
+                # Optionally add failed_details collected so far if needed
+                # "failed_details": failed_uploads_details
             }
             try:
+                # Send error info both as a stream message and in the complete data
                 yield json.dumps({"type": "error", "message": error_response["message"]}) + "\n"
                 yield json.dumps({"type": "complete", "data": error_response}) + "\n"
-            except GeneratorExit:
+            except GeneratorExit: # If the client disconnects
                 logger.warning("[API Push] Stream closed before final error could be sent.")
-            except Exception as yield_e:
+            except Exception as yield_e: # Error during yielding the error itself
                 logger.error(f"[API Push] Error yielding final error message: {yield_e}")
+
+    # Return the streaming response
     return Response(generate_stream(), mimetype='application/x-ndjson')
 
 @app.route('/validate-sample', methods=['GET'])
@@ -817,6 +870,13 @@ def validate_sample():
         site_name='FHIRFLARE IG Toolkit',
         now=datetime.datetime.now()
     )
+
+# Exempt specific API views defined directly on 'app'
+csrf.exempt(api_import_ig) # Add this line
+csrf.exempt(api_push_ig)   # Add this line
+
+# Exempt the entire API blueprint (for routes defined IN services.py, like /api/validate-sample)
+csrf.exempt(services_bp) # Keep this line for routes defined in the blueprint
 
 def create_db():
     logger.debug(f"Attempting to create database tables for URI: {app.config['SQLALCHEMY_DATABASE_URI']}")

@@ -168,6 +168,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const packageName = packageNameInput.value;
             const version = versionInput.value;
             const sampleData = sampleInput.value.trim();
+            const includeDependencies = document.getElementById('{{ form.include_dependencies.id }}').checked;
 
             if (!packageName || !version) {
                 validationResult.style.display = 'block';
@@ -195,6 +196,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('Sending request to /api/validate-sample with:', {
                 package_name: packageName,
                 version: version,
+                include_dependencies: includeDependencies,
                 sample_data_length: sampleData.length
             });
 
@@ -207,6 +209,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify({
                     package_name: packageName,
                     version: version,
+                    include_dependencies: includeDependencies,
                     sample_data: sampleData
                 })
             })
@@ -229,7 +232,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     hasContent = true;
                     const errorDiv = document.createElement('div');
                     errorDiv.className = 'alert alert-danger';
-                    errorDiv.innerHTML = '<h5>Errors</h5><ul>' + data.errors.map(e => `<li>${e}</li>`).join('') + '</ul>';
+                    errorDiv.innerHTML = '<h5>Errors</h5><ul>' + 
+                        data.errors.map(e => `<li>${typeof e === 'string' ? e : e.message}</li>`).join('') + 
+                        '</ul>';
                     validationContent.appendChild(errorDiv);
                 }
 
@@ -237,7 +242,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     hasContent = true;
                     const warningDiv = document.createElement('div');
                     warningDiv.className = 'alert alert-warning';
-                    warningDiv.innerHTML = '<h5>Warnings</h5><ul>' + data.warnings.map(w => `<li>${w}</li>`).join('') + '</ul>';
+                    warningDiv.innerHTML = '<h5>Warnings</h5><ul>' + 
+                        data.warnings.map(w => `<li>${typeof w === 'string' ? w : w.message}</li>`).join('') + 
+                        '</ul>';
                     validationContent.appendChild(warningDiv);
                 }
 
@@ -252,11 +259,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         `;
                         if (result.errors && result.errors.length > 0) {
                             resultsDiv.innerHTML += '<ul class="text-danger">' + 
-                                result.errors.map(e => `<li>${e}</li>`).join('') + '</ul>';
+                                result.errors.map(e => `<li>${typeof e === 'string' ? e : e.message}</li>`).join('') + 
+                                '</ul>';
                         }
                         if (result.warnings && result.warnings.length > 0) {
                             resultsDiv.innerHTML += '<ul class="text-warning">' + 
-                                result.warnings.map(w => `<li>${w}</li>`).join('') + '</ul>';
+                                result.warnings.map(w => `<li>${typeof w === 'string' ? w : w.message}</li>`).join('') + 
+                                '</ul>';
                         }
                     }
                     validationContent.appendChild(resultsDiv);
@@ -265,6 +274,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 const summaryDiv = document.createElement('div');
                 summaryDiv.className = 'alert alert-info';
                 summaryDiv.innerHTML = `<h5>Summary</h5><p>Valid: ${data.valid ? 'Yes' : 'No'}</p>`;
+                if (data.summary && (data.summary.error_count || data.summary.warning_count)) {
+                    summaryDiv.innerHTML += `<p>Errors: ${data.summary.error_count || 0}, Warnings: ${data.summary.warning_count || 0}</p>`;
+                }
                 validationContent.appendChild(summaryDiv);
 
                 if (!hasContent && data.valid) {

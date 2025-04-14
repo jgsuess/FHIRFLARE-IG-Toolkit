@@ -3,7 +3,6 @@
 {% block content %}
 <div class="container-fluid">
     <div class="row">
-        <!-- Left Column: List of Downloaded IGs -->
         <div class="col-md-6">
             <h2>Downloaded IGs</h2>
             {% if packages %}
@@ -44,7 +43,6 @@
             {% endif %}
         </div>
 
-        <!-- Right Column: Push IGs Form -->
         <div class="col-md-6">
             <h2>Push IGs to FHIR Server</h2>
             <form id="pushIgForm" method="POST">
@@ -73,7 +71,6 @@
                 <button type="submit" class="btn btn-primary" id="pushButton">Push to FHIR Server</button>
             </form>
 
-            <!-- Live Console -->
             <div class="mt-3">
                 <h4>Live Console</h4>
                 <div id="liveConsole" class="border p-3 bg-dark text-light" style="height: 300px; overflow-y: auto; font-family: monospace; font-size: 14px;">
@@ -81,7 +78,6 @@
                 </div>
             </div>
 
-            <!-- Response Area -->
             <div id="pushResponse" class="mt-3">
                 {% with messages = get_flashed_messages(with_categories=true) %}
                     {% if messages %}
@@ -99,7 +95,11 @@
 document.addEventListener('DOMContentLoaded', function() {
     const packageSelect = document.getElementById('packageSelect');
     const dependencyModeField = document.getElementById('dependencyMode');
-    const csrfToken = "{{ form.csrf_token._value() }}";
+    // Ensure form object exists before accessing csrf_token, handle potential errors
+    const csrfToken = typeof form !== 'undefined' && form.csrf_token ? "{{ form.csrf_token._value() }}" : document.querySelector('input[name="csrf_token"]')?.value || "";
+    if (!csrfToken) {
+        console.warn("CSRF token not found in template or hidden input.");
+    }
 
     // Update dependency mode when package selection changes
     packageSelect.addEventListener('change', function() {
@@ -107,16 +107,23 @@ document.addEventListener('DOMContentLoaded', function() {
         if (packageId) {
             const [packageName, version] = packageId.split('#');
             fetch(`/get-package-metadata?package_name=${packageName}&version=${version}`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Metadata fetch failed: ${response.status}`);
+                    }
+                    return response.json();
+                 })
                 .then(data => {
-                    if (data.dependency_mode) {
-                        dependencyModeField.value = data.dependency_mode;
+                    // Check specifically for the dependency_mode key in the response data
+                    if (data && typeof data === 'object' && data.hasOwnProperty('dependency_mode')) {
+                        dependencyModeField.value = data.dependency_mode !== null ? data.dependency_mode : 'N/A';
                     } else {
-                        dependencyModeField.value = 'Unknown';
+                         dependencyModeField.value = 'Unknown'; // Or 'N/A' if metadata exists but no mode
+                         console.warn('Dependency mode not found in metadata response:', data);
                     }
                 })
                 .catch(error => {
-                    console.error('Error fetching metadata:', error);
+                    console.error('Error fetching or processing metadata:', error);
                     dependencyModeField.value = 'Error';
                 });
         } else {
@@ -129,16 +136,27 @@ document.addEventListener('DOMContentLoaded', function() {
         packageSelect.dispatchEvent(new Event('change'));
     }
 
+    // --- Push IG Form Submission ---
     document.getElementById('pushIgForm').addEventListener('submit', async function(event) {
         event.preventDefault();
 
         const form = event.target;
         const pushButton = document.getElementById('pushButton');
-        const formData = new FormData(form);
+        const formData = new FormData(form); // Use FormData to easily get values
         const packageId = formData.get('package_id');
-        const [packageName, version] = packageId.split('#');
         const fhirServerUrl = formData.get('fhir_server_url');
-        const includeDependencies = formData.get('include_dependencies') === 'on';
+        const includeDependencies = formData.get('include_dependencies') === 'on'; // Checkbox value is 'on' if checked
+
+        if (!packageId) {
+            alert('Please select a package to push.');
+            return;
+        }
+        if (!fhirServerUrl) {
+            alert('Please enter the FHIR Server URL.');
+            return;
+        }
+
+        const [packageName, version] = packageId.split('#');
 
         // Disable the button to prevent multiple submissions
         pushButton.disabled = true;
@@ -147,55 +165,75 @@ document.addEventListener('DOMContentLoaded', function() {
         // Clear the console and response area
         const liveConsole = document.getElementById('liveConsole');
         const responseDiv = document.getElementById('pushResponse');
-        liveConsole.innerHTML = '<div>Starting push operation...</div>';
-        responseDiv.innerHTML = '';
+        liveConsole.innerHTML = `<div>${new Date().toLocaleTimeString()} [INFO] Starting push operation for ${packageName}#${version}...</div>`;
+        responseDiv.innerHTML = ''; // Clear previous final response
+
+        // Get API Key from template context - ensure 'api_key' is passed correctly from Flask route
+        const apiKey = '{{ api_key | default("") | safe }}';
+        if (!apiKey) {
+             console.warn("API Key not found in template context. Ensure 'api_key' is passed to render_template.");
+             // Optionally display a warning to the user if needed
+        }
+
 
         try {
             const response = await fetch('/api/push-ig', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Accept': 'application/x-ndjson',
-                    'X-CSRFToken': csrfToken
+                    'Accept': 'application/x-ndjson', // We expect NDJSON stream
+                    'X-CSRFToken': csrfToken, // Include CSRF token from form/template
+                    'X-API-Key': apiKey // Send API Key in header (alternative to body)
                 },
-                body: JSON.stringify({
+                body: JSON.stringify({ // Still send details in body
                     package_name: packageName,
                     version: version,
                     fhir_server_url: fhirServerUrl,
-                    include_dependencies: includeDependencies,
-                    api_key: '{{ api_key | safe }}'
+                    include_dependencies: includeDependencies
+                    // Removed api_key from body as it's now in header
                 })
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to push package');
-            }
+             // Handle immediate errors before trying to read the stream
+             if (!response.ok) {
+                 let errorMsg = `HTTP error! status: ${response.status}`;
+                 try {
+                     // Try to parse a JSON error response from the server
+                     const errorData = await response.json();
+                     errorMsg = errorData.message || JSON.stringify(errorData);
+                 } catch (e) {
+                     // If response is not JSON, use the status text
+                     errorMsg = response.statusText || errorMsg;
+                 }
+                 throw new Error(errorMsg);
+             }
 
-            // Stream the response
+            // --- Stream Processing ---
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
 
             while (true) {
                 const { done, value } = await reader.read();
-                if (done) break;
+                if (done) break; // Exit loop when stream is finished
 
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop();
+                buffer += decoder.decode(value, { stream: true }); // Decode chunk and append to buffer
+                const lines = buffer.split('\n'); // Split buffer into lines
+                buffer = lines.pop(); // Keep potential partial line for next chunk
 
                 for (const line of lines) {
-                    if (!line.trim()) continue;
+                    if (!line.trim()) continue; // Skip empty lines
                     try {
-                        const data = JSON.parse(line);
+                        const data = JSON.parse(line); // Parse each line as JSON
                         const timestamp = new Date().toLocaleTimeString();
-                        let messageClass = '';
-                        let prefix = '';
+                        let messageClass = 'text-light'; // Default text color for console
+                        let prefix = '[INFO]'; // Default prefix for console
 
+                        // --- Switch based on message type from backend ---
                         switch (data.type) {
                             case 'start':
                             case 'progress':
+                            case 'info':
                                 messageClass = 'text-info';
                                 prefix = '[INFO]';
                                 break;
@@ -212,133 +250,212 @@ document.addEventListener('DOMContentLoaded', function() {
                                 prefix = '[WARNING]';
                                 break;
                             case 'complete':
-                                if (data.data.status === 'success') {
-                                    responseDiv.innerHTML = `
-                                        <div class="alert alert-success">
-                                            <strong>Success:</strong> ${data.data.message}<br>
-                                            <strong>Pushed Packages:</strong> ${data.data.pushed_packages.join(', ')}<br>
-                                            <strong>Server Response:</strong> ${data.data.server_response}
-                                        </div>
-                                    `;
-                                } else if (data.data.status === 'partial') {
-                                    responseDiv.innerHTML = `
-                                        <div class="alert alert-warning">
-                                            <strong>Partial Success:</strong> ${data.data.message}<br>
-                                            <strong>Pushed Packages:</strong> ${data.data.pushed_packages.join(', ')}<br>
-                                            <strong>Server Response:</strong> ${data.data.server_response}
-                                        </div>
-                                    `;
-                                } else {
-                                    responseDiv.innerHTML = `
-                                        <div class="alert alert-danger">
-                                            <strong>Error:</strong> ${data.data.message}
-                                        </div>
-                                    `;
-                                }
-                                messageClass = data.data.status === 'success' ? 'text-success' : (data.data.status === 'partial' ? 'text-warning' : 'text-danger');
-                                prefix = data.data.status === 'success' ? '[SUCCESS]' : (data.data.status === 'partial' ? '[PARTIAL]' : '[ERROR]');
-                                break;
-                            default:
-                                messageClass = 'text-light';
-                                prefix = '[INFO]';
-                        }
+                                // ---vvv THIS IS THE CORRECTED BLOCK vvv---
+                                // Process the final summary data
+                                const summaryData = data.data; // data.data contains the summary object
+                                let alertClass = 'alert-info'; // Bootstrap class for responseDiv
+                                let statusText = 'Info';
+                                let pushedPackagesList = 'None';
+                                let failureDetailsHtml = ''; // Initialize failure details HTML
 
+                                // Format pushed packages summary (using correct field name)
+                                if (summaryData.pushed_packages_summary && summaryData.pushed_packages_summary.length > 0) {
+                                    pushedPackagesList = summaryData.pushed_packages_summary.map(pkg => `${pkg.id} (${pkg.resource_count} resources)`).join('<br>');
+                                }
+
+                                // Determine alert class based on status
+                                if (summaryData.status === 'success') {
+                                    alertClass = 'alert-success';
+                                    statusText = 'Success';
+                                    prefix = '[SUCCESS]'; // For console log
+                                } else if (summaryData.status === 'partial') {
+                                    alertClass = 'alert-warning';
+                                    statusText = 'Partial Success';
+                                    prefix = '[PARTIAL]'; // For console log
+                                } else { // failure or error
+                                    alertClass = 'alert-danger';
+                                    statusText = 'Error';
+                                    prefix = '[ERROR]'; // For console log
+                                }
+
+                                // Format failure details if present (using correct field name)
+                                if (summaryData.failed_details && summaryData.failed_details.length > 0) {
+                                    failureDetailsHtml += '<hr><strong>Failure Details:</strong><ul style="font-size: 0.9em; max-height: 150px; overflow-y: auto;">';
+                                    summaryData.failed_details.forEach(fail => {
+                                        const escapedResource = fail.resource ? fail.resource.replace(/</g, "&lt;").replace(/>/g, "&gt;") : "N/A";
+                                        const escapedError = fail.error ? fail.error.replace(/</g, "&lt;").replace(/>/g, "&gt;") : "Unknown error";
+                                        failureDetailsHtml += `<li><strong>${escapedResource}:</strong> ${escapedError}</li>`;
+                                    });
+                                    failureDetailsHtml += '</ul>';
+                                }
+
+                                // Update the final response area (pushResponse div)
+                                responseDiv.innerHTML = `
+                                    <div class="alert ${alertClass}">
+                                        <strong>${statusText}:</strong> ${summaryData.message || 'Operation complete.'}<br>
+                                        <hr>
+                                        <strong>Target Server:</strong> ${summaryData.target_server || 'N/A'}<br>
+                                        <strong>Package:</strong> ${summaryData.package_name || 'N/A'}#${summaryData.version || 'N/A'}<br>
+                                        <strong>Included Dependencies:</strong> ${summaryData.included_dependencies ? 'Yes' : 'No'}<br>
+                                        <strong>Resources Attempted:</strong> ${summaryData.resources_attempted !== undefined ? summaryData.resources_attempted : 'N/A'}<br>
+                                        <strong>Succeeded:</strong> ${summaryData.success_count !== undefined ? summaryData.success_count : 'N/A'}<br>
+                                        <strong>Failed:</strong> ${summaryData.failure_count !== undefined ? summaryData.failure_count : 'N/A'}<br>
+                                        <strong>Packages Pushed Summary:</strong><br><div style="padding-left: 15px;">${pushedPackagesList}</div>
+                                        ${failureDetailsHtml} </div>
+                                `;
+
+                                // Also set the final message class for the console log
+                                messageClass = alertClass.replace('alert-', 'text-');
+                                break; // Break from switch
+                                // ---^^^ END OF CORRECTED BLOCK ^^^---
+                            default:
+                                console.warn("Received unknown message type:", data.type);
+                                prefix = '[UNKNOWN]';
+                                break;
+                        } // End Switch
+
+                        // --- Add message to Live Console ---
                         const messageDiv = document.createElement('div');
                         messageDiv.className = messageClass;
-                        messageDiv.textContent = `${timestamp} ${prefix} ${data.message || (data.data && data.data.message) || 'Unknown message'}`;
+                        // Use data.message for most types, use summary message for complete type
+                        // Check if data.data exists for complete type before accessing its message
+                        const messageText = (data.type === 'complete' && data.data) ? data.data.message : data.message;
+                        messageDiv.textContent = `${timestamp} ${prefix} ${messageText || 'Received empty message.'}`;
+                        liveConsole.appendChild(messageDiv);
+                        liveConsole.scrollTop = liveConsole.scrollHeight; // Scroll to bottom
+
+                    } catch (parseError) { // Handle errors parsing individual JSON lines
+                        console.error('Error parsing streamed message:', parseError, 'Line:', line);
+                        const timestamp = new Date().toLocaleTimeString();
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'text-danger';
+                        errorDiv.textContent = `${timestamp} [PARSE_ERROR] Could not parse message: ${line.substring(0, 100)}${line.length > 100 ? '...' : ''}`; // Show partial line
+                        liveConsole.appendChild(errorDiv);
+                        liveConsole.scrollTop = liveConsole.scrollHeight;
+                    }
+                } // end for loop over lines
+            } // end while loop over stream
+
+            // --- Process Final Buffer ---
+            // (Repeat the parsing logic for any remaining data in the buffer)
+            if (buffer.trim()) {
+                 try {
+                        const data = JSON.parse(buffer);
+                        const timestamp = new Date().toLocaleTimeString();
+                        let messageClass = 'text-light'; // Default for console
+                        let prefix = '[INFO]'; // Default for console
+
+                        switch (data.type) {
+                             case 'start': // Less likely in final buffer, but handle defensively
+                             case 'progress':
+                             case 'info':
+                                 messageClass = 'text-info';
+                                 prefix = '[INFO]';
+                                 break;
+                             case 'success':
+                                 messageClass = 'text-success';
+                                 prefix = '[SUCCESS]';
+                                 break;
+                             case 'error':
+                                 messageClass = 'text-danger';
+                                 prefix = '[ERROR]';
+                                 break;
+                             case 'warning':
+                                 messageClass = 'text-warning';
+                                 prefix = '[WARNING]';
+                                 break;
+                             // ---vvv THIS IS THE CORRECTED BLOCK vvv---
+                             case 'complete':
+                                 const summaryData = data.data;
+                                 let alertClass = 'alert-info';
+                                 let statusText = 'Info';
+                                 let pushedPackagesList = 'None';
+                                 let failureDetailsHtml = '';
+
+                                 if (summaryData.pushed_packages_summary && summaryData.pushed_packages_summary.length > 0) {
+                                     pushedPackagesList = summaryData.pushed_packages_summary.map(pkg => `${pkg.id} (${pkg.resource_count} resources)`).join('<br>');
+                                 }
+                                 if (summaryData.status === 'success') {
+                                     alertClass = 'alert-success'; statusText = 'Success'; prefix = '[SUCCESS]';
+                                 } else if (summaryData.status === 'partial') {
+                                     alertClass = 'alert-warning'; statusText = 'Partial Success'; prefix = '[PARTIAL]';
+                                 } else {
+                                     alertClass = 'alert-danger'; statusText = 'Error'; prefix = '[ERROR]';
+                                 }
+
+                                 if (summaryData.failed_details && summaryData.failed_details.length > 0) {
+                                     failureDetailsHtml += '<hr><strong>Failure Details:</strong><ul style="font-size: 0.9em; max-height: 150px; overflow-y: auto;">';
+                                     summaryData.failed_details.forEach(fail => {
+                                         const escapedResource = fail.resource ? fail.resource.replace(/</g, "&lt;").replace(/>/g, "&gt;") : "N/A";
+                                         const escapedError = fail.error ? fail.error.replace(/</g, "&lt;").replace(/>/g, "&gt;") : "Unknown error";
+                                         failureDetailsHtml += `<li><strong>${escapedResource}:</strong> ${escapedError}</li>`;
+                                     });
+                                     failureDetailsHtml += '</ul>';
+                                 }
+
+                                 responseDiv.innerHTML = `
+                                     <div class="alert ${alertClass}">
+                                         <strong>${statusText}:</strong> ${summaryData.message || 'Operation complete.'}<br>
+                                         <hr>
+                                         <strong>Target Server:</strong> ${summaryData.target_server || 'N/A'}<br>
+                                         <strong>Package:</strong> ${summaryData.package_name || 'N/A'}#${summaryData.version || 'N/A'}<br>
+                                         <strong>Included Dependencies:</strong> ${summaryData.included_dependencies ? 'Yes' : 'No'}<br>
+                                         <strong>Resources Attempted:</strong> ${summaryData.resources_attempted !== undefined ? summaryData.resources_attempted : 'N/A'}<br>
+                                         <strong>Succeeded:</strong> ${summaryData.success_count !== undefined ? summaryData.success_count : 'N/A'}<br>
+                                         <strong>Failed:</strong> ${summaryData.failure_count !== undefined ? summaryData.failure_count : 'N/A'}<br>
+                                         <strong>Packages Pushed Summary:</strong><br><div style="padding-left: 15px;">${pushedPackagesList}</div>
+                                         ${failureDetailsHtml}
+                                     </div>
+                                 `;
+                                 messageClass = alertClass.replace('alert-', 'text-');
+                                 break;
+                                 // ---^^^ END OF CORRECTED BLOCK ^^^---
+                             default:
+                                console.warn("Received unknown message type in final buffer:", data.type);
+                                prefix = '[UNKNOWN]';
+                                 break;
+                         } // End Switch
+
+                        // Add final buffer message to live console
+                        const messageDiv = document.createElement('div');
+                        messageDiv.className = messageClass;
+                        const messageText = (data.type === 'complete' && data.data) ? data.data.message : data.message;
+                        messageDiv.textContent = `${timestamp} ${prefix} ${messageText || 'Received empty message.'}`;
                         liveConsole.appendChild(messageDiv);
                         liveConsole.scrollTop = liveConsole.scrollHeight;
-                    } catch (parseError) {
-                        console.error('Error parsing streamed message:', parseError, 'Line:', line);
+
+                    } catch (parseError) { // Handle error parsing final buffer
+                       console.error('Error parsing final streamed message:', parseError, 'Buffer:', buffer);
+                        const timestamp = new Date().toLocaleTimeString();
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'text-danger';
+                        errorDiv.textContent = `${timestamp} [PARSE_ERROR] Could not parse final message: ${buffer.substring(0, 100)}${buffer.length > 100 ? '...' : ''}`;
+                        liveConsole.appendChild(errorDiv);
+                        liveConsole.scrollTop = liveConsole.scrollHeight;
                     }
-                }
-            }
+            } // end if buffer trim
 
-            if (buffer.trim()) {
-                try {
-                    const data = JSON.parse(buffer);
-                    const timestamp = new Date().toLocaleTimeString();
-                    let messageClass = '';
-                    let prefix = '';
-
-                    switch (data.type) {
-                        case 'start':
-                        case 'progress':
-                            messageClass = 'text-info';
-                            prefix = '[INFO]';
-                            break;
-                        case 'success':
-                            messageClass = 'text-success';
-                            prefix = '[SUCCESS]';
-                            break;
-                        case 'error':
-                            messageClass = 'text-danger';
-                            prefix = '[ERROR]';
-                            break;
-                        case 'warning':
-                            messageClass = 'text-warning';
-                            prefix = '[WARNING]';
-                            break;
-                        case 'complete':
-                            if (data.data.status === 'success') {
-                                responseDiv.innerHTML = `
-                                    <div class="alert alert-success">
-                                        <strong>Success:</strong> ${data.data.message}<br>
-                                        <strong>Pushed Packages:</strong> ${data.data.pushed_packages.join(', ')}<br>
-                                        <strong>Server Response:</strong> ${data.data.server_response}
-                                    </div>
-                                `;
-                            } else if (data.data.status === 'partial') {
-                                responseDiv.innerHTML = `
-                                    <div class="alert alert-warning">
-                                        <strong>Partial Success:</strong> ${data.data.message}<br>
-                                        <strong>Pushed Packages:</strong> ${data.data.pushed_packages.join(', ')}<br>
-                                        <strong>Server Response:</strong> ${data.data.server_response}
-                                    </div>
-                                `;
-                            } else {
-                                responseDiv.innerHTML = `
-                                    <div class="alert alert-danger">
-                                        <strong>Error:</strong> ${data.data.message}
-                                    </div>
-                                `;
-                            }
-                            messageClass = data.data.status === 'success' ? 'text-success' : (data.data.status === 'partial' ? 'text-warning' : 'text-danger');
-                            prefix = data.data.status === 'success' ? '[SUCCESS]' : (data.data.status === 'partial' ? '[PARTIAL]' : '[ERROR]');
-                            break;
-                        default:
-                            messageClass = 'text-light';
-                            prefix = '[INFO]';
-                    }
-
-                    const messageDiv = document.createElement('div');
-                    messageDiv.className = messageClass;
-                    messageDiv.textContent = `${timestamp} ${prefix} ${data.message || (data.data && data.data.message) || 'Unknown message'}`;
-                    liveConsole.appendChild(messageDiv);
-                    liveConsole.scrollTop = liveConsole.scrollHeight;
-                } catch (parseError) {
-                    console.error('Error parsing final streamed message:', parseError, 'Buffer:', buffer);
-                }
-            }
-
-        } catch (error) {
+        } catch (error) { // Handle fetch errors or errors thrown during initial response check
+            console.error("Push operation failed:", error); // Log the error object
             const timestamp = new Date().toLocaleTimeString();
             const errorDiv = document.createElement('div');
             errorDiv.className = 'text-danger';
-            errorDiv.textContent = `${timestamp} [ERROR] Failed to push package: ${error.message}`;
+            errorDiv.textContent = `${timestamp} [FETCH_ERROR] Failed to push package: ${error.message}`;
             liveConsole.appendChild(errorDiv);
             liveConsole.scrollTop = liveConsole.scrollHeight;
 
+            // Display error message in the response area
             responseDiv.innerHTML = `
                 <div class="alert alert-danger">
-                    <strong>Error:</strong> Failed to push package: ${error.message}
+                    <strong>Error:</strong> ${error.message}
                 </div>
             `;
         } finally {
+            // Re-enable the button regardless of success or failure
             pushButton.disabled = false;
             pushButton.textContent = 'Push to FHIR Server';
         }
-    });
-});
+    }); // End form submit listener
+}); // End DOMContentLoaded listener
 </script>
 {% endblock %}
