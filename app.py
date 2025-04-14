@@ -190,7 +190,8 @@ def view_igs():
 
 @app.route('/push-igs', methods=['GET'])
 def push_igs():
-    form = FlaskForm()
+    # form = FlaskForm() # OLD - Replace this line
+    form = IgImportForm() # Use a real form class that has CSRF handling built-in
     processed_igs = ProcessedIg.query.order_by(ProcessedIg.package_name, ProcessedIg.version).all()
     processed_ids = {(ig.package_name, ig.version) for ig in processed_igs}
     packages_dir = app.config['FHIR_PACKAGES_DIR']
@@ -201,7 +202,7 @@ def push_igs():
     group_colors = {}
     for i, name in enumerate(duplicate_groups.keys()):
         group_colors[name] = colors[i % len(colors)]
-    return render_template('cp_push_igs.html', form=form, packages=packages,
+    return render_template('cp_push_igs.html', form=form, packages=packages, # Pass the form instance
                            processed_list=processed_igs, processed_ids=processed_ids,
                            duplicate_groups=duplicate_groups, group_colors=group_colors,
                            site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now(),
