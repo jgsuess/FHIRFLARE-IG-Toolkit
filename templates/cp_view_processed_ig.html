@@ -1,0 +1,842 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="px-4 py-5 my-5 text-center">
+    <img class="d-block mx-auto mb-4" src="{{ url_for('static', filename='FHIRFLARE.png') }}" alt="FHIRFLARE Ig Toolkit" width="192" height="192">
+    <h1 class="display-5 fw-bold text-body-emphasis">{{ title }}</h1>
+    <div class="col-lg-6 mx-auto">
+        <p class="lead mb-4">
+            View details of the processed FHIR Implementation Guide.
+        </p>
+        <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+            <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg px-4 gap-3">Back to Home</a>
+            <a href="{{ url_for('view_igs') }}" class="btn btn-outline-secondary btn-lg px-4">Manage FHIR Packages</a>
+            <a href="{{ url_for('push_igs') }}" class="btn btn-outline-secondary btn-lg px-4">Upload IG's</a>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2><i class="bi bi-info-circle me-2"></i>{{ title }}</h2>
+        <a href="{{ url_for('view_igs') }}" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back to Package List</a>
+    </div>
+
+    {% if processed_ig %}
+        <div class="card">
+            <div class="card-header">Package Details</div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-3">Package Name</dt>
+                    <dd class="col-sm-9"><code>{{ processed_ig.package_name }}</code></dd>
+                    <dt class="col-sm-3">Package Version</dt>
+                    <dd class="col-sm-9">{{ processed_ig.version }}</dd>
+                    <dt class="col-sm-3">Processed At</dt>
+                    <dd class="col-sm-9">{{ processed_ig.processed_date.strftime('%Y-%m-%d %H:%M:%S UTC') }}</dd>
+                </dl>
+            </div>
+        </div>
+
+        {% if config.DISPLAY_PROFILE_RELATIONSHIPS %}
+        <div class="card mt-4">
+            <div class="card-header">Profile Relationships</div>
+            <div class="card-body">
+                <h6>Complies With</h6>
+                {% if complies_with_profiles %}
+                    <ul>
+                        {% for profile in complies_with_profiles %}
+                            <li>{{ profile }}</li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted"><em>No profiles declared as compatible.</em></p>
+                {% endif %}
+
+                <h6>Required Dependent Profiles (Must Also Validate Against)</h6>
+                {% if imposed_profiles %}
+                    <ul>
+                        {% for profile in imposed_profiles %}
+                            <li>{{ profile }}</li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted"><em>No imposed profiles.</em></p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card mt-4">
+            <div class="card-header">Resource Types Found / Defined</div>
+            <div class="card-body">
+                {% if profile_list or base_list %}
+                    <p class="mb-2">
+                        <small>
+                            <span class="badge bg-warning text-dark border me-1" style="font-size: 0.8em;" title="Profile contains Must Support elements">MS</span> = Contains Must Support Elements<br>
+                            <span class="badge bg-info text-dark border me-1" style="font-size: 0.8em;" title="An optional Extension which contains Must Support sub-elements (e.g., value[x], type)">Optional MS Ext</span> = Optional Extension with Must Support Sub-Elements
+                        </small>
+                    </p>
+                    {% if profile_list %}
+                        <p class="mb-2"><small><span class="badge bg-primary text-light border me-1">Examples</span> = Examples will be displayed when selecting profile Types if contained in the IG</small></p>
+                        <h6>Profiles Defined ({{ profile_list|length }}):</h6>
+                        <div class="d-flex flex-wrap gap-1 mb-3 resource-type-list">
+                            {% for type_info in profile_list %}
+                                <a href="#" class="resource-type-link text-decoration-none"
+                                   data-package-name="{{ processed_ig.package_name }}"
+                                   data-package-version="{{ processed_ig.version }}"
+                                   data-resource-type="{{ type_info.name }}"
+                                   aria-label="View structure for {{ type_info.name }}">
+                                    {% if type_info.must_support %}
+                                        {% if optional_usage_elements.get(type_info.name) %}
+                                            <span class="badge bg-info text-dark border" title="Optional Extension with Must Support sub-elements">{{ type_info.name }}</span>
+                                        {% else %}
+                                            <span class="badge bg-warning text-dark border" title="Contains Must Support elements">{{ type_info.name }}</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="badge bg-light text-dark border">{{ type_info.name }}</span>
+                                    {% endif %}
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted"><em>No profiles defined.</em></p>
+                    {% endif %}
+                    {% if base_list %}
+                         <h6>Base Resource Types Referenced ({{ base_list|length }}):</h6>
+                         <div class="d-flex flex-wrap gap-1 resource-type-list">
+                             {% for type_info in base_list %}
+                                 <a href="#" class="resource-type-link text-decoration-none"
+                                    data-package-name="{{ processed_ig.package_name }}"
+                                    data-package-version="{{ processed_ig.version }}"
+                                    data-resource-type="{{ type_info.name }}"
+                                    aria-label="View structure for {{ type_info.name }}">
+                                     {% if type_info.must_support %}
+                                         <span class="badge bg-warning text-dark border" title="Contains Must Support elements">{{ type_info.name }}</span>
+                                     {% else %}
+                                         <span class="badge bg-light text-dark border">{{ type_info.name }}</span>
+                                     {% endif %}
+                                 </a>
+                             {% endfor %}
+                         </div>
+                    {% else %}
+                        <p class="text-muted"><em>No base resource types referenced.</em></p>
+                    {% endif %}
+                {% else %}
+                    <p class="text-muted"><em>No resource type information extracted or stored.</em></p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div id="structure-display-wrapper" class="mt-4" style="display: none;">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Structure Definition for: <code id="structure-title"></code></span>
+                    <button type="button" class="btn-close" aria-label="Close" onclick="document.getElementById('structure-display-wrapper').style.display='none'; document.getElementById('example-display-wrapper').style.display='none'; document.getElementById('raw-structure-wrapper').style.display='none';"></button>
+                </div>
+                <div class="card-body">
+                    <div id="structure-loading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                    </div>
+                    <div id="structure-fallback-message" class="alert alert-info" style="display: none;"></div>
+                    <div id="structure-content"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="raw-structure-wrapper" class="mt-4" style="display: none;">
+            <div class="card">
+                <div class="card-header">Raw Structure Definition for <code id="raw-structure-title"></code></div>
+                <div class="card-body">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="copy-json-button"
+                                data-bs-toggle="tooltip" data-bs-placement="top" title="Copy JSON">
+                            <i class="bi bi-clipboard" aria-hidden="true"></i>
+                            <span class="visually-hidden">Copy JSON to clipboard</span>
+                        </button>
+                    <div id="raw-structure-loading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                    </div>
+                    <pre><code id="raw-structure-content" class="p-2 d-block border bg-light" style="max-height: 400px; overflow-y: auto;"></code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div id="example-display-wrapper" class="mt-4" style="display: none;">
+            <div class="card">
+                <div class="card-header">Examples for <code id="example-resource-type-title"></code></div>
+                <div class="card-body">
+                    <div class="mb-3" id="example-selector-wrapper" style="display: none;">
+                        <label for="example-select" class="form-label">Select Example:</label>
+                        <select class="form-select form-select-sm" id="example-select"><option selected value="">-- Select --</option></select>
+                    </div>
+                    <div id="example-loading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-secondary" role="status"><span class="visually-hidden">Loading...</span></div>
+                    </div>
+                    <div id="example-content-wrapper" style="display: none;">
+                        <h6 id="example-filename" class="mt-2 small text-muted"></h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Raw Content</h6>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="copy-json-button"
+                                            data-bs-toggle="tooltip" data-bs-placement="top" title="Copy JSON">
+                                        <i class="bi bi-clipboard" aria-hidden="true"></i>
+                                        <span class="visually-hidden">Copy JSON to clipboard</span>
+                                    </button>
+                                <pre><code id="example-content-raw" class="p-2 d-block border bg-light" style="max-height: 400px; overflow-y: auto;"></code></pre>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <h6>Pretty-Printed JSON</h6>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="copy-json-button"
+                                            data-bs-toggle="tooltip" data-bs-placement="top" title="Copy JSON">
+                                        <i class="bi bi-clipboard" aria-hidden="true"></i>
+                                        <span class="visually-hidden">Copy JSON to clipboard</span>
+                                    </button>
+                                </div>
+                                <pre><code id="example-content-json" class="p-2 d-block border bg-light" style="max-height: 400px; overflow-y: auto;"></code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="alert alert-warning" role="alert">Processed IG details not available.</div>
+    {% endif %}
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>const examplesData = {{ examples_by_type | tojson | safe }};</script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    try {
+        // Existing element constants...
+        const structureDisplayWrapper = document.getElementById('structure-display-wrapper');
+        const structureDisplay = document.getElementById('structure-content');
+        const structureTitle = document.getElementById('structure-title');
+        const structureLoading = document.getElementById('structure-loading');
+        const structureFallbackMessage = document.getElementById('structure-fallback-message');
+        const exampleDisplayWrapper = document.getElementById('example-display-wrapper');
+        const exampleSelectorWrapper = document.getElementById('example-selector-wrapper');
+        const exampleSelect = document.getElementById('example-select');
+        const exampleResourceTypeTitle = document.getElementById('example-resource-type-title');
+        const exampleLoading = document.getElementById('example-loading');
+        const exampleContentWrapper = document.getElementById('example-content-wrapper');
+        const exampleFilename = document.getElementById('example-filename');
+        const exampleContentRaw = document.getElementById('example-content-raw');
+        const exampleContentJson = document.getElementById('example-content-json'); // Already exists
+        const rawStructureWrapper = document.getElementById('raw-structure-wrapper');
+        const rawStructureTitle = document.getElementById('raw-structure-title');
+        const rawStructureContent = document.getElementById('raw-structure-content');
+        const rawStructureLoading = document.getElementById('raw-structure-loading');
+
+        // Base URLs...
+        const structureBaseUrl = "{{ url_for('get_structure_definition') }}";
+        const exampleBaseUrl = "{{ url_for('get_example_content') }}";
+
+        // Existing Structure definition fetching and display logic...
+        document.querySelectorAll('.resource-type-list').forEach(container => {
+            container.addEventListener('click', function(event) {
+                const link = event.target.closest('.resource-type-link');
+                if (!link) return;
+                event.preventDefault();
+                console.log("Resource type link clicked:", link.dataset.resourceType);
+
+                const pkgName = link.dataset.packageName;
+                const pkgVersion = link.dataset.packageVersion;
+                const resourceType = link.dataset.resourceType;
+                if (!pkgName || !pkgVersion || !resourceType) {
+                    console.error("Missing data attributes:", { pkgName, pkgVersion, resourceType });
+                    return;
+                }
+
+                const structureParams = new URLSearchParams({ package_name: pkgName, package_version: pkgVersion, resource_type: resourceType });
+                const structureFetchUrl = `${structureBaseUrl}?${structureParams.toString()}`;
+                console.log("Fetching structure from:", structureFetchUrl);
+
+                structureTitle.textContent = `${resourceType} (${pkgName}#${pkgVersion})`;
+                rawStructureTitle.textContent = `${resourceType} (${pkgName}#${pkgVersion})`;
+                structureDisplay.innerHTML = '';
+                rawStructureContent.textContent = '';
+                structureLoading.style.display = 'block';
+                rawStructureLoading.style.display = 'block';
+                structureFallbackMessage.style.display = 'none';
+                structureDisplayWrapper.style.display = 'block';
+                rawStructureWrapper.style.display = 'block';
+                exampleDisplayWrapper.style.display = 'none'; // Hide examples initially
+
+                fetch(structureFetchUrl)
+                    .then(response => {
+                        console.log("Structure fetch response status:", response.status);
+                        // Use response.json() directly, check ok status in the next .then()
+                        if (!response.ok) {
+                             // Attempt to parse error JSON first
+                             return response.json().catch(() => null).then(errorData => {
+                                throw new Error(errorData?.error || `HTTP error ${response.status}`);
+                             });
+                        }
+                        return response.json();
+                    })
+                    .then(data => { // No longer destructuring result here, just using data
+                        console.log("Structure data received:", data);
+                        if (data.fallback_used) {
+                            structureFallbackMessage.style.display = 'block';
+                            structureFallbackMessage.textContent = `Structure definition not found in this IG; using base FHIR definition from ${data.source_package}.`;
+                        } else {
+                            structureFallbackMessage.style.display = 'none';
+                        }
+                        renderStructureTree(data.elements, data.must_support_paths || [], resourceType);
+                        rawStructureContent.textContent = JSON.stringify(data, null, 2); // Changed result.data to data
+                        populateExampleSelector(resourceType); // Show/hide example section based on availability
+                    })
+                    .catch(error => {
+                        console.error("Error fetching/processing structure:", error);
+                        structureFallbackMessage.style.display = 'none';
+                        structureDisplay.innerHTML = `<div class="alert alert-danger">Error loading structure: ${error.message}</div>`;
+                        rawStructureContent.textContent = `Error loading structure: ${error.message}`;
+                         // Still try to populate examples, might be useful even if structure fails? Or hide it?
+                         // Let's hide it if structure fails completely
+                        exampleDisplayWrapper.style.display = 'none';
+                    })
+                    .finally(() => {
+                        structureLoading.style.display = 'none';
+                        rawStructureLoading.style.display = 'none';
+                    });
+            });
+        });
+
+        // Existing function populateExampleSelector...
+        function populateExampleSelector(resourceOrProfileIdentifier) {
+            console.log("Populating examples for:", resourceOrProfileIdentifier);
+            exampleResourceTypeTitle.textContent = resourceOrProfileIdentifier;
+            const availableExamples = examplesData[resourceOrProfileIdentifier] || [];
+            console.log("Available examples:", availableExamples);
+            exampleSelect.innerHTML = '<option selected value="">-- Select --</option>';
+            exampleContentWrapper.style.display = 'none';
+            exampleFilename.textContent = '';
+            exampleContentRaw.textContent = '';
+            exampleContentJson.textContent = '';
+
+            if (availableExamples.length > 0) {
+                availableExamples.forEach(filePath => {
+                    const filename = filePath.split('/').pop();
+                    const option = document.createElement('option');
+                    option.value = filePath;
+                    option.textContent = filename;
+                    exampleSelect.appendChild(option);
+                });
+                exampleSelectorWrapper.style.display = 'block';
+                exampleDisplayWrapper.style.display = 'block'; // Show the whole example section
+            } else {
+                exampleSelectorWrapper.style.display = 'none';
+                exampleDisplayWrapper.style.display = 'none'; // Hide the whole example section if none available
+            }
+        }
+
+        // Existing event listener for exampleSelect...
+        if (exampleSelect) {
+            exampleSelect.addEventListener('change', function(event) {
+                const selectedFilePath = this.value;
+                console.log("Selected example file:", selectedFilePath);
+                exampleContentRaw.textContent = '';
+                exampleContentJson.textContent = '';
+                exampleFilename.textContent = '';
+                exampleContentWrapper.style.display = 'none';
+
+                if (!selectedFilePath) return;
+
+                const exampleParams = new URLSearchParams({
+                    package_name: "{{ processed_ig.package_name }}",
+                    package_version: "{{ processed_ig.version }}",
+                    filename: selectedFilePath
+                });
+                const exampleFetchUrl = `${exampleBaseUrl}?${exampleParams.toString()}`;
+                console.log("Fetching example from:", exampleFetchUrl);
+                exampleLoading.style.display = 'block';
+
+                fetch(exampleFetchUrl)
+                    .then(response => {
+                        console.log("Example fetch response status:", response.status);
+                        if (!response.ok) {
+                            return response.text().then(errText => { throw new Error(errText || `HTTP error ${response.status}`); });
+                        }
+                        return response.text();
+                    })
+                    .then(content => {
+                        console.log("Example content received.");
+                        exampleFilename.textContent = `Source: ${selectedFilePath.split('/').pop()}`;
+                        exampleContentRaw.textContent = content;
+                        try {
+                            const jsonContent = JSON.parse(content);
+                            exampleContentJson.textContent = JSON.stringify(jsonContent, null, 2);
+                        } catch (e) {
+                            console.warn("Example content is not valid JSON:", e.message);
+                            exampleContentJson.textContent = '(Not valid JSON)';
+                        }
+                        exampleContentWrapper.style.display = 'block';
+                    })
+                    .catch(error => {
+                        console.error("Error fetching example:", error);
+                        exampleFilename.textContent = 'Error loading example';
+                        exampleContentRaw.textContent = `Error: ${error.message}`;
+                        exampleContentJson.textContent = `Error: ${error.message}`;
+                        exampleContentWrapper.style.display = 'block';
+                    })
+                    .finally(() => {
+                        exampleLoading.style.display = 'none';
+                    });
+            });
+        }
+
+        // --- START: Add Copy Button Logic ---
+        const copyJsonButton = document.getElementById('copy-json-button');
+        // const jsonCodeElement = document.getElementById('example-content-json'); // Already defined above
+        let copyTooltipInstance = null; // To hold the tooltip object
+
+        if (copyJsonButton && exampleContentJson) { // Use exampleContentJson here
+            // Initialize the Bootstrap Tooltip *once*
+            copyTooltipInstance = new bootstrap.Tooltip(copyJsonButton);
+
+            copyJsonButton.addEventListener('click', () => {
+                const textToCopy = exampleContentJson.textContent; // Use the correct element
+                const originalTitle = 'Copy JSON';
+                const successTitle = 'Copied!';
+                const copyIcon = copyJsonButton.querySelector('i'); // Get the icon element
+
+                if (textToCopy && textToCopy.trim() && textToCopy !== '(Not valid JSON)') {
+                    navigator.clipboard.writeText(textToCopy).then(() => {
+                        console.log('JSON copied to clipboard');
+
+                        // Update tooltip to show success
+                        copyJsonButton.setAttribute('data-bs-original-title', successTitle);
+                        copyTooltipInstance.show();
+
+                        // Change icon to checkmark
+                        if (copyIcon) copyIcon.classList.replace('bi-clipboard', 'bi-check-lg');
+
+                        // Reset tooltip and icon after a delay
+                        setTimeout(() => {
+                            copyTooltipInstance.hide();
+                            // Check if the tooltip still exists before resetting title
+                            if(copyJsonButton.isConnected) {
+                                copyJsonButton.setAttribute('data-bs-original-title', originalTitle);
+                                if (copyIcon) copyIcon.classList.replace('bi-check-lg', 'bi-clipboard');
+                            }
+                        }, 2000); // Reset after 2 seconds
+
+                    }).catch(err => {
+                        console.error('Failed to copy JSON: ', err);
+                        // Optional: Show error feedback via tooltip
+                        copyJsonButton.setAttribute('data-bs-original-title', 'Copy Failed!');
+                        copyTooltipInstance.show();
+                        setTimeout(() => {
+                            // Check if the tooltip still exists before resetting title
+                            if(copyJsonButton.isConnected) {
+                                copyTooltipInstance.hide();
+                                copyJsonButton.setAttribute('data-bs-original-title', originalTitle);
+                            }
+                        }, 2000);
+                    });
+                } else {
+                    console.log('No valid JSON content to copy.');
+                     // Optional: Show feedback if there's nothing to copy
+                    copyJsonButton.setAttribute('data-bs-original-title', 'Nothing to copy');
+                    copyTooltipInstance.show();
+                    setTimeout(() => {
+                        // Check if the tooltip still exists before resetting title
+                        if(copyJsonButton.isConnected) {
+                            copyTooltipInstance.hide();
+                            copyJsonButton.setAttribute('data-bs-original-title', originalTitle);
+                        }
+                    }, 1500);
+                }
+            });
+
+             // Optional: Hide the tooltip if the user selects a new example
+             // to prevent the "Copied!" message from sticking around incorrectly.
+             if (exampleSelect) {
+                 exampleSelect.addEventListener('change', () => {
+                     if (copyTooltipInstance) {
+                        copyTooltipInstance.hide();
+                        // Check if the button still exists before resetting title/icon
+                        if(copyJsonButton.isConnected) {
+                            copyJsonButton.setAttribute('data-bs-original-title', 'Copy JSON');
+                            const copyIcon = copyJsonButton.querySelector('i');
+                            if (copyIcon) copyIcon.className = 'bi bi-clipboard'; // Reset icon
+                        }
+                     }
+                 });
+             }
+
+        } else {
+             console.warn("Could not find copy button or JSON code element for copy functionality.");
+        }
+        // --- END: Add Copy Button Logic ---
+
+
+        // Existing tree rendering functions (buildTreeData, renderNodeAsLi, renderStructureTree)...
+        // Make sure these are correctly placed within the DOMContentLoaded scope
+        function buildTreeData(elements) {
+            const treeRoot = { children: {}, element: null, name: 'Root' };
+            const nodeMap = { 'Root': treeRoot };
+
+            console.log("Building tree with elements:", elements.length);
+            elements.forEach((el, index) => {
+                const path = el.path;
+                const id = el.id || null;
+                const sliceName = el.sliceName || null;
+
+                // console.log(`Element ${index}: path=${path}, id=${id}, sliceName=${sliceName}`); // DEBUG
+
+                if (!path) {
+                    console.warn(`Skipping element ${index} with no path`);
+                    return;
+                }
+
+                const parts = path.split('.');
+                let currentPath = '';
+                let parentNode = treeRoot;
+                let parentPath = 'Root'; // Keep track of the parent's logical path
+
+                for (let i = 0; i < parts.length; i++) {
+                    let part = parts[i];
+                    const isChoiceElement = part.endsWith('[x]');
+                    const cleanPart = part.replace(/\[\d+\]/g, '').replace('[x]', '');
+<<<<<<< Updated upstream
+                    currentPath = i === 0 ? cleanPart : `${currentPath}.${cleanPart}`;
+
+                    let nodeKey = isChoiceElement ? part : cleanPart;
+                    if (sliceName && i === parts.length - 1) {
+=======
+                    const currentPathSegment = i === 0 ? cleanPart : `${parentPath}.${cleanPart}`; // Build path segment by segment
+
+                    let nodeKey = cleanPart; // Usually the last part of the path segment
+                    let nodeId = id ? id : currentPathSegment; // Use element.id if available for map key
+
+                    // If this is the last part and it's a slice, use sliceName as the display name (nodeKey)
+                    // and element.id as the unique identifier (nodeId) in the map.
+                    if (sliceName && i === parts.length - 1 && id) {
+>>>>>>> Stashed changes
+                        nodeKey = sliceName;
+                        nodeId = id; // Use the full ID like "Observation.component:systolic.value[x]"
+                    } else if (isChoiceElement) {
+                        nodeKey = part; // Display 'value[x]' etc.
+                        nodeId = currentPathSegment; // Map uses path like 'Observation.value[x]'
+                    } else {
+                        nodeId = currentPathSegment; // Map uses path like 'Observation.status'
+                    }
+
+
+                    if (!nodeMap[nodeId]) {
+                         // Find the correct parent node in the map using parentPath
+                        parentNode = nodeMap[parentPath] || treeRoot;
+
+                        const newNode = {
+                            children: {},
+                            element: null, // Assign element later
+                            name: nodeKey, // Display name (sliceName or path part)
+                            path: path,    // Store the full original path from element
+                            id: id || nodeId // Store the element id or constructed path id
+                        };
+<<<<<<< Updated upstream
+                        let parentPath = i === 0 ? 'Root' : parts.slice(0, i).join('.').replace(/\[\d+\]/g, '').replace('[x]', '');
+                        parentNode = nodeMap[parentPath] || treeRoot;
+                        parentNode.children[nodeKey] = newNode;
+                        nodeMap[currentPath] = newNode;
+                        console.log(`Created node: path=${currentPath}, name=${nodeKey}`);
+
+                        // Add modifierExtension only for DomainResource, BackboneElement, or explicitly defined
+                        if (el.path === cleanPart + '.modifierExtension' || 
+                            (el.type && el.type.some(t => t.code === 'DomainResource' || t.code === 'BackboneElement'))) {
+                            const modExtPath = `${currentPath}.modifierExtension`;
+                            const modExtNode = {
+                                children: {},
+                                element: {
+                                    path: modExtPath,
+                                    id: modExtPath,
+                                    short: 'Extensions that cannot be ignored',
+                                    definition: 'May be used to represent additional information that modifies the understanding of the element.',
+                                    min: 0,
+                                    max: '*',
+                                    type: [{ code: 'Extension' }],
+                                    isModifier: true
+                                },
+                                name: 'modifierExtension',
+                                path: modExtPath
+                            };
+                            newNode.children['modifierExtension'] = modExtNode;
+                            nodeMap[modExtPath] = modExtNode;
+                            console.log(`Added modifierExtension: path=${modExtPath}`);
+=======
+
+                        // Ensure parent exists before adding child
+                        if (parentNode) {
+                           parentNode.children[nodeKey] = newNode; // Add to parent's children using display name/key
+                           nodeMap[nodeId] = newNode; // Add to map using unique nodeId
+                           // console.log(`Created node: nodeId=${nodeId}, name=${nodeKey}, parentPath=${parentPath}`); // DEBUG
+                        } else {
+                            console.warn(`Parent node not found for path: ${parentPath} when creating ${nodeId}`);
+>>>>>>> Stashed changes
+                        }
+                    }
+
+                     // Update parentPath for the next iteration
+                     parentPath = nodeId;
+
+                    // If this is the last part of the path, assign the element data to the node
+                    if (i === parts.length - 1) {
+                        const targetNode = nodeMap[nodeId];
+                        if (targetNode) {
+                            targetNode.element = el; // Assign the full element data
+                           // console.log(`Assigned element to node: nodeId=${nodeId}, id=${el.id}, sliceName=${sliceName}`); // DEBUG
+
+                           // Handle choice elements ([x]) - This part might need refinement based on how choices are defined
+                           // Usually, the StructureDefinition only has one entry for onset[x]
+                           // and the types are listed within that element. Rendering specific choice options
+                           // might be better handled directly in renderNodeAsLi based on el.type.
+                        } else {
+                             console.warn(`Target node not found in map for assignment: nodeId=${nodeId}`);
+                        }
+                    }
+                }
+            });
+
+            // Filter out any potential root-level nodes that weren't properly parented (shouldn't happen ideally)
+            const treeData = Object.values(treeRoot.children);
+            console.log("Tree data constructed:", treeData.length);
+            return treeData;
+        }
+
+
+        function renderNodeAsLi(node, mustSupportPathsSet, resourceType, level = 0) {
+            // Check if node or node.element is null/undefined
+             if (!node || !node.element) {
+                // If node exists but element doesn't, maybe it's a structural node without direct element data?
+                // This can happen if parent nodes were created but no element exactly matched that path.
+                // We might want to render *something* or skip it. Let's skip for now.
+                 console.warn("Skipping render for node without element data:", node ? node.name : 'undefined node');
+                 return '';
+             }
+
+            const el = node.element;
+            const path = el.path || 'N/A'; // Use path from element
+            const id = el.id || node.id || path; // Use element id, then node id, fallback to path
+            const displayName = node.name || path.split('.').pop(); // Use node name (sliceName or part), fallback to last path part
+            const sliceName = el.sliceName || null;
+            const min = el.min !== undefined ? el.min : '';
+            const max = el.max || '';
+            const short = el.short || '';
+            const definition = el.definition || '';
+
+            // console.log(`Rendering node: path=${path}, id=${id}, displayName=${displayName}, sliceName=${sliceName}`); // DEBUG
+
+            // Check must support against element.path and element.id
+            let isMustSupport = mustSupportPathsSet.has(path) || (el.id && mustSupportPathsSet.has(el.id));
+            let isOptional = min == 0 && isMustSupport && el.type && el.type.some(t => t.code === 'Extension'); // Simplified optional check
+
+            const liClass = isMustSupport ? 'list-group-item py-1 px-2 list-group-item-warning' : 'list-group-item py-1 px-2';
+            const mustSupportDisplay = isMustSupport ? `<i class="bi bi-check-circle-fill ${isOptional ? 'text-info' : 'text-warning'} ms-1" title="${isOptional ? 'Optional Must Support Extension' : 'Must Support'}"></i>` : '';
+            const hasChildren = Object.keys(node.children).length > 0;
+            const collapseId = `collapse-${id.replace(/[\.\:\/\[\]\(\)\+\*]/g, '-')}`; // Use unique id for collapse target
+            const padding = level * 20;
+            const pathStyle = `padding-left: ${padding}px; white-space: nowrap;`;
+
+            let typeString = 'N/A';
+            if (el.type && el.type.length > 0) {
+                typeString = el.type.map(t => {
+                    let s = t.code || '';
+                    let profiles = t.targetProfile || t.profile || [];
+                    if (profiles.length > 0) {
+                        const targetTypes = profiles.map(p => (p || '').split('/').pop()).filter(Boolean).join(', ');
+                        if (targetTypes) {
+                            s += `(<span class="text-muted fst-italic" title="${profiles.join('\\n')}">${targetTypes}</span>)`; // Use \n for tooltip line breaks
+                        }
+                    }
+                    return s;
+                }).join(' | ');
+            }
+
+            let childrenHtml = '';
+            if (hasChildren) {
+                childrenHtml += `<ul class="collapse list-group list-group-flush" id="${collapseId}">`;
+                // Sort children by their element's path for consistent order
+                Object.values(node.children).sort((a, b) => (a.element?.path ?? a.name).localeCompare(b.element?.path ?? b.name)).forEach(childNode => {
+                    childrenHtml += renderNodeAsLi(childNode, mustSupportPathsSet, resourceType, level + 1);
+                });
+                childrenHtml += `</ul>`;
+            }
+
+            let itemHtml = `<li class="${liClass}">`;
+            // Add data-bs-parent to potentially make collapses smoother if nested within another collapse
+            itemHtml += `<div class="row gx-2 align-items-center ${hasChildren ? 'collapse-toggle' : ''}" ${hasChildren ? `role="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}"` : ''}>`;
+            itemHtml += `<div class="col-lg-4 col-md-3 text-truncate" style="${pathStyle}">`;
+            itemHtml += `<span style="display: inline-block; width: 1.2em; text-align: center;">`;
+            if (hasChildren) {
+                 // Use Bootstrap's default +/- or chevron icons based on collapsed state
+                itemHtml += `<i class="bi bi-chevron-right small toggle-icon"></i>`; // Default closed state
+            }
+            itemHtml += `</span>`;
+            itemHtml += `<code class="fw-bold ms-1" title="${path}">${displayName}</code>`; // Use displayName
+            itemHtml += `</div>`;
+            itemHtml += `<div class="col-lg-1 col-md-1 text-center text-muted small"><code>${min}..${max}</code></div>`;
+            itemHtml += `<div class="col-lg-3 col-md-3 text-truncate small">${typeString}</div>`;
+            itemHtml += `<div class="col-lg-1 col-md-1 text-center">${mustSupportDisplay}</div>`;
+
+            let descriptionTooltipAttrs = '';
+            if (definition || short) { // Show tooltip if either exists
+                 const tooltipContent = definition ? definition : short; // Prefer definition for tooltip
+                 // Basic escaping for attributes
+                 const escapedContent = tooltipContent
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;')
+                    .replace(/\n/g, ' '); // Replace newlines for attribute
+                descriptionTooltipAttrs = `data-bs-toggle="tooltip" data-bs-placement="top" title="${escapedContent}"`;
+            }
+            // Display short description, fallback to indication if only definition exists
+            itemHtml += `<div class="col-lg-3 col-md-4 text-muted text-truncate small" ${descriptionTooltipAttrs}>${short || (definition ? '(definition available)' : '')}</div>`;
+            itemHtml += `</div>`; // End row div
+            itemHtml += childrenHtml; // Add children UL (if any)
+            itemHtml += `</li>`; // End li
+            return itemHtml;
+        }
+
+
+function renderStructureTree(elements, mustSupportPaths, resourceType) {
+            if (!elements || elements.length === 0) {
+                structureDisplay.innerHTML = '<p class="text-muted"><em>No elements found in Structure Definition.</em></p>';
+                return;
+            }
+
+            const mustSupportPathsSet = new Set(mustSupportPaths);
+            console.log("Must Support Paths Set for Tree:", mustSupportPathsSet);
+
+            let html = '<p class="mb-1"><small>' +
+                '<i class="bi bi-check-circle-fill text-warning ms-1"></i> = Must Support (Yellow Row)<br>' +
+                '<i class="bi bi-check-circle-fill text-info ms-1"></i> = Optional Must Support Extension (Blue Icon)</small></p>';
+            html += `<div class="row gx-2 small fw-bold border-bottom mb-1 d-none d-md-flex"><div class="col-lg-4 col-md-3">Path / Name</div><div class="col-lg-1 col-md-1 text-center">Card.</div><div class="col-lg-3 col-md-3">Type(s)</div><div class="col-lg-1 col-md-1 text-center">Status</div><div class="col-lg-3 col-md-4">Description</div></div>`;
+            html += '<ul class="list-group list-group-flush structure-tree-root">'; // Root UL
+
+            const treeData = buildTreeData(elements);
+            // Sort root nodes by path
+             treeData.sort((a, b) => (a.element?.path ?? a.name).localeCompare(b.element?.path ?? b.name));
+
+            treeData.forEach(rootNode => {
+                html += renderNodeAsLi(rootNode, mustSupportPathsSet, resourceType, 0);
+            });
+            html += '</ul>'; // Close root UL
+
+            structureDisplay.innerHTML = html;
+
+            // Re-initialize tooltips for the newly added content
+            const tooltipTriggerList = [].slice.call(structureDisplay.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(tooltipTriggerEl => {
+                 // Check if title is not empty before initializing
+                if (tooltipTriggerEl.getAttribute('title')) {
+                    return new bootstrap.Tooltip(tooltipTriggerEl);
+                }
+                return null;
+            });
+
+            // --- START: Restore Collapse Handling ---
+            let lastClickTime = 0;
+            const debounceDelay = 200; // ms
+
+            // Select the elements that *trigger* the collapse (the div row)
+            structureDisplay.querySelectorAll('.collapse-toggle').forEach(toggleEl => {
+                // Find the actual collapsable element (the <ul>) using the ID derived from the toggle's attribute
+                const collapseId = toggleEl.getAttribute('data-bs-target')?.substring(1); // Get ID like 'collapse-Observation-status'
+                if (!collapseId) {
+                     // Fallback if data-bs-target wasn't used, try data-collapse-id if you used that previously
+                     const fallbackId = toggleEl.getAttribute('data-collapse-id');
+                     if(fallbackId) {
+                         collapseId = fallbackId;
+                     } else {
+                        console.warn("No collapse target ID found for toggle:", toggleEl);
+                        return;
+                     }
+                }
+
+                const collapseEl = document.getElementById(collapseId);
+                if (!collapseEl) {
+                    console.warn("No collapse element found for ID:", collapseId);
+                    return;
+                }
+                const toggleIcon = toggleEl.querySelector('.toggle-icon');
+                if (!toggleIcon) {
+                    console.warn("No toggle icon found for:", collapseId);
+                    return;
+                }
+
+                console.log("Initializing collapse for trigger:", toggleEl, "target:", collapseId);
+
+                // Initialize Bootstrap Collapse instance, but don't automatically toggle via attributes
+                const bsCollapse = new bootstrap.Collapse(collapseEl, {
+                    toggle: false // IMPORTANT: Prevent auto-toggling via data attributes
+                });
+
+                // Custom click handler with debounce
+                toggleEl.addEventListener('click', event => {
+                    event.preventDefault();  // Prevent default action (like navigating if it was an <a>)
+                    event.stopPropagation(); // Stop the event from bubbling up
+                    const now = Date.now();
+                    if (now - lastClickTime < debounceDelay) {
+                        console.log("Debounced click ignored for:", collapseId);
+                        return;
+                    }
+                    lastClickTime = now;
+
+                    console.log("Click toggle for:", collapseId, "Current show:", collapseEl.classList.contains('show'));
+
+                    // Manually toggle the collapse state
+                    if (collapseEl.classList.contains('show')) {
+                        bsCollapse.hide();
+                    } else {
+                        bsCollapse.show();
+                    }
+                });
+
+                // Update icon based on Bootstrap events (these should still work)
+                collapseEl.addEventListener('show.bs.collapse', () => {
+                    console.log("Show event for:", collapseId);
+                    toggleIcon.classList.remove('bi-chevron-right');
+                    toggleIcon.classList.add('bi-chevron-down');
+                });
+                collapseEl.addEventListener('hide.bs.collapse', () => {
+                     console.log("Hide event for:", collapseId);
+                    toggleIcon.classList.remove('bi-chevron-down');
+                    toggleIcon.classList.add('bi-chevron-right');
+                });
+                // Set initial icon state
+                 if (collapseEl.classList.contains('show')) {
+                     toggleIcon.classList.remove('bi-chevron-right');
+                     toggleIcon.classList.add('bi-chevron-down');
+                 } else {
+                     toggleIcon.classList.remove('bi-chevron-down');
+                     toggleIcon.classList.add('bi-chevron-right');
+                 }
+            });
+            // --- END: Restore Collapse Handling ---
+        }
+
+
+    // Catch block for overall DOMContentLoaded function
+    } catch (e) {
+        console.error("JavaScript error in cp_view_processed_ig.html:", e);
+        const body = document.querySelector('body');
+        if (body) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'alert alert-danger m-3';
+            errorDiv.textContent = 'A critical error occurred while initializing the page view. Please check the console for details.';
+            // Avoid inserting before potentially null firstChild
+            if (body.firstChild) {
+                body.insertBefore(errorDiv, body.firstChild);
+            } else {
+                body.appendChild(errorDiv);
+            }
+        }
+    }
+});
+</script>
+
+{% endblock %}

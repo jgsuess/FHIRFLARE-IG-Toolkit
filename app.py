@@ -1,4 +1,3 @@
-# app.py
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
@@ -12,7 +11,8 @@ import json
 import logging
 import requests
 import re
-import services
+import services  # Restore full module import
+from services import services_bp  # Keep Blueprint import
 from forms import IgImportForm, ValidationForm
 
 # Set up logging
@@ -46,6 +46,9 @@ except Exception as e:
 
 db = SQLAlchemy(app)
 csrf = CSRFProtect(app)
+
+# Register Blueprint
+app.register_blueprint(services_bp, url_prefix='/api')
 
 class ProcessedIg(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -786,10 +789,9 @@ def api_push_ig():
                 logger.error(f"[API Push] Error yielding final error message: {yield_e}")
     return Response(generate_stream(), mimetype='application/x-ndjson')
 
-@app.route('/validate-sample', methods=['GET', 'POST'])
+@app.route('/validate-sample', methods=['GET'])
 def validate_sample():
     form = ValidationForm()
-    validation_report = None
     packages = []
     packages_dir = app.config['FHIR_PACKAGES_DIR']
     if os.path.exists(packages_dir):
@@ -807,40 +809,11 @@ def validate_sample():
                 except Exception as e:
                     logger.warning(f"Error reading package {filename}: {e}")
                     continue
-    if form.validate_on_submit():
-        package_name = form.package_name.data
-        version = form.version.data
-        include_dependencies = form.include_dependencies.data
-        mode = form.mode.data
-        try:
-            sample_input = json.loads(form.sample_input.data)
-            if mode == 'single':
-                validation_report = services.validate_resource_against_profile(
-                    package_name, version, sample_input, include_dependencies
-                )
-            else:
-                validation_report = services.validate_bundle_against_profile(
-                    package_name, version, sample_input, include_dependencies
-                )
-            flash("Validation completed.", 'success')
-        except json.JSONDecodeError:
-            flash("Invalid JSON format in sample input.", 'error')
-            validation_report = {'valid': False, 'errors': ['Invalid JSON format provided.'], 'warnings': [], 'results': {}}
-        except Exception as e:
-            logger.error(f"Error validating sample: {e}")
-            flash(f"Error validating sample: {str(e)}", 'error')
-            validation_report = {'valid': False, 'errors': [str(e)], 'warnings': [], 'results': {}}
-    else:
-        for field, errors in form.errors.items():
-            field_obj = getattr(form, field, None)
-            field_label = field_obj.label.text if field_obj and hasattr(field_obj, 'label') else field
-            for error in errors:
-                flash(f"Error in field '{field_label}': {error}", "danger")
     return render_template(
         'validate_sample.html',
         form=form,
         packages=packages,
-        validation_report=validation_report,
+        validation_report=None,
         site_name='FHIRFLARE IG Toolkit',
         now=datetime.datetime.now()
     )
