@@ -20,7 +20,6 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-# --- Configuration ---
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-fallback-secret-key-here')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:////app/instance/fhir_ig.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -32,7 +31,6 @@ app.config['DISPLAY_PROFILE_RELATIONSHIPS'] = True
 # Ensure directories exist and are writable
 instance_path = '/app/instance'
 packages_path = app.config['FHIR_PACKAGES_DIR']
-
 logger.debug(f"Instance path configuration: {instance_path}")
 logger.debug(f"Database URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
 logger.debug(f"Packages path: {packages_path}")
@@ -49,7 +47,6 @@ except Exception as e:
 db = SQLAlchemy(app)
 csrf = CSRFProtect(app)
 
-# --- Database Model ---
 class ProcessedIg(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     package_name = db.Column(db.String(128), nullable=False)
@@ -61,10 +58,8 @@ class ProcessedIg(db.Model):
     complies_with_profiles = db.Column(db.JSON, nullable=True)
     imposed_profiles = db.Column(db.JSON, nullable=True)
     optional_usage_elements = db.Column(db.JSON, nullable=True)
-
     __table_args__ = (db.UniqueConstraint('package_name', 'version', name='uq_package_version'),)
 
-# --- API Key Middleware ---
 def check_api_key():
     api_key = request.headers.get('X-API-Key')
     if not api_key and request.is_json:
@@ -77,47 +72,6 @@ def check_api_key():
         return jsonify({"status": "error", "message": "Invalid API key"}), 401
     logger.debug("API key validated successfully")
     return None
-
-# --- Routes ---
-@app.route('/')
-def index():
-    return render_template('index.html', site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
-
-@app.route('/import-ig', methods=['GET', 'POST'])
-def import_ig():
-    form = IgImportForm()
-    if form.validate_on_submit():
-        name = form.package_name.data
-        version = form.package_version.data
-        dependency_mode = form.dependency_mode.data
-        try:
-            result = services.import_package_and_dependencies(name, version, dependency_mode=dependency_mode)
-            if result['errors'] and not result['downloaded']:
-                error_msg = result['errors'][0]
-                simplified_msg = error_msg
-                if "HTTP error" in error_msg and "404" in error_msg:
-                    simplified_msg = "Package not found on registry (404). Check name and version."
-                elif "HTTP error" in error_msg:
-                    simplified_msg = f"Registry error: {error_msg.split(': ', 1)[-1]}"
-                elif "Connection error" in error_msg:
-                    simplified_msg = "Could not connect to the FHIR package registry."
-                flash(f"Failed to import {name}#{version}: {simplified_msg}", "error")
-                logger.error(f"Import failed critically for {name}#{version}: {error_msg}")
-            else:
-                if result['errors']:
-                    flash(f"Partially imported {name}#{version} with errors during dependency processing. Check logs.", "warning")
-                    for err in result['errors']: logger.warning(f"Import warning for {name}#{version}: {err}")
-                else:
-                    flash(f"Successfully downloaded {name}#{version} and dependencies! Mode: {dependency_mode}", "success")
-                return redirect(url_for('view_igs'))
-        except Exception as e:
-            logger.error(f"Unexpected error during IG import: {str(e)}", exc_info=True)
-            flash(f"An unexpected error occurred downloading the IG: {str(e)}", "error")
-    else:
-        for field, errors in form.errors.items():
-            for error in errors:
-                flash(f"Error in {getattr(form, field).label.text}: {error}", "danger")
-    return render_template('import_ig.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
 
 def list_downloaded_packages(packages_dir):
     packages = []
@@ -159,7 +113,6 @@ def list_downloaded_packages(packages_dir):
             else:
                 logger.warning(f"Skipping package {filename} due to invalid name ('{name}') or version ('{version}')")
                 errors.append(f"Invalid package {filename}: name='{name}', version='{version}'")
-    # Build duplicate_groups
     name_counts = {}
     for pkg in packages:
         name = pkg['name']
@@ -171,6 +124,47 @@ def list_downloaded_packages(packages_dir):
     logger.debug(f"Errors during package listing: {errors}")
     logger.debug(f"Duplicate groups: {duplicate_groups}")
     return packages, errors, duplicate_groups
+
+@app.route('/')
+def index():
+    return render_template('index.html', site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+
+@app.route('/import-ig', methods=['GET', 'POST'])
+def import_ig():
+    form = IgImportForm()
+    if form.validate_on_submit():
+        name = form.package_name.data
+        version = form.package_version.data
+        dependency_mode = form.dependency_mode.data
+        try:
+            result = services.import_package_and_dependencies(name, version, dependency_mode=dependency_mode)
+            if result['errors'] and not result['downloaded']:
+                error_msg = result['errors'][0]
+                simplified_msg = error_msg
+                if "HTTP error" in error_msg and "404" in error_msg:
+                    simplified_msg = "Package not found on registry (404). Check name and version."
+                elif "HTTP error" in error_msg:
+                    simplified_msg = f"Registry error: {error_msg.split(': ', 1)[-1]}"
+                elif "Connection error" in error_msg:
+                    simplified_msg = "Could not connect to the FHIR package registry."
+                flash(f"Failed to import {name}#{version}: {simplified_msg}", "error")
+                logger.error(f"Import failed critically for {name}#{version}: {error_msg}")
+            else:
+                if result['errors']:
+                    flash(f"Partially imported {name}#{version} with errors during dependency processing. Check logs.", "warning")
+                    for err in result['errors']:
+                        logger.warning(f"Import warning for {name}#{version}: {err}")
+                else:
+                    flash(f"Successfully downloaded {name}#{version} and dependencies! Mode: {dependency_mode}", "success")
+                return redirect(url_for('view_igs'))
+        except Exception as e:
+            logger.error(f"Unexpected error during IG import: {str(e)}", exc_info=True)
+            flash(f"An unexpected error occurred downloading the IG: {str(e)}", "error")
+    else:
+        for field, errors in form.errors.items():
+            for error in errors:
+                flash(f"Error in {getattr(form, field).label.text}: {error}", "danger")
+    return render_template('import_ig.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
 
 @app.route('/view-igs')
 def view_igs():
@@ -230,6 +224,8 @@ def process_ig():
         try:
             logger.info(f"Starting processing for {name}#{version} from file {filename}")
             package_info = services.process_package_file(tgz_path)
+            if package_info.get('errors'):
+                flash(f"Processing completed with errors for {name}#{version}: {', '.join(package_info['errors'])}", "warning")
             optional_usage_dict = {
                 info['name']: True
                 for info in package_info.get('resource_types_info', [])
@@ -302,7 +298,8 @@ def delete_ig():
                 errors.append(f"Could not delete metadata for {filename}: {e}")
                 logger.error(f"Error deleting {metadata_path}: {e}")
         if errors:
-            for error in errors: flash(error, "error")
+            for error in errors:
+                flash(error, "error")
         elif deleted_files:
             flash(f"Deleted: {', '.join(deleted_files)}", "success")
         else:
@@ -356,9 +353,11 @@ def view_ig(processed_ig_id):
     base_list = [t for t in processed_ig.resource_types_info if not t.get('is_profile')]
     examples_by_type = processed_ig.examples or {}
     optional_usage_elements = processed_ig.optional_usage_elements or {}
-    logger.debug(f"Optional usage elements for {processed_ig.package_name}#{processed_ig.version}: {optional_usage_elements}")
     complies_with_profiles = processed_ig.complies_with_profiles or []
     imposed_profiles = processed_ig.imposed_profiles or []
+    logger.debug(f"Viewing IG {processed_ig.package_name}#{processed_ig.version}: "
+                 f"{len(profile_list)} profiles, {len(base_list)} base resources, "
+                 f"{len(optional_usage_elements)} optional elements")
     return render_template('cp_view_processed_ig.html',
                            title=f"View {processed_ig.package_name}#{processed_ig.version}",
                            processed_ig=processed_ig,
@@ -462,6 +461,7 @@ def get_example_content():
     package_version = request.args.get('package_version')
     example_member_path = request.args.get('filename')
     if not all([package_name, package_version, example_member_path]):
+        logger.warning(f"get_example_content: Missing query parameters: name={package_name}, version={package_version}, path={example_member_path}")
         return jsonify({"error": "Missing required query parameters: package_name, package_version, filename"}), 400
     if not example_member_path.startswith('package/') or '..' in example_member_path:
         logger.warning(f"Invalid example file path requested: {example_member_path}")
@@ -649,7 +649,8 @@ def api_push_ig():
                     for dep in dependencies_to_include:
                         dep_name = dep.get('name')
                         dep_version = dep.get('version')
-                        if not dep_name or not dep_version: continue
+                        if not dep_name or not dep_version:
+                            continue
                         dep_tgz_filename = services.construct_tgz_filename(dep_name, dep_version)
                         dep_tgz_path = os.path.join(packages_dir, dep_tgz_filename)
                         if os.path.exists(dep_tgz_path):
@@ -789,83 +790,61 @@ def api_push_ig():
 def validate_sample():
     form = ValidationForm()
     validation_report = None
-    packages_for_template = []
-    packages_dir = app.config.get('FHIR_PACKAGES_DIR')
-    if packages_dir:
-        try:
-            all_packages, errors, duplicate_groups = list_downloaded_packages(packages_dir)
-            if errors:
-                flash(f"Warning: Errors encountered while listing packages: {', '.join(errors)}", "warning")
-            filtered_packages = [
-                pkg for pkg in all_packages
-                if isinstance(pkg.get('name'), str) and pkg.get('name') and
-                   isinstance(pkg.get('version'), str) and pkg.get('version')
-            ]
-            packages_for_template = sorted([
-                {"id": f"{pkg['name']}#{pkg['version']}", "text": f"{pkg['name']}#{pkg['version']}"}
-                for pkg in filtered_packages
-            ], key=lambda x: x['text'])
-            logger.debug(f"Packages for template: {packages_for_template}")
-        except Exception as e:
-            logger.error(f"Failed to list or process downloaded packages: {e}", exc_info=True)
-            flash("Error loading available packages.", "danger")
-    else:
-        flash("FHIR Packages directory not configured.", "danger")
-        logger.error("FHIR_PACKAGES_DIR is not configured in the Flask app.")
-
+    packages = []
+    packages_dir = app.config['FHIR_PACKAGES_DIR']
+    if os.path.exists(packages_dir):
+        for filename in os.listdir(packages_dir):
+            if filename.endswith('.tgz'):
+                try:
+                    with tarfile.open(os.path.join(packages_dir, filename), 'r:gz') as tar:
+                        package_json = tar.extractfile('package/package.json')
+                        if package_json:
+                            pkg_info = json.load(package_json)
+                            name = pkg_info.get('name')
+                            version = pkg_info.get('version')
+                            if name and version:
+                                packages.append({'name': name, 'version': version})
+                except Exception as e:
+                    logger.warning(f"Error reading package {filename}: {e}")
+                    continue
     if form.validate_on_submit():
         package_name = form.package_name.data
         version = form.version.data
         include_dependencies = form.include_dependencies.data
         mode = form.mode.data
-        sample_input_raw = form.sample_input.data
-
         try:
-            sample_input = json.loads(sample_input_raw)
-            logger.info(f"Starting validation (mode: {mode}) for {package_name}#{version}, deps: {include_dependencies}")
+            sample_input = json.loads(form.sample_input.data)
             if mode == 'single':
                 validation_report = services.validate_resource_against_profile(
                     package_name, version, sample_input, include_dependencies
                 )
-            elif mode == 'bundle':
+            else:
                 validation_report = services.validate_bundle_against_profile(
                     package_name, version, sample_input, include_dependencies
                 )
-            else:
-                flash("Invalid validation mode selected.", "error")
-                validation_report = None
-            if validation_report:
-                flash("Validation completed.", 'info')
-                logger.info(f"Validation Result: Valid={validation_report.get('valid')}, Errors={len(validation_report.get('errors',[]))}, Warnings={len(validation_report.get('warnings',[]))}")
+            flash("Validation completed.", 'success')
         except json.JSONDecodeError:
             flash("Invalid JSON format in sample input.", 'error')
-            logger.warning("Validation failed: Invalid JSON input.")
             validation_report = {'valid': False, 'errors': ['Invalid JSON format provided.'], 'warnings': [], 'results': {}}
-        except FileNotFoundError as e:
-            flash(f"Validation Error: Required package file not found for {package_name}#{version}. Please ensure it's downloaded.", 'error')
-            logger.error(f"Validation failed: Package file missing - {e}")
-            validation_report = {'valid': False, 'errors': [f"Required package file not found: {package_name}#{version}"], 'warnings': [], 'results': {}}
         except Exception as e:
-            logger.error(f"Error validating sample: {e}", exc_info=True)
-            flash(f"An unexpected error occurred during validation: {str(e)}", 'error')
-            validation_report = {'valid': False, 'errors': [f'Unexpected error: {str(e)}'], 'warnings': [], 'results': {}}
+            logger.error(f"Error validating sample: {e}")
+            flash(f"Error validating sample: {str(e)}", 'error')
+            validation_report = {'valid': False, 'errors': [str(e)], 'warnings': [], 'results': {}}
     else:
         for field, errors in form.errors.items():
             field_obj = getattr(form, field, None)
             field_label = field_obj.label.text if field_obj and hasattr(field_obj, 'label') else field
             for error in errors:
                 flash(f"Error in field '{field_label}': {error}", "danger")
-
     return render_template(
         'validate_sample.html',
         form=form,
-        packages=packages_for_template,
+        packages=packages,
         validation_report=validation_report,
         site_name='FHIRFLARE IG Toolkit',
         now=datetime.datetime.now()
     )
 
-# --- App Initialization ---
 def create_db():
     logger.debug(f"Attempting to create database tables for URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
     try:

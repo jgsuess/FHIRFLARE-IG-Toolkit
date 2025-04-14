@@ -1,7 +1,7 @@
 {
   "package_name": "hl7.fhir.au.core",
   "version": "1.1.0-preview",
-  "dependency_mode": "tree-shaking",
+  "dependency_mode": "recursive",
   "imported_dependencies": [
     {
       "name": "hl7.fhir.r4.core",
@@ -29,6 +29,5 @@
     }
   ],
   "complies_with_profiles": [],
-  "imposed_profiles": [],
-  "timestamp": "2025-04-13T13:43:59.139683+00:00"
+  "imposed_profiles": []
 }

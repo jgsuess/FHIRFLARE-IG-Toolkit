@@ -1,0 +1,577 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="px-4 py-5 my-5 text-center">
+    <img class="d-block mx-auto mb-4" src="{{ url_for('static', filename='FHIRFLARE.png') }}" alt="FHIRFLARE Ig Toolkit" width="192" height="192">
+    <h1 class="display-5 fw-bold text-body-emphasis">{{ title }}</h1>
+    <div class="col-lg-6 mx-auto">
+        <p class="lead mb-4">
+            View details of the processed FHIR Implementation Guide.
+        </p>
+        <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+            <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg px-4 gap-3">Back to Home</a>
+            <a href="{{ url_for('view_igs') }}" class="btn btn-outline-secondary btn-lg px-4">Manage FHIR Packages</a>
+            <a href="{{ url_for('push_igs') }}" class="btn btn-outline-secondary btn-lg px-4">Upload IG's</a>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2><i class="bi bi-info-circle me-2"></i>{{ title }}</h2>
+        <a href="{{ url_for('view_igs') }}" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back to Package List</a>
+    </div>
+
+    {% if processed_ig %}
+        <div class="card">
+            <div class="card-header">Package Details</div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-3">Package Name</dt>
+                    <dd class="col-sm-9"><code>{{ processed_ig.package_name }}</code></dd>
+                    <dt class="col-sm-3">Package Version</dt>
+                    <dd class="col-sm-9">{{ processed_ig.version }}</dd>
+                    <dt class="col-sm-3">Processed At</dt>
+                    <dd class="col-sm-9">{{ processed_ig.processed_date.strftime('%Y-%m-%d %H:%M:%S UTC') }}</dd>
+                </dl>
+            </div>
+        </div>
+
+        {% if config.DISPLAY_PROFILE_RELATIONSHIPS %}
+        <div class="card mt-4">
+            <div class="card-header">Profile Relationships</div>
+            <div class="card-body">
+                <h6>Complies With</h6>
+                {% if complies_with_profiles %}
+                    <ul>
+                        {% for profile in complies_with_profiles %}
+                            <li>{{ profile }}</li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted"><em>No profiles declared as compatible.</em></p>
+                {% endif %}
+
+                <h6>Required Dependent Profiles (Must Also Validate Against)</h6>
+                {% if imposed_profiles %}
+                    <ul>
+                        {% for profile in imposed_profiles %}
+                            <li>{{ profile }}</li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted"><em>No imposed profiles.</em></p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card mt-4">
+            <div class="card-header">Resource Types Found / Defined</div>
+            <div class="card-body">
+                {% if profile_list or base_list %}
+                    <p class="mb-2">
+                        <small>
+                            <span class="badge bg-warning text-dark border me-1" style="font-size: 0.8em;" title="Profile contains Must Support elements">MS</span> = Contains Must Support Elements<br>
+                            <span class="badge bg-info text-dark border me-1" style="font-size: 0.8em;" title="An optional Extension which contains Must Support sub-elements (e.g., value[x], type)">Optional MS Ext</span> = Optional Extension with Must Support Sub-Elements
+                        </small>
+                    </p>
+                    {% if profile_list %}
+                        <p class="mb-2"><small><span class="badge bg-primary text-light border me-1">Examples</span> = Examples will be displayed when selecting profile Types if contained in the IG</small></p>
+                        <h6>Profiles Defined ({{ profile_list|length }}):</h6>
+                        <div class="d-flex flex-wrap gap-1 mb-3 resource-type-list">
+                            {% for type_info in profile_list %}
+                                <a href="#" class="resource-type-link text-decoration-none"
+                                   data-package-name="{{ processed_ig.package_name }}"
+                                   data-package-version="{{ processed_ig.version }}"
+                                   data-resource-type="{{ type_info.name }}"
+                                   aria-label="View structure for {{ type_info.name }}">
+                                    {% if type_info.must_support %}
+                                        {% if optional_usage_elements.get(type_info.name) %}
+                                            <span class="badge bg-info text-dark border" title="Optional Extension with Must Support sub-elements">{{ type_info.name }}</span>
+                                        {% else %}
+                                            <span class="badge bg-warning text-dark border" title="Contains Must Support elements">{{ type_info.name }}</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="badge bg-light text-dark border">{{ type_info.name }}</span>
+                                    {% endif %}
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted"><em>No profiles defined.</em></p>
+                    {% endif %}
+                    {% if base_list %}
+                         <h6>Base Resource Types Referenced ({{ base_list|length }}):</h6>
+                         <div class="d-flex flex-wrap gap-1 resource-type-list">
+                             {% for type_info in base_list %}
+                                 <a href="#" class="resource-type-link text-decoration-none"
+                                    data-package-name="{{ processed_ig.package_name }}"
+                                    data-package-version="{{ processed_ig.version }}"
+                                    data-resource-type="{{ type_info.name }}"
+                                    aria-label="View structure for {{ type_info.name }}">
+                                     {% if type_info.must_support %}
+                                         <span class="badge bg-warning text-dark border" title="Contains Must Support elements">{{ type_info.name }}</span>
+                                     {% else %}
+                                         <span class="badge bg-light text-dark border">{{ type_info.name }}</span>
+                                     {% endif %}
+                                 </a>
+                             {% endfor %}
+                         </div>
+                    {% else %}
+                        <p class="text-muted"><em>No base resource types referenced.</em></p>
+                    {% endif %}
+                {% else %}
+                    <p class="text-muted"><em>No resource type information extracted or stored.</em></p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div id="structure-display-wrapper" class="mt-4" style="display: none;">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Structure Definition for: <code id="structure-title"></code></span>
+                    <button type="button" class="btn-close" aria-label="Close" onclick="document.getElementById('structure-display-wrapper').style.display='none'; document.getElementById('example-display-wrapper').style.display='none'; document.getElementById('raw-structure-wrapper').style.display='none';"></button>
+                </div>
+                <div class="card-body">
+                    <div id="structure-loading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                    </div>
+                    <div id="structure-fallback-message" class="alert alert-info" style="display: none;"></div>
+                    <div id="structure-content"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="raw-structure-wrapper" class="mt-4" style="display: none;">
+            <div class="card">
+                <div class="card-header">Raw Structure Definition for <code id="raw-structure-title"></code></div>
+                <div class="card-body">
+                    <div id="raw-structure-loading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                    </div>
+                    <pre><code id="raw-structure-content" class="p-2 d-block border bg-light" style="max-height: 400px; overflow-y: auto;"></code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div id="example-display-wrapper" class="mt-4" style="display: none;">
+            <div class="card">
+                <div class="card-header">Examples for <code id="example-resource-type-title"></code></div>
+                <div class="card-body">
+                    <div class="mb-3" id="example-selector-wrapper" style="display: none;">
+                        <label for="example-select" class="form-label">Select Example:</label>
+                        <select class="form-select form-select-sm" id="example-select"><option selected value="">-- Select --</option></select>
+                    </div>
+                    <div id="example-loading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-secondary" role="status"><span class="visually-hidden">Loading...</span></div>
+                    </div>
+                    <div id="example-content-wrapper" style="display: none;">
+                        <h6 id="example-filename" class="mt-2 small text-muted"></h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Raw Content</h6>
+                                <pre><code id="example-content-raw" class="p-2 d-block border bg-light" style="max-height: 400px; overflow-y: auto;"></code></pre>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Pretty-Printed JSON</h6>
+                                <pre><code id="example-content-json" class="p-2 d-block border bg-light" style="max-height: 400px; overflow-y: auto;"></code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="alert alert-warning" role="alert">Processed IG details not available.</div>
+    {% endif %}
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>const examplesData = {{ examples_by_type | tojson | safe }};</script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    try {
+        const structureDisplayWrapper = document.getElementById('structure-display-wrapper');
+        const structureDisplay = document.getElementById('structure-content');
+        const structureTitle = document.getElementById('structure-title');
+        const structureLoading = document.getElementById('structure-loading');
+        const structureFallbackMessage = document.getElementById('structure-fallback-message');
+        const exampleDisplayWrapper = document.getElementById('example-display-wrapper');
+        const exampleSelectorWrapper = document.getElementById('example-selector-wrapper');
+        const exampleSelect = document.getElementById('example-select');
+        const exampleResourceTypeTitle = document.getElementById('example-resource-type-title');
+        const exampleLoading = document.getElementById('example-loading');
+        const exampleContentWrapper = document.getElementById('example-content-wrapper');
+        const exampleFilename = document.getElementById('example-filename');
+        const exampleContentRaw = document.getElementById('example-content-raw');
+        const exampleContentJson = document.getElementById('example-content-json');
+        const rawStructureWrapper = document.getElementById('raw-structure-wrapper');
+        const rawStructureTitle = document.getElementById('raw-structure-title');
+        const rawStructureContent = document.getElementById('raw-structure-content');
+        const rawStructureLoading = document.getElementById('raw-structure-loading');
+
+        const structureBaseUrl = "{{ url_for('get_structure_definition') }}";
+        const exampleBaseUrl = "{{ url_for('get_example_content') }}";
+
+        document.querySelectorAll('.resource-type-list').forEach(container => {
+            container.addEventListener('click', function(event) {
+                const link = event.target.closest('.resource-type-link');
+                if (!link) return;
+                event.preventDefault();
+                console.log("Resource type link clicked:", link.dataset.resourceType);
+
+                const pkgName = link.dataset.packageName;
+                const pkgVersion = link.dataset.packageVersion;
+                const resourceType = link.dataset.resourceType;
+                if (!pkgName || !pkgVersion || !resourceType) {
+                    console.error("Missing data attributes:", { pkgName, pkgVersion, resourceType });
+                    return;
+                }
+
+                const structureParams = new URLSearchParams({ package_name: pkgName, package_version: pkgVersion, resource_type: resourceType });
+                const structureFetchUrl = `${structureBaseUrl}?${structureParams.toString()}`;
+                console.log("Fetching structure from:", structureFetchUrl);
+
+                structureTitle.textContent = `${resourceType} (${pkgName}#${pkgVersion})`;
+                rawStructureTitle.textContent = `${resourceType} (${pkgName}#${pkgVersion})`;
+                structureDisplay.innerHTML = '';
+                rawStructureContent.textContent = '';
+                structureLoading.style.display = 'block';
+                rawStructureLoading.style.display = 'block';
+                structureFallbackMessage.style.display = 'none';
+                structureDisplayWrapper.style.display = 'block';
+                rawStructureWrapper.style.display = 'block';
+                exampleDisplayWrapper.style.display = 'none';
+
+                fetch(structureFetchUrl)
+                    .then(response => {
+                        console.log("Structure fetch response status:", response.status);
+                        return response.json().then(data => ({ ok: response.ok, status: response.status, data }));
+                    })
+                    .then(result => {
+                        if (!result.ok) {
+                            throw new Error(result.data.error || `HTTP error ${result.status}`);
+                        }
+                        console.log("Structure data received:", result.data);
+                        if (result.data.fallback_used) {
+                            structureFallbackMessage.style.display = 'block';
+                            structureFallbackMessage.textContent = `Structure definition not found in this IG; using base FHIR definition from ${result.data.source_package}.`;
+                        } else {
+                            structureFallbackMessage.style.display = 'none';
+                        }
+                        renderStructureTree(result.data.elements, result.data.must_support_paths || [], resourceType);
+                        rawStructureContent.textContent = JSON.stringify(result.data, null, 2);
+                        populateExampleSelector(resourceType);
+                    })
+                    .catch(error => {
+                        console.error("Error fetching structure:", error);
+                        structureFallbackMessage.style.display = 'none';
+                        structureDisplay.innerHTML = `<div class="alert alert-danger">Error loading structure: ${error.message}</div>`;
+                        rawStructureContent.textContent = `Error loading structure: ${error.message}`;
+                        populateExampleSelector(resourceType);
+                    })
+                    .finally(() => {
+                        structureLoading.style.display = 'none';
+                        rawStructureLoading.style.display = 'none';
+                    });
+            });
+        });
+
+        function populateExampleSelector(resourceOrProfileIdentifier) {
+            console.log("Populating examples for:", resourceOrProfileIdentifier);
+            exampleResourceTypeTitle.textContent = resourceOrProfileIdentifier;
+            const availableExamples = examplesData[resourceOrProfileIdentifier] || [];
+            console.log("Available examples:", availableExamples);
+            exampleSelect.innerHTML = '<option selected value="">-- Select --</option>';
+            exampleContentWrapper.style.display = 'none';
+            exampleFilename.textContent = '';
+            exampleContentRaw.textContent = '';
+            exampleContentJson.textContent = '';
+
+            if (availableExamples.length > 0) {
+                availableExamples.forEach(filePath => {
+                    const filename = filePath.split('/').pop();
+                    const option = document.createElement('option');
+                    option.value = filePath;
+                    option.textContent = filename;
+                    exampleSelect.appendChild(option);
+                });
+                exampleSelectorWrapper.style.display = 'block';
+                exampleDisplayWrapper.style.display = 'block';
+            } else {
+                exampleSelectorWrapper.style.display = 'none';
+                exampleDisplayWrapper.style.display = 'none';
+            }
+        }
+
+        if (exampleSelect) {
+            exampleSelect.addEventListener('change', function(event) {
+                const selectedFilePath = this.value;
+                console.log("Selected example file:", selectedFilePath);
+                exampleContentRaw.textContent = '';
+                exampleContentJson.textContent = '';
+                exampleFilename.textContent = '';
+                exampleContentWrapper.style.display = 'none';
+
+                if (!selectedFilePath) return;
+
+                const exampleParams = new URLSearchParams({
+                    package_name: "{{ processed_ig.package_name }}",
+                    package_version: "{{ processed_ig.version }}",
+                    filename: selectedFilePath
+                });
+                const exampleFetchUrl = `${exampleBaseUrl}?${exampleParams.toString()}`;
+                console.log("Fetching example from:", exampleFetchUrl);
+                exampleLoading.style.display = 'block';
+
+                fetch(exampleFetchUrl)
+                    .then(response => {
+                        console.log("Example fetch response status:", response.status);
+                        if (!response.ok) {
+                            return response.text().then(errText => { throw new Error(errText || `HTTP error ${response.status}`); });
+                        }
+                        return response.text();
+                    })
+                    .then(content => {
+                        console.log("Example content received.");
+                        exampleFilename.textContent = `Source: ${selectedFilePath.split('/').pop()}`;
+                        exampleContentRaw.textContent = content;
+                        try {
+                            const jsonContent = JSON.parse(content);
+                            exampleContentJson.textContent = JSON.stringify(jsonContent, null, 2);
+                        } catch (e) {
+                            console.warn("Example content is not valid JSON:", e.message);
+                            exampleContentJson.textContent = '(Not valid JSON)';
+                        }
+                        exampleContentWrapper.style.display = 'block';
+                    })
+                    .catch(error => {
+                        console.error("Error fetching example:", error);
+                        exampleFilename.textContent = 'Error loading example';
+                        exampleContentRaw.textContent = `Error: ${error.message}`;
+                        exampleContentJson.textContent = `Error: ${error.message}`;
+                        exampleContentWrapper.style.display = 'block';
+                    })
+                    .finally(() => {
+                        exampleLoading.style.display = 'none';
+                    });
+            });
+        }
+
+        function buildTreeData(elements) {
+            const treeRoot = { children: {}, element: null, name: 'Root' };
+            const nodeMap = { 'Root': treeRoot };
+
+            console.log("Building tree with elements:", elements.length);
+            elements.forEach((el, index) => {
+                const path = el.path;
+                const id = el.id || null;
+                const sliceName = el.sliceName || null;
+
+                console.log(`Element ${index}: path=${path}, id=${id}, sliceName=${sliceName}`);
+
+                if (!path) {
+                    console.warn(`Skipping element ${index} with no path`);
+                    return;
+                }
+
+                const parts = path.split('.');
+                let currentPath = '';
+                let parentNode = treeRoot;
+
+                for (let i = 0; i < parts.length; i++) {
+                    const part = parts[i];
+                    const cleanPart = part.replace(/\[\d+\]/g, '');
+                    currentPath = i === 0 ? cleanPart : `${currentPath}.${cleanPart}`;
+
+                    let nodeKey = cleanPart;
+                    if (sliceName && i === parts.length - 1) {
+                        nodeKey = sliceName;
+                        currentPath = id || currentPath;
+                    }
+
+                    if (!nodeMap[currentPath]) {
+                        const newNode = {
+                            children: {},
+                            element: null,
+                            name: nodeKey,
+                            path: currentPath
+                        };
+                        let parentPath = i === 0 ? 'Root' : parts.slice(0, i).join('.').replace(/\[\d+\]/g, '');
+                        parentNode = nodeMap[parentPath] || treeRoot;
+                        parentNode.children[nodeKey] = newNode;
+                        nodeMap[currentPath] = newNode;
+                        console.log(`Created node: path=${currentPath}, name=${nodeKey}`);
+                    }
+
+                    if (i === parts.length - 1) {
+                        const targetNode = nodeMap[currentPath];
+                        targetNode.element = el;
+                        console.log(`Assigned element to node: path=${currentPath}, id=${id}, sliceName=${sliceName}`);
+                    }
+
+                    parentNode = nodeMap[currentPath];
+                }
+            });
+
+            const treeData = Object.values(treeRoot.children);
+            console.log("Tree data constructed:", treeData);
+            return treeData;
+        }
+
+        function renderNodeAsLi(node, mustSupportPathsSet, resourceType, level = 0) {
+            if (!node || !node.element) {
+                console.warn("Skipping render for invalid node:", node);
+                return '';
+            }
+            const el = node.element;
+            const path = el.path || 'N/A';
+            const id = el.id || null;
+            const sliceName = el.sliceName || null;
+            const min = el.min !== undefined ? el.min : '';
+            const max = el.max || '';
+            const short = el.short || '';
+            const definition = el.definition || '';
+
+            console.log(`Rendering node: path=${path}, id=${id}, sliceName=${sliceName}`);
+
+            let isMustSupport = mustSupportPathsSet.has(path) || (id && mustSupportPathsSet.has(id));
+            // Blue tick boxes only for optional extensions with must-support sub-elements
+            let isOptional = min == 0 && isMustSupport && el.type && el.type.some(t => t.code === 'Extension') && path.includes('extension');
+            const liClass = isMustSupport ? 'list-group-item py-1 px-2 list-group-item-warning' : 'list-group-item py-1 px-2';
+            const mustSupportDisplay = isMustSupport ? `<i class="bi bi-check-circle-fill ${isOptional ? 'text-info' : 'text-warning'} ms-1" title="${isOptional ? 'Optional Must Support Extension' : 'Must Support'}"></i>` : '';
+            const hasChildren = Object.keys(node.children).length > 0;
+            const collapseId = `collapse-${path.replace(/[\.\:\/\[\]\(\)]/g, '-')}`;
+            const padding = level * 20;
+            const pathStyle = `padding-left: ${padding}px; white-space: nowrap;`;
+
+            let typeString = 'N/A';
+            if (el.type && el.type.length > 0) {
+                typeString = el.type.map(t => {
+                    let s = t.code || '';
+                    let profiles = t.targetProfile || t.profile || [];
+                    if (profiles.length > 0) {
+                        const targetTypes = profiles.map(p => (p || '').split('/').pop()).filter(Boolean).join(', ');
+                        if (targetTypes) {
+                            s += `(<span class="text-muted fst-italic" title="${profiles.join(', ')}">${targetTypes}</span>)`;
+                        }
+                    }
+                    return s;
+                }).join(' | ');
+            }
+
+            let childrenHtml = '';
+            if (hasChildren) {
+                childrenHtml += `<ul class="collapse list-group list-group-flush structure-subtree" id="${collapseId}">`;
+                Object.values(node.children).sort((a, b) => (a.element?.path ?? a.name).localeCompare(b.element?.path ?? b.name)).forEach(childNode => {
+                    childrenHtml += renderNodeAsLi(childNode, mustSupportPathsSet, resourceType, level + 1);
+                });
+                childrenHtml += `</ul>`;
+            }
+
+            let itemHtml = `<li class="${liClass}">`;
+            itemHtml += `<div class="row gx-2 align-items-center ${hasChildren ? 'collapse-toggle' : ''}" ${hasChildren ? `data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" aria-expanded="false" aria-controls="${collapseId}"` : ''}>`;
+            itemHtml += `<div class="col-lg-4 col-md-3 text-truncate" style="${pathStyle}">`;
+            itemHtml += `<span style="display: inline-block; width: 1.2em; text-align: center;">`;
+            if (hasChildren) {
+                itemHtml += `<i class="bi bi-chevron-right small toggle-icon"></i>`;
+            }
+            itemHtml += `</span>`;
+            itemHtml += `<code class="fw-bold ms-1" title="${path}">${node.name}</code>`;
+            itemHtml += `</div>`;
+            itemHtml += `<div class="col-lg-1 col-md-1 text-center text-muted small"><code>${min}..${max}</code></div>`;
+            itemHtml += `<div class="col-lg-3 col-md-3 text-truncate small">${typeString}</div>`;
+            itemHtml += `<div class="col-lg-1 col-md-1 text-center">${mustSupportDisplay}</div>`;
+            let descriptionTooltipAttrs = '';
+            if (definition) {
+                const escapedDefinition = definition
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&apos;')
+                    .replace(/\n/g, ' ');
+                descriptionTooltipAttrs = `data-bs-toggle="tooltip" data-bs-placement="top" title="${escapedDefinition}"`;
+            }
+            itemHtml += `<div class="col-lg-3 col-md-4 text-muted text-truncate small" ${descriptionTooltipAttrs}>${short || (definition ? '(definition only)' : '')}</div>`;
+            itemHtml += `</div>`;
+            itemHtml += childrenHtml;
+            itemHtml += `</li>`;
+            return itemHtml;
+        }
+
+        function renderStructureTree(elements, mustSupportPaths, resourceType) {
+            if (!elements || elements.length === 0) {
+                structureDisplay.innerHTML = '<p class="text-muted"><em>No elements found in Structure Definition.</em></p>';
+                return;
+            }
+
+            const mustSupportPathsSet = new Set(mustSupportPaths);
+            console.log("Must Support Paths Set for Tree:", mustSupportPathsSet);
+
+            let html = '<p><small>' +
+                '<i class="bi bi-check-circle-fill text-warning ms-1"></i> = Must Support (yellow row)<br>' +
+                '<i class="bi bi-check-circle-fill text-info ms-1"></i> = Optional Must Support Extension (blue icon)</small></p>';
+            html += `<div class="row gx-2 small fw-bold border-bottom mb-1 d-none d-md-flex"><div class="col-lg-4 col-md-3">Path</div><div class="col-lg-1 col-md-1 text-center">Card.</div><div class="col-lg-3 col-md-3">Type(s)</div><div class="col-lg-1 col-md-1 text-center">Status</div><div class="col-lg-3 col-md-4">Description</div></div>`;
+            html += '<ul class="list-group list-group-flush structure-tree-root">';
+
+            const treeData = buildTreeData(elements);
+            treeData.sort((a, b) => (a.element?.path ?? a.name).localeCompare(b.element?.path ?? b.name));
+            treeData.forEach(rootNode => {
+                html += renderNodeAsLi(rootNode, mustSupportPathsSet, resourceType, 0);
+            });
+            html += '</ul>';
+
+            structureDisplay.innerHTML = html;
+
+            const tooltipTriggerList = [].slice.call(structureDisplay.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.forEach(tooltipTriggerEl => {
+                if (tooltipTriggerEl.getAttribute('title')) {
+                    new bootstrap.Tooltip(tooltipTriggerEl);
+                }
+            });
+
+            structureDisplay.querySelectorAll('.collapse-toggle').forEach(toggleEl => {
+                const collapseTargetId = toggleEl.getAttribute('data-bs-target');
+                if (!collapseTargetId) return;
+                const collapseEl = document.querySelector(collapseTargetId);
+                const toggleIcon = toggleEl.querySelector('.toggle-icon');
+
+                if (collapseEl && toggleIcon) {
+                    collapseEl.classList.remove('show');
+                    toggleIcon.classList.remove('bi-chevron-down');
+                    toggleIcon.classList.add('bi-chevron-right');
+
+                    toggleEl.addEventListener('click', event => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const isCurrentlyShown = collapseEl.classList.contains('show');
+                        toggleIcon.classList.toggle('bi-chevron-right', isCurrentlyShown);
+                        toggleIcon.classList.toggle('bi-chevron-down', !isCurrentlyShown);
+                    });
+
+                    collapseEl.addEventListener('show.bs.collapse', () => {
+                        toggleIcon.classList.remove('bi-chevron-right');
+                        toggleIcon.classList.add('bi-chevron-down');
+                    });
+                    collapseEl.addEventListener('hide.bs.collapse', () => {
+                        toggleIcon.classList.remove('bi-chevron-down');
+                        toggleIcon.classList.add('bi-chevron-right');
+                    });
+                }
+            });
+        }
+    } catch (e) {
+        console.error("JavaScript error in cp_view_processed_ig.html:", e);
+        const body = document.querySelector('body');
+        if (body) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'alert alert-danger m-3';
+            errorDiv.textContent = 'A critical error occurred while initializing the page view. Please check the console for details.';
+            body.insertBefore(errorDiv, body.firstChild);
+        }
+    }
+});
+</script>
+
+{% endblock %}
