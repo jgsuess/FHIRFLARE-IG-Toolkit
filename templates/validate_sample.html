@@ -27,11 +27,11 @@
                         Select a package from the list below or enter a new one (e.g., <code>hl7.fhir.us.core</code>).
                     </small>
                     <div class="mt-2">
-                        <select class="form-select" id="packageSelect" name="packageSelect" onchange="updatePackageFields(this)">
+                        <select class="form-select" id="packageSelect" onchange="updatePackageFields(this)">
                             <option value="">-- Select a Package --</option>
                             {% if packages %}
                                 {% for pkg in packages %}
-                                    <option value="{{ pkg.id }}">{{ pkg.text }}</option>
+                                    <option value="{{ pkg.name }}#{{ pkg.version }}">{{ pkg.name }}#{{ pkg.version }}</option>
                                 {% endfor %}
                             {% else %}
                                 <option value="" disabled>No packages available</option>
@@ -39,14 +39,14 @@
                         </select>
                     </div>
                     <label for="{{ form.package_name.id }}" class="form-label">Package Name</label>
-                    {{ form.package_name(class="form-control") }}
+                    {{ form.package_name(class="form-control", id=form.package_name.id) }}
                     {% for error in form.package_name.errors %}
                         <div class="text-danger">{{ error }}</div>
-                    {% endfor %}                    
+                    {% endfor %}
                 </div>
                 <div class="mb-3">
                     <label for="{{ form.version.id }}" class="form-label">Package Version</label>
-                    {{ form.version(class="form-control") }}
+                    {{ form.version(class="form-control", id=form.version.id) }}
                     {% for error in form.version.errors %}
                         <div class="text-danger">{{ error }}</div>
                     {% endfor %}
@@ -125,21 +125,31 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('validationForm');
-    const sampleInput = document.getElementById('{{ form.sample_input.id }}');
     const packageSelect = document.getElementById('packageSelect');
     const packageNameInput = document.getElementById('{{ form.package_name.id }}');
     const versionInput = document.getElementById('{{ form.version.id }}');
+
+    // Debug DOM elements
+    console.log('Package Select:', packageSelect ? 'Found' : 'Missing');
+    console.log('Package Name Input:', packageNameInput ? 'Found' : 'Missing');
+    console.log('Version Input:', versionInput ? 'Found' : 'Missing');
 
     // Update package_name and version fields from dropdown
     function updatePackageFields(select) {
         const value = select.value;
         console.log('Selected package:', value);
+
+        if (!packageNameInput || !versionInput) {
+            console.error('Input fields not found');
+            return;
+        }
+
         if (value) {
-            const parts = value.split('#');
-            if (parts.length === 2 && parts[0] && parts[1]) {
-                packageNameInput.value = parts[0];
-                versionInput.value = parts[1];
+            const [name, version] = value.split('#');
+            if (name && version) {
+                packageNameInput.value = name;
+                versionInput.value = version;
+                console.log('Updated fields:', { packageName: name, version });
             } else {
                 console.warn('Invalid package format:', value);
                 packageNameInput.value = '';
@@ -148,32 +158,43 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             packageNameInput.value = '';
             versionInput.value = '';
+            console.log('Cleared fields: no package selected');
         }
     }
 
-    // Initialize dropdown with current form values
-    if (packageNameInput.value && versionInput.value) {
+    // Initialize dropdown based on form values
+    if (packageNameInput && versionInput && packageNameInput.value && versionInput.value) {
         const currentValue = `${packageNameInput.value}#${versionInput.value}`;
-        const option = packageSelect.querySelector(`option[value="${currentValue}"]`);
-        if (option) {
+        if (packageSelect.querySelector(`option[value="${currentValue}"]`)) {
             packageSelect.value = currentValue;
+            console.log('Initialized dropdown with:', currentValue);
         }
+    }
+
+    // Debug dropdown options
+    console.log('Dropdown options:', Array.from(packageSelect.options).map(opt => opt.value));
+
+    // Attach event listener explicitly
+    if (packageSelect) {
+        packageSelect.addEventListener('change', function() {
+            updatePackageFields(this);
+        });
     }
 
     // Client-side JSON validation preview
-    sampleInput.addEventListener('input', function() {
-        try {
-            JSON.parse(this.value);
-            this.classList.remove('is-invalid');
-            this.classList.add('is-valid');
-        } catch (e) {
-            this.classList.remove('is-valid');
-            this.classList.add('is-invalid');
-        }
-    });
-
-    // Debug dropdown options
-    console.log('Dropdown options:', Array.from(packageSelect.options).map(opt => ({value: opt.value, text: opt.textContent})));
+    const sampleInput = document.getElementById('{{ form.sample_input.id }}');
+    if (sampleInput) {
+        sampleInput.addEventListener('input', function() {
+            try {
+                JSON.parse(this.value);
+                this.classList.remove('is-invalid');
+                this.classList.add('is-valid');
+            } catch (e) {
+                this.classList.remove('is-valid');
+                this.classList.add('is-invalid');
+            }
+        });
+    }
 });
 </script>
 {% endblock %}

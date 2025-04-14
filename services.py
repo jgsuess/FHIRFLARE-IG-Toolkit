@@ -22,7 +22,7 @@ DOWNLOAD_DIR_NAME = "fhir_packages"
 CANONICAL_PACKAGE = ("hl7.fhir.r4.core", "4.0.1")
 CANONICAL_PACKAGE_ID = f"{CANONICAL_PACKAGE[0]}#{CANONICAL_PACKAGE[1]}"
 
-# Define standard FHIR R4 base types (used selectively)
+# Define standard FHIR R4 base types
 FHIR_R4_BASE_TYPES = {
     "Account", "ActivityDefinition", "AdministrableProductDefinition", "AdverseEvent", "AllergyIntolerance",
     "Appointment", "AppointmentResponse", "AuditEvent", "Basic", "Binary", "BiologicallyDerivedProduct",
@@ -111,13 +111,7 @@ def construct_metadata_filename(name, version):
     return f"{sanitize_filename_part(name)}-{sanitize_filename_part(version)}.metadata.json"
 
 def parse_package_filename(filename):
-    """
-    Parses a standard FHIR package filename (e.g., name-version.tgz)
-    into package name and version. Handles common variations.
-    Returns (name, version) tuple, or (None, None) if parsing fails.
-    """
-    name = None
-    version = None
+    """Parses a standard FHIR package filename into name and version."""
     if not filename or not filename.endswith('.tgz'):
         logger.debug(f"Filename '{filename}' does not end with .tgz")
         return None, None
@@ -133,20 +127,15 @@ def parse_package_filename(filename):
             return name, version
         else:
             last_hyphen_index = base_name.rfind('-', 0, last_hyphen_index)
-    logger.warning(f"Could not confidently parse version from '{filename}'. Treating '{base_name}' as name.")
+    logger.warning(f"Could not parse version from '{filename}'. Treating '{base_name}' as name.")
     name = base_name.replace('_', '.')
     version = ""
     return name, version
 
 def find_and_extract_sd(tgz_path, resource_identifier):
-    """
-    Helper to find and extract StructureDefinition json from a given tgz path.
-    Matches by resource ID, Name, or Type defined within the SD file.
-    Returns (sd_data, found_path_in_tar) or (None, None).
-    """
+    """Helper to find and extract StructureDefinition json from a tgz path."""
     sd_data = None
     found_path = None
-    logger = logging.getLogger(__name__)
     if not tgz_path or not os.path.exists(tgz_path):
         logger.error(f"File not found in find_and_extract_sd: {tgz_path}")
         return None, None
@@ -207,7 +196,7 @@ def find_and_extract_sd(tgz_path, resource_identifier):
         logger.error(f"Unexpected error in find_and_extract_sd for {tgz_path}: {e}", exc_info=True)
         raise
     return sd_data, found_path
-
+    
 # --- Metadata Saving/Loading ---
 def save_package_metadata(name, version, dependency_mode, dependencies, complies_with_profiles=None, imposed_profiles=None):
     """Saves dependency mode, imported dependencies, and profile relationships as metadata."""
@@ -371,7 +360,6 @@ def process_package_file(tgz_path):
 
                         if must_support is True:
                             if element_id and element_path:
-                                # Use id for sliced elements to ensure uniqueness
                                 ms_path = element_id if slice_name else element_path
                                 ms_paths_in_this_sd.add(ms_path)
                                 has_ms_in_this_sd = True
@@ -432,7 +420,6 @@ def process_package_file(tgz_path):
                         resource_type = data.get('resourceType')
                         if not resource_type: continue
 
-                        # Prioritize meta.profile matches (from oldest version for reliability)
                         profile_meta = data.get('meta', {}).get('profile', [])
                         found_profile_match = False
                         if profile_meta and isinstance(profile_meta, list):
@@ -446,11 +433,10 @@ def process_package_file(tgz_path):
                                         break
                                     elif profile_url in resource_info:
                                         associated_key = profile_url
-                                        found_profile_match = True
+                                        personally_match = True
                                         logger.debug(f"Example {member.name} associated with profile {associated_key} via meta.profile")
                                         break
 
-                        # Fallback to base type
                         if not found_profile_match:
                             key_to_use = resource_type
                             if key_to_use not in resource_info:
@@ -459,7 +445,6 @@ def process_package_file(tgz_path):
                             logger.debug(f"Example {member.name} associated with resource type {associated_key}")
                         referenced_types.add(resource_type)
                     else:
-                        # Handle non-JSON examples (from oldest version)
                         guessed_type = base_filename_lower.split('-')[0].capitalize()
                         guessed_profile_id = base_filename_lower.split('-')[0]
                         key_to_use = None
@@ -574,16 +559,12 @@ def process_package_file(tgz_path):
 
 # --- Validation Functions ---
 def navigate_fhir_path(resource, path, extension_url=None):
-    """
-    Navigates a FHIR resource using a FHIRPath-like expression.
-    Returns the value(s) at the specified path or None if not found.
-    """
+    """Navigates a FHIR resource using a FHIRPath-like expression."""
     if not resource or not path:
         return None
     parts = path.split('.')
     current = resource
     for part in parts:
-        # Handle array indexing (e.g., element[0])
         match = re.match(r'^(\w+)\[(\d+)\]$', part)
         if match:
             key, index = match.groups()
@@ -596,21 +577,16 @@ def navigate_fhir_path(resource, path, extension_url=None):
             else:
                 return None
         else:
-            # Handle regular path components
             if isinstance(current, dict) and part in current:
                 current = current[part]
             else:
                 return None
-    # Handle extension filtering
     if extension_url and isinstance(current, list):
         current = [item for item in current if item.get('url') == extension_url]
     return current
 
 def validate_resource_against_profile(package_name, version, resource, include_dependencies=True):
-    """
-    Validates a FHIR resource against a StructureDefinition in the specified package.
-    Returns a dict with 'valid', 'errors', and 'warnings'.
-    """
+    """Validates a FHIR resource against a StructureDefinition in the specified package."""
     logger.debug(f"Validating resource {resource.get('resourceType')} against {package_name}#{version}")
     result = {'valid': True, 'errors': [], 'warnings': []}
     download_dir = _get_download_dir()
@@ -629,14 +605,13 @@ def validate_resource_against_profile(package_name, version, resource, include_d
     # Basic validation: check required elements and Must Support
     elements = sd_data.get('snapshot', {}).get('element', [])
     for element in elements:
+        path = element.get('path')
         if element.get('min', 0) > 0:
-            path = element.get('path')
             value = navigate_fhir_path(resource, path)
             if value is None or (isinstance(value, list) and not value):
                 result['valid'] = False
                 result['errors'].append(f"Required element {path} missing")
         if element.get('mustSupport', False):
-            path = element.get('path')
             value = navigate_fhir_path(resource, path)
             if value is None or (isinstance(value, list) and not value):
                 result['warnings'].append(f"Must Support element {path} missing or empty")
@@ -644,10 +619,7 @@ def validate_resource_against_profile(package_name, version, resource, include_d
     return result
 
 def validate_bundle_against_profile(package_name, version, bundle, include_dependencies=True):
-    """
-    Validates a FHIR Bundle against profiles in the specified package.
-    Returns a dict with 'valid', 'errors', 'warnings', and per-resource 'results'.
-    """
+    """Validates a FHIR Bundle against profiles in the specified package."""
     logger.debug(f"Validating bundle against {package_name}#{version}")
     result = {
         'valid': True,
@@ -674,6 +646,74 @@ def validate_bundle_against_profile(package_name, version, bundle, include_depen
         result['warnings'].extend(validation_result['warnings'])
 
     return result
+
+# --- Structure Definition Retrieval ---
+def get_structure_definition(package_name, version, resource_type):
+    """Fetches StructureDefinition with slicing support."""
+    download_dir = _get_download_dir()
+    if not download_dir:
+        logger.error("Could not get download directory.")
+        return {'error': 'Download directory not accessible'}
+
+    tgz_filename = construct_tgz_filename(package_name, version)
+    tgz_path = os.path.join(download_dir, tgz_filename)
+    sd_data, sd_path = find_and_extract_sd(tgz_path, resource_type)
+
+    if not sd_data:
+        # Fallback to canonical package
+        canonical_tgz = construct_tgz_filename(*CANONICAL_PACKAGE)
+        canonical_path = os.path.join(download_dir, canonical_tgz)
+        sd_data, sd_path = find_and_extract_sd(canonical_path, resource_type)
+        if sd_data:
+            logger.info(f"Using canonical SD for {resource_type} from {canonical_path}")
+            elements = sd_data.get('snapshot', {}).get('element', [])
+            return {
+                'elements': elements,
+                'must_support_paths': [el['path'] for el in elements if el.get('mustSupport', False)],
+                'slices': [],
+                'fallback_used': True,
+                'source_package': f"{CANONICAL_PACKAGE[0]}#{CANONICAL_PACKAGE[1]}"
+            }
+        logger.error(f"No StructureDefinition found for {resource_type} in {package_name}#{version} or canonical package")
+        return {'error': f"No StructureDefinition for {resource_type}"}
+
+    elements = sd_data.get('snapshot', {}).get('element', [])
+    must_support_paths = []
+    slices = []
+
+    # Process elements for must-support and slicing
+    for element in elements:
+        path = element.get('path', '')
+        element_id = element.get('id', '')
+        slice_name = element.get('sliceName')
+        if element.get('mustSupport', False):
+            ms_path = element_id if slice_name else path
+            must_support_paths.append(ms_path)
+        if 'slicing' in element:
+            slice_info = {
+                'path': path,
+                'sliceName': slice_name,
+                'discriminator': element.get('slicing', {}).get('discriminator', []),
+                'nested_slices': []
+            }
+            # Find nested slices
+            for sub_element in elements:
+                if sub_element['path'].startswith(path + '.') and 'slicing' in sub_element:
+                    sub_slice_name = sub_element.get('sliceName')
+                    slice_info['nested_slices'].append({
+                        'path': sub_element['path'],
+                        'sliceName': sub_slice_name,
+                        'discriminator': sub_element.get('slicing', {}).get('discriminator', [])
+                    })
+            slices.append(slice_info)
+
+    logger.debug(f"StructureDefinition for {resource_type}: {len(elements)} elements, {len(must_support_paths)} must-support paths, {len(slices)} slices")
+    return {
+        'elements': elements,
+        'must_support_paths': sorted(list(set(must_support_paths))),
+        'slices': slices,
+        'fallback_used': False
+    }
 
 # --- Other Service Functions ---
 def _build_package_index(download_dir):
@@ -721,7 +761,7 @@ def _load_definition(details, download_dir):
     """Loads a StructureDefinition from package details."""
     if not details:
         return None
-    tgz_path = os.path.join(download_dir, _construct_tgz_filename(details['package_name'], details['package_version']))
+    tgz_path = os.path.join(download_dir, construct_tgz_filename(details['package_name'], details['package_version']))
     try:
         with tarfile.open(tgz_path, "r:gz") as tar:
             member_path = f"package/{details['filename']}"
@@ -735,7 +775,9 @@ def _load_definition(details, download_dir):
     except Exception as e:
         logger.error(f"Failed to load definition {details['filename']} from {tgz_path}: {e}")
     return None
+
 def download_package(name, version):
+    """Downloads a single FHIR package."""
     download_dir = _get_download_dir()
     if not download_dir: return None, "Download dir error"
     filename = construct_tgz_filename(name, version)
@@ -760,6 +802,7 @@ def download_package(name, version):
         return None, f"File write error: {e}"
 
 def extract_dependencies(tgz_path):
+    """Extracts dependencies from package.json."""
     package_json_path = "package/package.json"
     dependencies = {}
     error_message = None
@@ -782,18 +825,14 @@ def extract_used_types(tgz_path):
     used_types = set()
     if not tgz_path or not os.path.exists(tgz_path):
         logger.error(f"Cannot extract used types: File not found at {tgz_path}")
-        return used_types # Return empty set
-
+        return used_types
     try:
         with tarfile.open(tgz_path, "r:gz") as tar:
             for member in tar:
-                # Process only JSON files within the 'package/' directory
                 if not (member.isfile() and member.name.startswith('package/') and member.name.lower().endswith('.json')):
                     continue
-                # Skip metadata files
                 if os.path.basename(member.name).lower() in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']:
                     continue
-
                 fileobj = None
                 try:
                     fileobj = tar.extractfile(member)
@@ -801,134 +840,79 @@ def extract_used_types(tgz_path):
                         content_bytes = fileobj.read()
                         content_string = content_bytes.decode('utf-8-sig')
                         data = json.loads(content_string)
-
-                        if not isinstance(data, dict): continue # Skip if not a valid JSON object
-
+                        if not isinstance(data, dict): continue
                         resource_type = data.get('resourceType')
-                        if not resource_type: continue # Skip if no resourceType
-
-                        # Add the resource type itself
+                        if not resource_type: continue
                         used_types.add(resource_type)
-
-                        # --- StructureDefinition Specific Extraction ---
                         if resource_type == 'StructureDefinition':
-                            # Add the type this SD defines/constrains
                             sd_type = data.get('type')
                             if sd_type: used_types.add(sd_type)
-                            # Add the base definition type if it's a profile
                             base_def = data.get('baseDefinition')
                             if base_def:
                                 base_type = base_def.split('/')[-1]
-                                # Avoid adding primitive types like 'Element', 'Resource' etc. if not needed
-                                if base_type and base_type[0].isupper():
-                                     used_types.add(base_type)
-
-                            # Extract types from elements (snapshot or differential)
+                                if base_type and base_type[0].isupper(): used_types.add(base_type)
                             elements = data.get('snapshot', {}).get('element', []) or data.get('differential', {}).get('element', [])
                             for element in elements:
                                 if isinstance(element, dict) and 'type' in element:
                                     for t in element.get('type', []):
-                                        # Add code (element type)
                                         code = t.get('code')
                                         if code and code[0].isupper(): used_types.add(code)
-                                        # Add targetProfile types (Reference targets)
                                         for profile_uri in t.get('targetProfile', []):
-                                             if profile_uri:
-                                                  profile_type = profile_uri.split('/')[-1]
-                                                  if profile_type and profile_type[0].isupper(): used_types.add(profile_type)
-                                # Add types from contentReference
-                                content_ref = element.get('contentReference')
-                                if content_ref and content_ref.startswith('#'):
-                                     # This usually points to another element path within the same SD
-                                     # Trying to resolve this fully can be complex.
-                                     # We might infer types based on the path referenced if needed.
-                                     pass
-
-                        # --- General Resource Type Extraction ---
+                                            if profile_uri:
+                                                profile_type = profile_uri.split('/')[-1]
+                                                if profile_type and profile_type[0].isupper(): used_types.add(profile_type)
                         else:
-                            # Look for meta.profile for referenced profiles -> add profile type
                             profiles = data.get('meta', {}).get('profile', [])
                             for profile_uri in profiles:
-                                 if profile_uri:
-                                      profile_type = profile_uri.split('/')[-1]
-                                      if profile_type and profile_type[0].isupper(): used_types.add(profile_type)
-
-                            # ValueSet: Check compose.include.system (often points to CodeSystem)
+                                if profile_uri:
+                                    profile_type = profile_uri.split('/')[-1]
+                                    if profile_type and profile_type[0].isupper(): used_types.add(profile_type)
                             if resource_type == 'ValueSet':
                                 for include in data.get('compose', {}).get('include', []):
                                     system = include.get('system')
-                                    # Heuristic: If it looks like a FHIR core codesystem URL, extract type
                                     if system and system.startswith('http://hl7.org/fhir/'):
                                         type_name = system.split('/')[-1]
-                                        # Check if it looks like a ResourceType
-                                        if type_name and type_name[0].isupper() and not type_name.startswith('sid'): # Avoid things like sid/us-ssn
-                                             used_types.add(type_name)
-                                    # Could add more heuristics for other terminology servers
-
-                            # CapabilityStatement: Check rest.resource.type and rest.resource.profile
+                                        if type_name and type_name[0].isupper() and not type_name.startswith('sid'):
+                                            used_types.add(type_name)
                             if resource_type == 'CapabilityStatement':
-                                 for rest_item in data.get('rest', []):
-                                      for resource_item in rest_item.get('resource', []):
-                                           res_type = resource_item.get('type')
-                                           if res_type and res_type[0].isupper(): used_types.add(res_type)
-                                           profile_uri = resource_item.get('profile')
-                                           if profile_uri:
-                                                profile_type = profile_uri.split('/')[-1]
-                                                if profile_type and profile_type[0].isupper(): used_types.add(profile_type)
-
-
-                            # --- Generic recursive search for 'reference' fields? ---
-                            # This could be expensive. Let's rely on SDs for now.
-                            # def find_references(obj):
-                            #     if isinstance(obj, dict):
-                            #         for k, v in obj.items():
-                            #             if k == 'reference' and isinstance(v, str):
-                            #                 ref_type = v.split('/')[0]
-                            #                 if ref_type and ref_type[0].isupper(): used_types.add(ref_type)
-                            #             else:
-                            #                 find_references(v)
-                            #     elif isinstance(obj, list):
-                            #         for item in obj:
-                            #             find_references(item)
-                            # find_references(data)
-
+                                for rest_item in data.get('rest', []):
+                                    for resource_item in rest_item.get('resource', []):
+                                        res_type = resource_item.get('type')
+                                        if res_type and res_type[0].isupper(): used_types.add(res_type)
+                                        profile_uri = resource_item.get('profile')
+                                        if profile_uri:
+                                            profile_type = profile_uri.split('/')[-1]
+                                            if profile_type and profile_type[0].isupper(): used_types.add(profile_type)
                 except json.JSONDecodeError as e:
-                    logger.warning(f"Could not parse JSON in {member.name} for used types: {e}")
+                    logger.warning(f"Could not parse JSON in {member.name}: {e}")
                 except UnicodeDecodeError as e:
-                    logger.warning(f"Could not decode {member.name} for used types: {e}")
+                    logger.warning(f"Could not decode {member.name}: {e}")
                 except Exception as e:
-                    logger.warning(f"Could not process member {member.name} for used types: {e}")
+                    logger.warning(f"Could not process member {member.name}: {e}")
                 finally:
                     if fileobj:
                         fileobj.close()
-
     except tarfile.ReadError as e:
-         logger.error(f"Tar ReadError extracting used types from {tgz_path}: {e}")
+        logger.error(f"Tar ReadError extracting used types from {tgz_path}: {e}")
     except tarfile.TarError as e:
-         logger.error(f"TarError extracting used types from {tgz_path}: {e}")
+        logger.error(f"TarError extracting used types from {tgz_path}: {e}")
     except FileNotFoundError:
-         logger.error(f"Package file not found for used type extraction: {tgz_path}")
+        logger.error(f"Package file not found: {tgz_path}")
     except Exception as e:
         logger.error(f"Error extracting used types from {tgz_path}: {e}", exc_info=True)
-
-    # Filter out potential primitives or base types that aren't resources?
-    # E.g., 'string', 'boolean', 'Element', 'BackboneElement', 'Resource'
-    core_non_resource_types = {'string', 'boolean', 'integer', 'decimal', 'uri', 'url', 'canonical',
-                               'base64Binary', 'instant', 'date', 'dateTime', 'time', 'code', 'oid', 'id',
-                               'markdown', 'unsignedInt', 'positiveInt', 'xhtml',
-                               'Element', 'BackboneElement', 'Resource', 'DomainResource', 'DataType'}
+    core_non_resource_types = {
+        'string', 'boolean', 'integer', 'decimal', 'uri', 'url', 'canonical', 'base64Binary', 'instant',
+        'date', 'dateTime', 'time', 'code', 'oid', 'id', 'markdown', 'unsignedInt', 'positiveInt', 'xhtml',
+        'Element', 'BackboneElement', 'Resource', 'DomainResource', 'DataType'
+    }
     final_used_types = {t for t in used_types if t not in core_non_resource_types and t[0].isupper()}
-
     logger.debug(f"Extracted used types from {os.path.basename(tgz_path)}: {final_used_types}")
     return final_used_types
 
-
 def map_types_to_packages(used_types, all_dependencies, download_dir):
-    """Maps used types to packages by checking .index.json files for exported types."""
+    """Maps used types to packages by checking .index.json files."""
     type_to_package = {}
     processed_types = set()
-    
-    # Load .index.json from each package to map types
     for (pkg_name, pkg_version), _ in all_dependencies.items():
         tgz_filename = construct_tgz_filename(pkg_name, pkg_version)
         tgz_path = os.path.join(download_dir, tgz_filename)
@@ -950,30 +934,25 @@ def map_types_to_packages(used_types, all_dependencies, download_dir):
                                 if sd_name in used_types:
                                     type_to_package[sd_name] = (pkg_name, pkg_version)
                                     processed_types.add(sd_name)
-                                    logger.debug(f"Mapped type '{sd_name}' to package '{pkg_name}#{pkg_version}' via .index.json")
+                                    logger.debug(f"Mapped type '{sd_name}' to package '{pkg_name}#{pkg_version}'")
         except Exception as e:
             logger.warning(f"Failed to process .index.json for {pkg_name}#{pkg_version}: {e}")
-
-    # Fallback: Use heuristic matching for unmapped types
     for t in used_types - processed_types:
         for (pkg_name, pkg_version), _ in all_dependencies.items():
             if t.lower() in pkg_name.lower():
                 type_to_package[t] = (pkg_name, pkg_version)
                 processed_types.add(t)
-                logger.debug(f"Fallback: Mapped type '{t}' to package '{pkg_name}#{pkg_version}' via name heuristic")
+                logger.debug(f"Fallback: Mapped type '{t}' to package '{pkg_name}#{pkg_version}'")
                 break
-
-    # Final fallback: Map remaining types to canonical package
     canonical_name, canonical_version = CANONICAL_PACKAGE
     for t in used_types - processed_types:
         type_to_package[t] = CANONICAL_PACKAGE
         logger.debug(f"Fallback: Mapped type '{t}' to canonical package {canonical_name}#{canonical_version}")
-
     logger.debug(f"Final type-to-package mapping: {type_to_package}")
     return type_to_package
 
 def import_package_and_dependencies(initial_name, initial_version, dependency_mode='recursive'):
-    """Orchestrates recursive download and dependency extraction based on the dependency mode."""
+    """Orchestrates recursive download and dependency extraction."""
     logger.info(f"Starting import for {initial_name}#{initial_version} with dependency_mode={dependency_mode}")
     download_dir = _get_download_dir()
     if not download_dir:
@@ -994,17 +973,14 @@ def import_package_and_dependencies(initial_name, initial_version, dependency_mo
     while pending_queue:
         name, version = pending_queue.pop(0)
         package_id_tuple = (name, version)
-
         if package_id_tuple in results['processed']:
             logger.debug(f"Skipping already processed package: {name}#{version}")
             continue
-
         logger.info(f"Processing package from queue: {name}#{version}")
         save_path, dl_error = download_package(name, version)
         if dl_error:
             results['errors'].append(f"Download failed for {name}#{version}: {dl_error}")
             continue
-
         results['downloaded'][package_id_tuple] = save_path
         dependencies, dep_error = extract_dependencies(save_path)
         if dep_error:
@@ -1015,10 +991,8 @@ def import_package_and_dependencies(initial_name, initial_version, dependency_mo
             results['errors'].append(f"Dependency extraction returned critical error for {name}#{version}.")
             results['processed'].add(package_id_tuple)
             continue
-
         results['all_dependencies'][package_id_tuple] = dependencies
         results['processed'].add(package_id_tuple)
-
         current_package_deps = []
         for dep_name, dep_version in dependencies.items():
             if isinstance(dep_name, str) and isinstance(dep_version, str) and dep_name and dep_version:
@@ -1027,22 +1001,17 @@ def import_package_and_dependencies(initial_name, initial_version, dependency_mo
                 if dep_tuple not in all_found_dependencies:
                     all_found_dependencies.add(dep_tuple)
                     results['dependencies'].append({"name": dep_name, "version": dep_version})
-
                 if dep_tuple not in queued_or_processed_lookup:
                     should_queue = False
                     if dependency_mode == 'recursive':
                         should_queue = True
                     elif dependency_mode == 'patch-canonical' and dep_tuple == CANONICAL_PACKAGE:
                         should_queue = True
-                    # Tree-shaking dependencies are handled post-loop for the initial package
                     if should_queue:
                         logger.debug(f"Adding dependency to queue ({dependency_mode}): {dep_name}#{dep_version}")
                         pending_queue.append(dep_tuple)
                         queued_or_processed_lookup.add(dep_tuple)
-
         save_package_metadata(name, version, dependency_mode, current_package_deps)
-
-        # Tree-shaking: Process dependencies for the initial package
         if dependency_mode == 'tree-shaking' and package_id_tuple == (initial_name, initial_version):
             logger.info(f"Performing tree-shaking for {initial_name}#{initial_version}")
             used_types = extract_used_types(save_path)
@@ -1052,19 +1021,16 @@ def import_package_and_dependencies(initial_name, initial_version, dependency_mo
                 if CANONICAL_PACKAGE not in tree_shaken_deps:
                     tree_shaken_deps.add(CANONICAL_PACKAGE)
                     logger.debug(f"Ensuring canonical package {CANONICAL_PACKAGE} for tree-shaking")
-
                 for dep_tuple in tree_shaken_deps:
                     if dep_tuple not in queued_or_processed_lookup:
                         logger.info(f"Queueing tree-shaken dependency: {dep_tuple[0]}#{dep_tuple[1]}")
                         pending_queue.append(dep_tuple)
                         queued_or_processed_lookup.add(dep_tuple)
-
     results['dependencies'] = [{"name": d[0], "version": d[1]} for d in all_found_dependencies]
     logger.info(f"Import finished for {initial_name}#{initial_version}. Processed: {len(results['processed'])}, Downloaded: {len(results['downloaded'])}, Errors: {len(results['errors'])}")
     return results
 
-
-# --- Standalone Test/Example Usage ---
+# --- Standalone Test ---
 if __name__ == '__main__':
     logger.info("Running services.py directly for testing.")
     class MockFlask:
