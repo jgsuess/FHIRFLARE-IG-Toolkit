@@ -320,7 +320,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     package_version: "{{ processed_ig.version }}",
                     filename: selectedFilePath
                 });
-                const exampleFetchUrl = `${exampleBaseUrl}?${exampleParams.toString()}`;
+                const exampleFetchUrl = `${exampleBaseUrl}?${structureParams.toString()}`;
                 console.log("Fetching example from:", exampleFetchUrl);
                 exampleLoading.style.display = 'block';
 
@@ -513,7 +513,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             let childrenHtml = '';
             if (hasChildren) {
-                childrenHtml += `<ul class="collapse list-group list-group-flush structure-subtree" id="${collapseId}">`;
+                childrenHtml += `<ul class="collapse list-group list-group-flush" id="${collapseId}">`;
                 Object.values(node.children).sort((a, b) => (a.element?.path ?? a.name).localeCompare(b.element?.path ?? b.name)).forEach(childNode => {
                     childrenHtml += renderNodeAsLi(childNode, mustSupportPathsSet, resourceType, level + 1);
                 });
@@ -521,7 +521,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             let itemHtml = `<li class="${liClass}">`;
-            itemHtml += `<div class="row gx-2 align-items-center ${hasChildren ? 'collapse-toggle' : ''}" ${hasChildren ? `data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" aria-expanded="false" aria-controls="${collapseId}"` : ''}>`;
+            itemHtml += `<div class="row gx-2 align-items-center ${hasChildren ? 'collapse-toggle' : ''}" ${hasChildren ? `data-collapse-id="${collapseId}" role="button" aria-expanded="false" aria-controls="${collapseId}"` : ''}>`;
             itemHtml += `<div class="col-lg-4 col-md-3 text-truncate" style="${pathStyle}">`;
             itemHtml += `<span style="display: inline-block; width: 1.2em; text-align: center;">`;
             if (hasChildren) {
@@ -582,34 +582,71 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
 
+            // Initialize collapse with manual click handling and debouncing
+            let lastClickTime = 0;
+            const debounceDelay = 200; // ms
             structureDisplay.querySelectorAll('.collapse-toggle').forEach(toggleEl => {
-                const collapseTargetId = toggleEl.getAttribute('data-bs-target');
-                if (!collapseTargetId) return;
-                const collapseEl = document.querySelector(collapseTargetId);
+                const collapseId = toggleEl.getAttribute('data-collapse-id');
+                if (!collapseId) {
+                    console.warn("No collapse ID for toggle:", toggleEl.outerHTML);
+                    return;
+                }
+                const collapseEl = document.querySelector(`#${collapseId}`);
+                if (!collapseEl) {
+                    console.warn("No collapse element found for ID:", collapseId);
+                    return;
+                }
                 const toggleIcon = toggleEl.querySelector('.toggle-icon');
+                if (!toggleIcon) {
+                    console.warn("No toggle icon for:", collapseId);
+                    return;
+                }
 
-                if (collapseEl && toggleIcon) {
-                    collapseEl.classList.remove('show');
-                    toggleIcon.classList.remove('bi-chevron-down');
-                    toggleIcon.classList.add('bi-chevron-right');
+                console.log("Initializing collapse for:", collapseId);
+                // Initialize Bootstrap Collapse
+                const bsCollapse = new bootstrap.Collapse(collapseEl, {
+                    toggle: false
+                });
 
-                    toggleEl.addEventListener('click', event => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        const isCurrentlyShown = collapseEl.classList.contains('show');
-                        toggleIcon.classList.toggle('bi-chevron-right', isCurrentlyShown);
-                        toggleIcon.classList.toggle('bi-chevron-down', !isCurrentlyShown);
-                    });
+                // Custom click handler with debounce
+                toggleEl.addEventListener('click', event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const now = Date.now();
+                    if (now - lastClickTime < debounceDelay) {
+                        console.log("Debounced click ignored for:", collapseId);
+                        return;
+                    }
+                    lastClickTime = now;
+                    console.log("Click toggle for:", collapseId, "Current show:", collapseEl.classList.contains('show'));
+                    if (collapseEl.classList.contains('show')) {
+                        bsCollapse.hide();
+                    } else {
+                        bsCollapse.show();
+                    }
+                });
 
-                    collapseEl.addEventListener('show.bs.collapse', () => {
+                // Update icon and log state
+                collapseEl.addEventListener('show.bs.collapse', event => {
+                    console.log("Show collapse triggered for:", event.target.id, "Show class:", event.target.classList.contains('show'));
+                    if (toggleIcon) {
                         toggleIcon.classList.remove('bi-chevron-right');
                         toggleIcon.classList.add('bi-chevron-down');
-                    });
-                    collapseEl.addEventListener('hide.bs.collapse', () => {
+                    }
+                });
+                collapseEl.addEventListener('hide.bs.collapse', event => {
+                    console.log("Hide collapse triggered for:", event.target.id, "Show class:", event.target.classList.contains('show'));
+                    if (toggleIcon) {
                         toggleIcon.classList.remove('bi-chevron-down');
                         toggleIcon.classList.add('bi-chevron-right');
-                    });
-                }
+                    }
+                });
+                collapseEl.addEventListener('shown.bs.collapse', event => {
+                    console.log("Shown collapse completed for:", event.target.id, "Show class:", event.target.classList.contains('show'));
+                });
+                collapseEl.addEventListener('hidden.bs.collapse', event => {
+                    console.log("Hidden collapse completed for:", event.target.id, "Show class:", event.target.classList.contains('show'));
+                });
             });
         }
     } catch (e) {
