@@ -500,12 +500,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     let part = parts[i];
                     const isChoiceElement = part.endsWith('[x]');
                     const cleanPart = part.replace(/\[\d+\]/g, '').replace('[x]', '');
-<<<<<<< Updated upstream
-                    currentPath = i === 0 ? cleanPart : `${currentPath}.${cleanPart}`;
-
-                    let nodeKey = isChoiceElement ? part : cleanPart;
-                    if (sliceName && i === parts.length - 1) {
-=======
                     const currentPathSegment = i === 0 ? cleanPart : `${parentPath}.${cleanPart}`; // Build path segment by segment
 
                     let nodeKey = cleanPart; // Usually the last part of the path segment
@@ -514,7 +508,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     // If this is the last part and it's a slice, use sliceName as the display name (nodeKey)
                     // and element.id as the unique identifier (nodeId) in the map.
                     if (sliceName && i === parts.length - 1 && id) {
->>>>>>> Stashed changes
                         nodeKey = sliceName;
                         nodeId = id; // Use the full ID like "Observation.component:systolic.value[x]"
                     } else if (isChoiceElement) {
@@ -536,36 +529,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             path: path,    // Store the full original path from element
                             id: id || nodeId // Store the element id or constructed path id
                         };
-<<<<<<< Updated upstream
-                        let parentPath = i === 0 ? 'Root' : parts.slice(0, i).join('.').replace(/\[\d+\]/g, '').replace('[x]', '');
-                        parentNode = nodeMap[parentPath] || treeRoot;
-                        parentNode.children[nodeKey] = newNode;
-                        nodeMap[currentPath] = newNode;
-                        console.log(`Created node: path=${currentPath}, name=${nodeKey}`);
-
-                        // Add modifierExtension only for DomainResource, BackboneElement, or explicitly defined
-                        if (el.path === cleanPart + '.modifierExtension' || 
-                            (el.type && el.type.some(t => t.code === 'DomainResource' || t.code === 'BackboneElement'))) {
-                            const modExtPath = `${currentPath}.modifierExtension`;
-                            const modExtNode = {
-                                children: {},
-                                element: {
-                                    path: modExtPath,
-                                    id: modExtPath,
-                                    short: 'Extensions that cannot be ignored',
-                                    definition: 'May be used to represent additional information that modifies the understanding of the element.',
-                                    min: 0,
-                                    max: '*',
-                                    type: [{ code: 'Extension' }],
-                                    isModifier: true
-                                },
-                                name: 'modifierExtension',
-                                path: modExtPath
-                            };
-                            newNode.children['modifierExtension'] = modExtNode;
-                            nodeMap[modExtPath] = modExtNode;
-                            console.log(`Added modifierExtension: path=${modExtPath}`);
-=======
 
                         // Ensure parent exists before adding child
                         if (parentNode) {
@@ -574,7 +537,6 @@ document.addEventListener('DOMContentLoaded', function() {
                            // console.log(`Created node: nodeId=${nodeId}, name=${nodeKey}, parentPath=${parentPath}`); // DEBUG
                         } else {
                             console.warn(`Parent node not found for path: ${parentPath} when creating ${nodeId}`);
->>>>>>> Stashed changes
                         }
                     }
 
