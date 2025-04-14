@@ -384,8 +384,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     const isChoiceElement = part.endsWith('[x]');
                     const cleanPart = part.replace(/\[\d+\]/g, '').replace('[x]', '');
                     currentPath = i === 0 ? cleanPart : `${currentPath}.${cleanPart}`;
-
                     let nodeKey = isChoiceElement ? part : cleanPart;
+
+                    // Handle slices using id for accurate parent lookup
                     if (sliceName && i === parts.length - 1) {
                         nodeKey = sliceName;
                         currentPath = id || currentPath;
@@ -399,12 +400,24 @@ document.addEventListener('DOMContentLoaded', function() {
                             path: currentPath
                         };
                         let parentPath = i === 0 ? 'Root' : parts.slice(0, i).join('.').replace(/\[\d+\]/g, '').replace('[x]', '');
+                        // Adjust parentPath for slices using id
+                        if (id && id.includes(':')) {
+                            const idParts = id.split('.');
+                            const sliceIndex = idParts.findIndex(p => p.includes(':'));
+                            if (sliceIndex >= 0 && sliceIndex < i) {
+                                const sliceIdPrefix = idParts.slice(0, sliceIndex + 1).join('.');
+                                const sliceNode = elements.find(e => e.id === sliceIdPrefix);
+                                if (sliceNode && sliceNode.sliceName) {
+                                    parentPath = sliceIdPrefix;
+                                }
+                            }
+                        }
                         parentNode = nodeMap[parentPath] || treeRoot;
                         parentNode.children[nodeKey] = newNode;
                         nodeMap[currentPath] = newNode;
-                        console.log(`Created node: path=${currentPath}, name=${nodeKey}`);
+                        console.log(`Created node: path=${currentPath}, name=${nodeKey}, parentPath=${parentPath}`);
 
-                        // Add modifierExtension only for DomainResource, BackboneElement, or explicitly defined
+                        // Add modifierExtension for DomainResource, BackboneElement, or explicitly defined
                         if (el.path === cleanPart + '.modifierExtension' || 
                             (el.type && el.type.some(t => t.code === 'DomainResource' || t.code === 'BackboneElement'))) {
                             const modExtPath = `${currentPath}.modifierExtension`;
