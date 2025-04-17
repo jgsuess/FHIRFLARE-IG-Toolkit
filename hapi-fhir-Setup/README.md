@@ -1,4 +1,4 @@
-# Application Build and Run Guide
+# Application Build and Run Guide - MANUAL STEPS
 
 This guide outlines the steps to set up, build, and run the application, including the HAPI FHIR server component and the rest of the application managed via Docker Compose.
 
@@ -22,10 +22,12 @@ First, clone the HAPI FHIR JPA Server Starter project and build the server appli
 
 
 # Step 1: Clone the repository
-git clone [https://github.com/hapifhir/hapi-fhir-jpaserver-starter.git](https://github.com/hapifhir/hapi-fhir-jpaserver-starter.git) hapi-fhir-jpaserver
+git clone https://github.com/hapifhir/hapi-fhir-jpaserver-starter.git hapi-fhir-jpaserver hapi-fhir-jpaserver
 
 # Navigate into the cloned directory
 cd hapi-fhir-jpaserver
+
+copy the folder from hapi-fhir-setup/target/classes/application.yaml to the hapi-fhir-jpaserver/target/classes/application.yaml folder created above
 
 # Step 2: Build the HAPI server package (skipping tests, using 'boot' profile)
 # This creates the runnable WAR file in the 'target/' directory
