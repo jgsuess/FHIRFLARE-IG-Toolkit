@@ -52,63 +52,72 @@ echo Current directory: %CD%
 echo.
 
 REM --- Step 3: Build the HAPI server using Maven ---
-echo Building HAPI server with Maven (this might take a while)...
+echo ===> Starting Maven build (Step 3)...
 REM Ensure mvn is in your system PATH
-mvn clean package -DskipTests=true -Pboot
+REM Using 'cmd /c "..."' to run Maven in a separate cmd instance
+cmd /c "mvn clean package -DskipTests=true -Pboot"
+REM Removed period from the end of the next echo statement to avoid syntax error
+echo ===> Maven command finished (executed via cmd /c) Checking error level
+REM Note: Error level check after cmd /c might reflect the exit code of cmd.exe itself,
+REM but typically it passes through the error level of the command run within it (mvn).
 if errorlevel 1 (
-    echo ERROR: Maven build failed. Check Maven installation and project configuration.
+    echo ERROR: Maven build failed or cmd \c failed
+    echo Check Maven installation and project configuration. Error
     cd ..
     goto :error
 )
-echo Maven build completed successfully.
+echo Maven build completed successfully. ErrorLevel: %errorlevel%
 echo.
 
 REM --- Step 4: Copy the configuration file ---
+echo ===> Starting file copy (Step 4)...
 REM Assumes the source file exists at ..\hapi-fhir-setup\target\classes\application.yaml relative to the script's location
 REM Copies it into the target\classes directory created by the Maven build.
 echo Copying configuration file...
 echo Source: %SOURCE_CONFIG_PATH%
 echo Destination: target\classes\%CONFIG_FILE%
 xcopy "%SOURCE_CONFIG_PATH%" "target\classes\" /Y /I
+echo ===> xcopy command finished. Checking error level...
 if errorlevel 1 (
-    echo WARNING: Failed to copy configuration file. Check if the source file exists at the expected location (%SOURCE_CONFIG_PATH%). The script will continue, but the server might use default configuration.
+    echo WARNING: Failed to copy configuration file. Check if the source file exists at the expected location!
+    echo The script will continue, but the server might use default configuration.
     REM Decide if this should be a fatal error (goto :error) or just a warning
     REM goto :error
 ) else (
-    echo Configuration file copied successfully.
+    echo Configuration file copied successfully. ErrorLevel: %errorlevel%
 )
 echo.
 
 
 REM --- Step 5: Navigate back to the parent directory ---
-echo Changing directory back to the parent directory...
+echo ===> Changing directory back (Step 5)...
 cd ..
 if errorlevel 1 (
-    echo ERROR: Failed to change back to the parent directory.
+    echo ERROR: Failed to change back to the parent directory. ErrorLevel: %errorlevel%
     goto :error
 )
 echo Current directory: %CD%
 echo.
 
 REM --- Step 6: Build Docker images ---
-echo Building Docker images (using docker-compose)...
+echo ===> Starting Docker build (Step 6)...
 REM Ensure docker-compose is in your system PATH
 docker-compose build --no-cache
 if errorlevel 1 (
-    echo ERROR: Docker Compose build failed. Check Docker installation and docker-compose.yml file.
+    echo ERROR: Docker Compose build failed. Check Docker installation and docker-compose.yml file. ErrorLevel: %errorlevel%
     goto :error
 )
-echo Docker images built successfully.
+echo Docker images built successfully. ErrorLevel: %errorlevel%
 echo.
 
 REM --- Step 7: Start Docker containers ---
-echo Starting Docker containers in detached mode (using docker-compose)...
+echo ===> Starting Docker containers (Step 7)...
 docker-compose up -d
 if errorlevel 1 (
-    echo ERROR: Docker Compose up failed. Check Docker installation and container configurations.
+    echo ERROR: Docker Compose up failed. Check Docker installation and container configurations. ErrorLevel: %errorlevel%
     goto :error
 )
-echo Docker containers started successfully.
+echo Docker containers started successfully. ErrorLevel: %errorlevel%
 echo.
 
 echo ====================================
