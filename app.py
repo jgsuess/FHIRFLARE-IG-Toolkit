@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 import datetime
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response, current_app
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response, current_app, session, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
@@ -13,7 +13,9 @@ import requests
 import re
 import services  # Restore full module import
 from services import services_bp  # Keep Blueprint import
-from forms import IgImportForm, ValidationForm
+from forms import IgImportForm, ValidationForm, FSHConverterForm
+from wtforms import SubmitField
+import tempfile
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -27,6 +29,7 @@ app.config['FHIR_PACKAGES_DIR'] = '/app/instance/fhir_packages'
 app.config['API_KEY'] = os.environ.get('API_KEY', 'your-fallback-api-key-here')
 app.config['VALIDATE_IMPOSED_PROFILES'] = True
 app.config['DISPLAY_PROFILE_RELATIONSHIPS'] = True
+app.config['UPLOAD_FOLDER'] = '/app/static/uploads'  # For GoFSH output
 
 # Ensure directories exist and are writable
 instance_path = '/app/instance'
@@ -40,6 +43,7 @@ try:
     logger.debug(f"Flask instance folder path: {instance_folder_path}")
     os.makedirs(instance_folder_path, exist_ok=True)
     os.makedirs(packages_path, exist_ok=True)
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     logger.debug(f"Directories created/verified: Instance: {instance_folder_path}, Packages: {packages_path}")
 except Exception as e:
     logger.error(f"Failed to create/verify directories: {e}", exc_info=True)
@@ -890,6 +894,129 @@ def create_db():
 
 with app.app_context():
     create_db()
+
+
+class FhirRequestForm(FlaskForm):
+    submit = SubmitField('Send Request')
+
+@app.route('/fhir')
+def fhir_ui():
+    form = FhirRequestForm()
+    return render_template('fhir_ui.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+
+@app.route('/fhir-ui-operations')
+def fhir_ui_operations():
+    form = FhirRequestForm()
+    return render_template('fhir_ui_operations.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+
+@app.route('/fhir/<path:subpath>', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def proxy_hapi(subpath):
+    # Clean subpath to remove r4/, fhir/, leading/trailing slashes
+    clean_subpath = subpath.replace('r4/', '').replace('fhir/', '').strip('/')
+    hapi_url = f"http://localhost:8080/fhir/{clean_subpath}" if clean_subpath else "http://localhost:8080/fhir"
+    headers = {k: v for k, v in request.headers.items() if k != 'Host'}
+    logger.debug(f"Proxying request: {request.method} {hapi_url}")
+    try:
+        response = requests.request(
+            method=request.method,
+            url=hapi_url,
+            headers=headers,
+            data=request.get_data(),
+            cookies=request.cookies,
+            allow_redirects=False
+        )
+        response.raise_for_status()
+        # Strip hop-by-hop headers to avoid chunked encoding issues
+        response_headers = {
+            k: v for k, v in response.headers.items()
+            if k.lower() not in (
+                'transfer-encoding', 'connection', 'content-encoding',
+                'content-length', 'keep-alive', 'proxy-authenticate',
+                'proxy-authorization', 'te', 'trailers', 'upgrade'
+            )
+        }
+        # Ensure Content-Length matches the actual body
+        response_headers['Content-Length'] = str(len(response.content))
+        logger.debug(f"Response: {response.status_code} {response.reason}")
+        return response.content, response.status_code, response_headers.items()
+    except requests.RequestException as e:
+        logger.error(f"Proxy error: {str(e)}")
+        return jsonify({'error': str(e)}), response.status_code if 'response' in locals() else 500
+
+@app.route('/fsh-converter', methods=['GET', 'POST'])
+def fsh_converter():
+    form = FSHConverterForm()
+    error = None
+    fsh_output = None
+    
+    # Populate package choices
+    packages = []
+    packages_dir = app.config['FHIR_PACKAGES_DIR']
+    if os.path.exists(packages_dir):
+        for filename in os.listdir(packages_dir):
+            if filename.endswith('.tgz'):
+                try:
+                    with tarfile.open(os.path.join(packages_dir, filename), 'r:gz') as tar:
+                        package_json = tar.extractfile('package/package.json')
+                        if package_json:
+                            pkg_info = json.load(package_json)
+                            name = pkg_info.get('name')
+                            version = pkg_info.get('version')
+                            if name and version:
+                                packages.append((f"{name}#{version}", f"{name}#{version}"))
+                except Exception as e:
+                    logger.warning(f"Error reading package {filename}: {e}")
+                    continue
+    form.package.choices = [('', 'None')] + sorted(packages, key=lambda x: x[0])
+    
+    if form.validate_on_submit():
+        input_mode = form.input_mode.data
+        fhir_file = form.fhir_file.data
+        fhir_text = form.fhir_text.data
+        output_style = form.output_style.data
+        log_level = form.log_level.data
+        fhir_version = form.fhir_version.data or None
+        
+        # Process input
+        input_path, temp_dir, error = services.process_fhir_input(input_mode, fhir_file, fhir_text)
+        if error:
+            flash(error, 'error')
+            return render_template('fsh_converter.html', form=form, error=error, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+        
+        # Run GoFSH
+        output_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'fsh_output')
+        os.makedirs(output_dir, exist_ok=True)
+        fsh_output, error = services.run_gofsh(input_path, output_dir, output_style, log_level, fhir_version)
+        
+        # Clean up temporary files
+        if temp_dir and os.path.exists(temp_dir):
+            import shutil
+            shutil.rmtree(temp_dir)
+        
+        if error:
+            flash(error, 'error')
+            return render_template('fsh_converter.html', form=form, error=error, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+        
+        # Store output for download
+        session['fsh_output'] = fsh_output
+        flash('Conversion successful!', 'success')
+        return render_template('fsh_converter.html', form=form, fsh_output=fsh_output, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+    
+    return render_template('fsh_converter.html', form=form, error=error, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+
+@app.route('/download-fsh')
+def download_fsh():
+    fsh_output = session.get('fsh_output', '')
+    if not fsh_output:
+        flash('No FSH output available for download.', 'error')
+        return redirect(url_for('fsh_converter'))
+    
+    temp_file = os.path.join(app.config['UPLOAD_FOLDER'], 'output.fsh')
+    with open(temp_file, 'w', encoding='utf-8') as f:
+        f.write(fsh_output)
+    
+    return send_file(temp_file, as_attachment=True, download_name='output.fsh')
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)

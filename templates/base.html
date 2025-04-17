@@ -32,6 +32,15 @@
                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.endpoint == 'validate_sample' else '' }}" href="{{ url_for('validate_sample') }}"><i class="bi bi-check-circle me-1"></i> Validate FHIR Sample</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ 'active' if request.endpoint == 'fhir_ui' else '' }}" href="{{ url_for('fhir_ui') }}"><i class="bi bi-cloud-arrow-down me-1"></i> FHIR API Explorer</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ 'active' if request.endpoint == 'fhir_ui_operations' else '' }}" href="{{ url_for('fhir_ui_operations') }}"><i class="bi bi-gear me-1"></i> FHIR UI Operations</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ 'active' if request.endpoint == 'fsh_converter' else '' }}" href="{{ url_for('fsh_converter') }}"><i class="bi bi-file-code me-1"></i> FSH Converter</a>
+                    </li>
                 </ul>
             </div>
         </div>

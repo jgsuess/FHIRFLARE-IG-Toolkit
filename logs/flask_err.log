@@ -1,0 +1,258 @@
+DEBUG:__main__:Instance path configuration: /app/instance
+DEBUG:__main__:Database URI: sqlite:////app/instance/fhir_ig.db
+DEBUG:__main__:Packages path: /app/instance/fhir_packages
+DEBUG:__main__:Flask instance folder path: /app/instance
+DEBUG:__main__:Directories created/verified: Instance: /app/instance, Packages: /app/instance/fhir_packages
+DEBUG:__main__:Attempting to create database tables for URI: sqlite:////app/instance/fhir_ig.db
+INFO:__main__:Database tables created successfully (if they didn't exist).
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.19.0.2:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:25:30] "GET /fhir-ui-operations HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:25:30] "GET /static/FHIRFLARE.png HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:25:31] "GET /static/favicon.ico HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:25:36] "GET /fsh-converter HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:25:36] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+DEBUG:__main__:Scanning packages directory: /app/instance/fhir_packages
+DEBUG:services:Parsed 'hl7.fhir.au.base-5.1.0-preview.tgz' -> name='hl7.fhir.au.base-5.1.0', version='preview'
+DEBUG:services:Parsed 'hl7.fhir.au.core-1.1.0-preview.tgz' -> name='hl7.fhir.au.core-1.1.0', version='preview'
+DEBUG:services:Parsed 'hl7.fhir.r4.core-4.0.1.tgz' -> name='hl7.fhir.r4.core', version='4.0.1'
+DEBUG:services:Parsed 'hl7.fhir.uv.extensions.r4-5.2.0.tgz' -> name='hl7.fhir.uv.extensions.r4', version='5.2.0'
+DEBUG:services:Parsed 'hl7.fhir.uv.ipa-1.0.0.tgz' -> name='hl7.fhir.uv.ipa', version='1.0.0'
+DEBUG:services:Parsed 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz' -> name='hl7.fhir.uv.smart-app-launch', version='2.0.0'
+DEBUG:services:Parsed 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz' -> name='hl7.fhir.uv.smart-app-launch', version='2.1.0'
+DEBUG:services:Parsed 'hl7.terminology.r4-5.0.0.tgz' -> name='hl7.terminology.r4', version='5.0.0'
+DEBUG:services:Parsed 'hl7.terminology.r4-6.2.0.tgz' -> name='hl7.terminology.r4', version='6.2.0'
+DEBUG:__main__:Found packages: [{'name': 'hl7.fhir.au.base', 'version': '5.1.0-preview', 'filename': 'hl7.fhir.au.base-5.1.0-preview.tgz'}, {'name': 'hl7.fhir.au.core', 'version': '1.1.0-preview', 'filename': 'hl7.fhir.au.core-1.1.0-preview.tgz'}, {'name': 'hl7.fhir.r4.core', 'version': '4.0.1', 'filename': 'hl7.fhir.r4.core-4.0.1.tgz'}, {'name': 'hl7.fhir.uv.extensions.r4', 'version': '5.2.0', 'filename': 'hl7.fhir.uv.extensions.r4-5.2.0.tgz'}, {'name': 'hl7.fhir.uv.ipa', 'version': '1.0.0', 'filename': 'hl7.fhir.uv.ipa-1.0.0.tgz'}, {'name': 'hl7.fhir.uv.smart-app-launch', 'version': '2.0.0', 'filename': 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz'}, {'name': 'hl7.fhir.uv.smart-app-launch', 'version': '2.1.0', 'filename': 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz'}, {'name': 'hl7.terminology.r4', 'version': '5.0.0', 'filename': 'hl7.terminology.r4-5.0.0.tgz'}, {'name': 'hl7.terminology.r4', 'version': '6.2.0', 'filename': 'hl7.terminology.r4-6.2.0.tgz'}]
+DEBUG:__main__:Errors during package listing: []
+DEBUG:__main__:Duplicate groups: {'hl7.fhir.uv.smart-app-launch': ['2.0.0', '2.1.0'], 'hl7.terminology.r4': ['5.0.0', '6.2.0']}
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:25:56] "GET /view-igs HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:25:56] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+DEBUG:__main__:Viewing IG hl7.fhir.au.core-1.1.0#preview: 25 profiles, 17 base resources, 1 optional elements
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:25:59] "GET /view-ig/1 HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:25:59] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+DEBUG:__main__:Attempting to find SD for 'Practitioner' in hl7.fhir.au.core-1.1.0-preview.tgz
+DEBUG:services:Searching for SD matching 'Practitioner' with profile 'None' in hl7.fhir.au.core-1.1.0-preview.tgz
+DEBUG:services:Found SD: id=au-core-allergyintolerance, name=AUCoreAllergyIntolerance, type=AllergyIntolerance, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-allergyintolerance, path=package/StructureDefinition-au-core-allergyintolerance.json
+DEBUG:services:Found SD: id=au-core-bloodpressure, name=AUCoreBloodPressure, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bloodpressure, path=package/StructureDefinition-au-core-bloodpressure.json
+DEBUG:services:Found SD: id=au-core-bodyheight, name=AUCoreBodyHeight, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bodyheight, path=package/StructureDefinition-au-core-bodyheight.json
+DEBUG:services:Found SD: id=au-core-bodytemp, name=AUCoreBodyTemperature, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bodytemp, path=package/StructureDefinition-au-core-bodytemp.json
+DEBUG:services:Found SD: id=au-core-bodyweight, name=AUCoreBodyWeight, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bodyweight, path=package/StructureDefinition-au-core-bodyweight.json
+DEBUG:services:Found SD: id=au-core-condition, name=AUCoreCondition, type=Condition, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-condition, path=package/StructureDefinition-au-core-condition.json
+DEBUG:services:Found SD: id=au-core-diagnosticresult-path, name=AUCorePathologyResult, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-diagnosticresult-path, path=package/StructureDefinition-au-core-diagnosticresult-path.json
+DEBUG:services:Found SD: id=au-core-diagnosticresult, name=AUCoreDiagnosticResult, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-diagnosticresult, path=package/StructureDefinition-au-core-diagnosticresult.json
+DEBUG:services:Found SD: id=au-core-encounter, name=AUCoreEncounter, type=Encounter, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-encounter, path=package/StructureDefinition-au-core-encounter.json
+DEBUG:services:Found SD: id=au-core-heartrate, name=AUCoreHeartRate, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-heartrate, path=package/StructureDefinition-au-core-heartrate.json
+DEBUG:services:Found SD: id=au-core-immunization, name=AUCoreImmunization, type=Immunization, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-immunization, path=package/StructureDefinition-au-core-immunization.json
+DEBUG:services:Found SD: id=au-core-location, name=AUCoreLocation, type=Location, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-location, path=package/StructureDefinition-au-core-location.json
+DEBUG:services:Found SD: id=au-core-medication, name=AUCoreMedication, type=Medication, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-medication, path=package/StructureDefinition-au-core-medication.json
+DEBUG:services:Found SD: id=au-core-medicationrequest, name=AUCoreMedicationRequest, type=MedicationRequest, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-medicationrequest, path=package/StructureDefinition-au-core-medicationrequest.json
+DEBUG:services:Found SD: id=au-core-medicationstatement, name=AUCoreMedicationStatement, type=MedicationStatement, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-medicationstatement, path=package/StructureDefinition-au-core-medicationstatement.json
+DEBUG:services:Found SD: id=au-core-organization, name=AUCoreOrganization, type=Organization, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-organization, path=package/StructureDefinition-au-core-organization.json
+DEBUG:services:Found SD: id=au-core-patient, name=AUCorePatient, type=Patient, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-patient, path=package/StructureDefinition-au-core-patient.json
+DEBUG:services:Found SD: id=au-core-practitioner, name=AUCorePractitioner, type=Practitioner, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-practitioner, path=package/StructureDefinition-au-core-practitioner.json
+INFO:services:Found matching SD for 'Practitioner' at path: package/StructureDefinition-au-core-practitioner.json
+DEBUG:services:Found SD: id=au-core-practitionerrole, name=AUCorePractitionerRole, type=PractitionerRole, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-practitionerrole, path=package/StructureDefinition-au-core-practitionerrole.json
+INFO:services:Found matching SD for 'Practitioner' at path: package/StructureDefinition-au-core-practitionerrole.json
+DEBUG:services:Found SD: id=au-core-procedure, name=AUCoreProcedure, type=Procedure, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-procedure, path=package/StructureDefinition-au-core-procedure.json
+DEBUG:services:Found SD: id=au-core-relatedperson, name=AUCoreRelatedPerson, type=RelatedPerson, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-relatedperson, path=package/StructureDefinition-au-core-relatedperson.json
+DEBUG:services:Found SD: id=au-core-resprate, name=AUCoreRespirationRate, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-resprate, path=package/StructureDefinition-au-core-resprate.json
+DEBUG:services:Found SD: id=au-core-rsg-sexassignedab, name=AUCoreSexAssignedAtBirth, type=Extension, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-rsg-sexassignedab, path=package/StructureDefinition-au-core-rsg-sexassignedab.json
+DEBUG:services:Found SD: id=au-core-smokingstatus, name=AUCoreSmokingStatus, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-smokingstatus, path=package/StructureDefinition-au-core-smokingstatus.json
+DEBUG:services:Found SD: id=au-core-waistcircum, name=AUCoreWaistCircumference, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-waistcircum, path=package/StructureDefinition-au-core-waistcircum.json
+DEBUG:__main__:Retrieved 0 Must Support paths for 'Practitioner' from processed IG hl7.fhir.au.core-1.1.0#preview
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:26:04] "GET /get-structure?package_name=hl7.fhir.au.core-1.1.0&package_version=preview&resource_type=Practitioner HTTP/1.1" 200 -
+DEBUG:__main__:Attempting to find SD for 'au-core-practitioner' in hl7.fhir.au.core-1.1.0-preview.tgz
+DEBUG:services:Searching for SD matching 'au-core-practitioner' with profile 'None' in hl7.fhir.au.core-1.1.0-preview.tgz
+DEBUG:services:Found SD: id=au-core-allergyintolerance, name=AUCoreAllergyIntolerance, type=AllergyIntolerance, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-allergyintolerance, path=package/StructureDefinition-au-core-allergyintolerance.json
+DEBUG:services:Found SD: id=au-core-bloodpressure, name=AUCoreBloodPressure, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bloodpressure, path=package/StructureDefinition-au-core-bloodpressure.json
+DEBUG:services:Found SD: id=au-core-bodyheight, name=AUCoreBodyHeight, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bodyheight, path=package/StructureDefinition-au-core-bodyheight.json
+DEBUG:services:Found SD: id=au-core-bodytemp, name=AUCoreBodyTemperature, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bodytemp, path=package/StructureDefinition-au-core-bodytemp.json
+DEBUG:services:Found SD: id=au-core-bodyweight, name=AUCoreBodyWeight, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bodyweight, path=package/StructureDefinition-au-core-bodyweight.json
+DEBUG:services:Found SD: id=au-core-condition, name=AUCoreCondition, type=Condition, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-condition, path=package/StructureDefinition-au-core-condition.json
+DEBUG:services:Found SD: id=au-core-diagnosticresult-path, name=AUCorePathologyResult, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-diagnosticresult-path, path=package/StructureDefinition-au-core-diagnosticresult-path.json
+DEBUG:services:Found SD: id=au-core-diagnosticresult, name=AUCoreDiagnosticResult, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-diagnosticresult, path=package/StructureDefinition-au-core-diagnosticresult.json
+DEBUG:services:Found SD: id=au-core-encounter, name=AUCoreEncounter, type=Encounter, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-encounter, path=package/StructureDefinition-au-core-encounter.json
+DEBUG:services:Found SD: id=au-core-heartrate, name=AUCoreHeartRate, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-heartrate, path=package/StructureDefinition-au-core-heartrate.json
+DEBUG:services:Found SD: id=au-core-immunization, name=AUCoreImmunization, type=Immunization, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-immunization, path=package/StructureDefinition-au-core-immunization.json
+DEBUG:services:Found SD: id=au-core-location, name=AUCoreLocation, type=Location, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-location, path=package/StructureDefinition-au-core-location.json
+DEBUG:services:Found SD: id=au-core-medication, name=AUCoreMedication, type=Medication, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-medication, path=package/StructureDefinition-au-core-medication.json
+DEBUG:services:Found SD: id=au-core-medicationrequest, name=AUCoreMedicationRequest, type=MedicationRequest, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-medicationrequest, path=package/StructureDefinition-au-core-medicationrequest.json
+DEBUG:services:Found SD: id=au-core-medicationstatement, name=AUCoreMedicationStatement, type=MedicationStatement, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-medicationstatement, path=package/StructureDefinition-au-core-medicationstatement.json
+DEBUG:services:Found SD: id=au-core-organization, name=AUCoreOrganization, type=Organization, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-organization, path=package/StructureDefinition-au-core-organization.json
+DEBUG:services:Found SD: id=au-core-patient, name=AUCorePatient, type=Patient, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-patient, path=package/StructureDefinition-au-core-patient.json
+DEBUG:services:Found SD: id=au-core-practitioner, name=AUCorePractitioner, type=Practitioner, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-practitioner, path=package/StructureDefinition-au-core-practitioner.json
+INFO:services:Found matching SD for 'au-core-practitioner' at path: package/StructureDefinition-au-core-practitioner.json
+DEBUG:services:Found SD: id=au-core-practitionerrole, name=AUCorePractitionerRole, type=PractitionerRole, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-practitionerrole, path=package/StructureDefinition-au-core-practitionerrole.json
+INFO:services:Found matching SD for 'au-core-practitioner' at path: package/StructureDefinition-au-core-practitionerrole.json
+DEBUG:services:Found SD: id=au-core-procedure, name=AUCoreProcedure, type=Procedure, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-procedure, path=package/StructureDefinition-au-core-procedure.json
+DEBUG:services:Found SD: id=au-core-relatedperson, name=AUCoreRelatedPerson, type=RelatedPerson, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-relatedperson, path=package/StructureDefinition-au-core-relatedperson.json
+DEBUG:services:Found SD: id=au-core-resprate, name=AUCoreRespirationRate, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-resprate, path=package/StructureDefinition-au-core-resprate.json
+DEBUG:services:Found SD: id=au-core-rsg-sexassignedab, name=AUCoreSexAssignedAtBirth, type=Extension, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-rsg-sexassignedab, path=package/StructureDefinition-au-core-rsg-sexassignedab.json
+DEBUG:services:Found SD: id=au-core-smokingstatus, name=AUCoreSmokingStatus, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-smokingstatus, path=package/StructureDefinition-au-core-smokingstatus.json
+DEBUG:services:Found SD: id=au-core-waistcircum, name=AUCoreWaistCircumference, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-waistcircum, path=package/StructureDefinition-au-core-waistcircum.json
+DEBUG:__main__:Retrieved 5 Must Support paths for 'au-core-practitioner' from processed IG hl7.fhir.au.core-1.1.0#preview
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:26:15] "GET /get-structure?package_name=hl7.fhir.au.core-1.1.0&package_version=preview&resource_type=au-core-practitioner HTTP/1.1" 200 -
+DEBUG:__main__:Attempting to find SD for 'au-core-patient' in hl7.fhir.au.core-1.1.0-preview.tgz
+DEBUG:services:Searching for SD matching 'au-core-patient' with profile 'None' in hl7.fhir.au.core-1.1.0-preview.tgz
+DEBUG:services:Found SD: id=au-core-allergyintolerance, name=AUCoreAllergyIntolerance, type=AllergyIntolerance, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-allergyintolerance, path=package/StructureDefinition-au-core-allergyintolerance.json
+DEBUG:services:Found SD: id=au-core-bloodpressure, name=AUCoreBloodPressure, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bloodpressure, path=package/StructureDefinition-au-core-bloodpressure.json
+DEBUG:services:Found SD: id=au-core-bodyheight, name=AUCoreBodyHeight, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bodyheight, path=package/StructureDefinition-au-core-bodyheight.json
+DEBUG:services:Found SD: id=au-core-bodytemp, name=AUCoreBodyTemperature, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bodytemp, path=package/StructureDefinition-au-core-bodytemp.json
+DEBUG:services:Found SD: id=au-core-bodyweight, name=AUCoreBodyWeight, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bodyweight, path=package/StructureDefinition-au-core-bodyweight.json
+DEBUG:services:Found SD: id=au-core-condition, name=AUCoreCondition, type=Condition, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-condition, path=package/StructureDefinition-au-core-condition.json
+DEBUG:services:Found SD: id=au-core-diagnosticresult-path, name=AUCorePathologyResult, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-diagnosticresult-path, path=package/StructureDefinition-au-core-diagnosticresult-path.json
+DEBUG:services:Found SD: id=au-core-diagnosticresult, name=AUCoreDiagnosticResult, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-diagnosticresult, path=package/StructureDefinition-au-core-diagnosticresult.json
+DEBUG:services:Found SD: id=au-core-encounter, name=AUCoreEncounter, type=Encounter, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-encounter, path=package/StructureDefinition-au-core-encounter.json
+DEBUG:services:Found SD: id=au-core-heartrate, name=AUCoreHeartRate, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-heartrate, path=package/StructureDefinition-au-core-heartrate.json
+DEBUG:services:Found SD: id=au-core-immunization, name=AUCoreImmunization, type=Immunization, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-immunization, path=package/StructureDefinition-au-core-immunization.json
+DEBUG:services:Found SD: id=au-core-location, name=AUCoreLocation, type=Location, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-location, path=package/StructureDefinition-au-core-location.json
+DEBUG:services:Found SD: id=au-core-medication, name=AUCoreMedication, type=Medication, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-medication, path=package/StructureDefinition-au-core-medication.json
+DEBUG:services:Found SD: id=au-core-medicationrequest, name=AUCoreMedicationRequest, type=MedicationRequest, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-medicationrequest, path=package/StructureDefinition-au-core-medicationrequest.json
+DEBUG:services:Found SD: id=au-core-medicationstatement, name=AUCoreMedicationStatement, type=MedicationStatement, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-medicationstatement, path=package/StructureDefinition-au-core-medicationstatement.json
+DEBUG:services:Found SD: id=au-core-organization, name=AUCoreOrganization, type=Organization, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-organization, path=package/StructureDefinition-au-core-organization.json
+DEBUG:services:Found SD: id=au-core-patient, name=AUCorePatient, type=Patient, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-patient, path=package/StructureDefinition-au-core-patient.json
+INFO:services:Found matching SD for 'au-core-patient' at path: package/StructureDefinition-au-core-patient.json
+DEBUG:services:Found SD: id=au-core-practitioner, name=AUCorePractitioner, type=Practitioner, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-practitioner, path=package/StructureDefinition-au-core-practitioner.json
+DEBUG:services:Found SD: id=au-core-practitionerrole, name=AUCorePractitionerRole, type=PractitionerRole, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-practitionerrole, path=package/StructureDefinition-au-core-practitionerrole.json
+DEBUG:services:Found SD: id=au-core-procedure, name=AUCoreProcedure, type=Procedure, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-procedure, path=package/StructureDefinition-au-core-procedure.json
+DEBUG:services:Found SD: id=au-core-relatedperson, name=AUCoreRelatedPerson, type=RelatedPerson, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-relatedperson, path=package/StructureDefinition-au-core-relatedperson.json
+DEBUG:services:Found SD: id=au-core-resprate, name=AUCoreRespirationRate, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-resprate, path=package/StructureDefinition-au-core-resprate.json
+DEBUG:services:Found SD: id=au-core-rsg-sexassignedab, name=AUCoreSexAssignedAtBirth, type=Extension, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-rsg-sexassignedab, path=package/StructureDefinition-au-core-rsg-sexassignedab.json
+DEBUG:services:Found SD: id=au-core-smokingstatus, name=AUCoreSmokingStatus, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-smokingstatus, path=package/StructureDefinition-au-core-smokingstatus.json
+DEBUG:services:Found SD: id=au-core-waistcircum, name=AUCoreWaistCircumference, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-waistcircum, path=package/StructureDefinition-au-core-waistcircum.json
+DEBUG:__main__:Retrieved 19 Must Support paths for 'au-core-patient' from processed IG hl7.fhir.au.core-1.1.0#preview
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:26:16] "GET /get-structure?package_name=hl7.fhir.au.core-1.1.0&package_version=preview&resource_type=au-core-patient HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:26:19] "GET /get-example?package_name=hl7.fhir.au.core-1.1.0&package_version=preview&filename=package/example/Patient-banks-mia-leanne.json HTTP/1.1" 200 -
+DEBUG:services:Processed input: /tmp/tmph9efztgj/input.json
+ERROR:app:Exception on /fsh-converter [POST]
+Traceback (most recent call last):
+  File "/app/venv/lib/python3.12/site-packages/flask/app.py", line 2190, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/venv/lib/python3.12/site-packages/flask/app.py", line 1486, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/venv/lib/python3.12/site-packages/flask/app.py", line 1484, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/venv/lib/python3.12/site-packages/flask/app.py", line 1469, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/app.py", line 985, in fsh_converter
+    output_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'fsh_output')
+                              ~~~~~~~~~~^^^^^^^^^^^^^^^^^
+KeyError: 'UPLOAD_FOLDER'
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:28:22] "[35m[1mPOST /fsh-converter HTTP/1.1[0m" 500 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:28:22] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:45:46] "GET /fsh-converter HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:45:46] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:45:46] "[36mGET /static/favicon.ico HTTP/1.1[0m" 304 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:45:48] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:45:48] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+DEBUG:__main__:Scanning packages directory: /app/instance/fhir_packages
+DEBUG:services:Parsed 'hl7.fhir.au.base-5.1.0-preview.tgz' -> name='hl7.fhir.au.base-5.1.0', version='preview'
+DEBUG:services:Parsed 'hl7.fhir.au.core-1.1.0-preview.tgz' -> name='hl7.fhir.au.core-1.1.0', version='preview'
+DEBUG:services:Parsed 'hl7.fhir.r4.core-4.0.1.tgz' -> name='hl7.fhir.r4.core', version='4.0.1'
+DEBUG:services:Parsed 'hl7.fhir.uv.extensions.r4-5.2.0.tgz' -> name='hl7.fhir.uv.extensions.r4', version='5.2.0'
+DEBUG:services:Parsed 'hl7.fhir.uv.ipa-1.0.0.tgz' -> name='hl7.fhir.uv.ipa', version='1.0.0'
+DEBUG:services:Parsed 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz' -> name='hl7.fhir.uv.smart-app-launch', version='2.0.0'
+DEBUG:services:Parsed 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz' -> name='hl7.fhir.uv.smart-app-launch', version='2.1.0'
+DEBUG:services:Parsed 'hl7.terminology.r4-5.0.0.tgz' -> name='hl7.terminology.r4', version='5.0.0'
+DEBUG:services:Parsed 'hl7.terminology.r4-6.2.0.tgz' -> name='hl7.terminology.r4', version='6.2.0'
+DEBUG:__main__:Found packages: [{'name': 'hl7.fhir.au.base', 'version': '5.1.0-preview', 'filename': 'hl7.fhir.au.base-5.1.0-preview.tgz'}, {'name': 'hl7.fhir.au.core', 'version': '1.1.0-preview', 'filename': 'hl7.fhir.au.core-1.1.0-preview.tgz'}, {'name': 'hl7.fhir.r4.core', 'version': '4.0.1', 'filename': 'hl7.fhir.r4.core-4.0.1.tgz'}, {'name': 'hl7.fhir.uv.extensions.r4', 'version': '5.2.0', 'filename': 'hl7.fhir.uv.extensions.r4-5.2.0.tgz'}, {'name': 'hl7.fhir.uv.ipa', 'version': '1.0.0', 'filename': 'hl7.fhir.uv.ipa-1.0.0.tgz'}, {'name': 'hl7.fhir.uv.smart-app-launch', 'version': '2.0.0', 'filename': 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz'}, {'name': 'hl7.fhir.uv.smart-app-launch', 'version': '2.1.0', 'filename': 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz'}, {'name': 'hl7.terminology.r4', 'version': '5.0.0', 'filename': 'hl7.terminology.r4-5.0.0.tgz'}, {'name': 'hl7.terminology.r4', 'version': '6.2.0', 'filename': 'hl7.terminology.r4-6.2.0.tgz'}]
+DEBUG:__main__:Errors during package listing: []
+DEBUG:__main__:Duplicate groups: {'hl7.fhir.uv.smart-app-launch': ['2.0.0', '2.1.0'], 'hl7.terminology.r4': ['5.0.0', '6.2.0']}
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:45:52] "GET /view-igs HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:45:52] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:45:57] "GET /fsh-converter HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 06:45:57] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+DEBUG:__main__:Instance path configuration: /app/instance
+DEBUG:__main__:Database URI: sqlite:////app/instance/fhir_ig.db
+DEBUG:__main__:Packages path: /app/instance/fhir_packages
+DEBUG:__main__:Flask instance folder path: /app/instance
+DEBUG:__main__:Directories created/verified: Instance: /app/instance, Packages: /app/instance/fhir_packages
+DEBUG:__main__:Attempting to create database tables for URI: sqlite:////app/instance/fhir_ig.db
+INFO:__main__:Database tables created successfully (if they didn't exist).
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.19.0.2:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 07:09:09] "GET /fsh-converter HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 07:09:09] "GET /static/FHIRFLARE.png HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 07:09:09] "GET /static/favicon.ico HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 07:09:13] "GET /fsh-converter HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 07:09:13] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+DEBUG:__main__:Attempting to find SD for 'au-core-allergyintolerance' in hl7.fhir.au.core-1.1.0-preview.tgz
+DEBUG:services:Searching for SD matching 'au-core-allergyintolerance' with profile 'None' in hl7.fhir.au.core-1.1.0-preview.tgz
+DEBUG:services:Found SD: id=au-core-allergyintolerance, name=AUCoreAllergyIntolerance, type=AllergyIntolerance, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-allergyintolerance, path=package/StructureDefinition-au-core-allergyintolerance.json
+INFO:services:Found matching SD for 'au-core-allergyintolerance' at path: package/StructureDefinition-au-core-allergyintolerance.json
+DEBUG:services:Found SD: id=au-core-bloodpressure, name=AUCoreBloodPressure, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bloodpressure, path=package/StructureDefinition-au-core-bloodpressure.json
+DEBUG:services:Found SD: id=au-core-bodyheight, name=AUCoreBodyHeight, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bodyheight, path=package/StructureDefinition-au-core-bodyheight.json
+DEBUG:services:Found SD: id=au-core-bodytemp, name=AUCoreBodyTemperature, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bodytemp, path=package/StructureDefinition-au-core-bodytemp.json
+DEBUG:services:Found SD: id=au-core-bodyweight, name=AUCoreBodyWeight, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bodyweight, path=package/StructureDefinition-au-core-bodyweight.json
+DEBUG:services:Found SD: id=au-core-condition, name=AUCoreCondition, type=Condition, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-condition, path=package/StructureDefinition-au-core-condition.json
+DEBUG:services:Found SD: id=au-core-diagnosticresult-path, name=AUCorePathologyResult, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-diagnosticresult-path, path=package/StructureDefinition-au-core-diagnosticresult-path.json
+DEBUG:services:Found SD: id=au-core-diagnosticresult, name=AUCoreDiagnosticResult, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-diagnosticresult, path=package/StructureDefinition-au-core-diagnosticresult.json
+DEBUG:services:Found SD: id=au-core-encounter, name=AUCoreEncounter, type=Encounter, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-encounter, path=package/StructureDefinition-au-core-encounter.json
+DEBUG:services:Found SD: id=au-core-heartrate, name=AUCoreHeartRate, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-heartrate, path=package/StructureDefinition-au-core-heartrate.json
+DEBUG:services:Found SD: id=au-core-immunization, name=AUCoreImmunization, type=Immunization, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-immunization, path=package/StructureDefinition-au-core-immunization.json
+DEBUG:services:Found SD: id=au-core-location, name=AUCoreLocation, type=Location, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-location, path=package/StructureDefinition-au-core-location.json
+DEBUG:services:Found SD: id=au-core-medication, name=AUCoreMedication, type=Medication, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-medication, path=package/StructureDefinition-au-core-medication.json
+DEBUG:services:Found SD: id=au-core-medicationrequest, name=AUCoreMedicationRequest, type=MedicationRequest, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-medicationrequest, path=package/StructureDefinition-au-core-medicationrequest.json
+DEBUG:services:Found SD: id=au-core-medicationstatement, name=AUCoreMedicationStatement, type=MedicationStatement, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-medicationstatement, path=package/StructureDefinition-au-core-medicationstatement.json
+DEBUG:services:Found SD: id=au-core-organization, name=AUCoreOrganization, type=Organization, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-organization, path=package/StructureDefinition-au-core-organization.json
+DEBUG:services:Found SD: id=au-core-patient, name=AUCorePatient, type=Patient, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-patient, path=package/StructureDefinition-au-core-patient.json
+DEBUG:services:Found SD: id=au-core-practitioner, name=AUCorePractitioner, type=Practitioner, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-practitioner, path=package/StructureDefinition-au-core-practitioner.json
+DEBUG:services:Found SD: id=au-core-practitionerrole, name=AUCorePractitionerRole, type=PractitionerRole, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-practitionerrole, path=package/StructureDefinition-au-core-practitionerrole.json
+DEBUG:services:Found SD: id=au-core-procedure, name=AUCoreProcedure, type=Procedure, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-procedure, path=package/StructureDefinition-au-core-procedure.json
+DEBUG:services:Found SD: id=au-core-relatedperson, name=AUCoreRelatedPerson, type=RelatedPerson, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-relatedperson, path=package/StructureDefinition-au-core-relatedperson.json
+DEBUG:services:Found SD: id=au-core-resprate, name=AUCoreRespirationRate, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-resprate, path=package/StructureDefinition-au-core-resprate.json
+DEBUG:services:Found SD: id=au-core-rsg-sexassignedab, name=AUCoreSexAssignedAtBirth, type=Extension, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-rsg-sexassignedab, path=package/StructureDefinition-au-core-rsg-sexassignedab.json
+DEBUG:services:Found SD: id=au-core-smokingstatus, name=AUCoreSmokingStatus, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-smokingstatus, path=package/StructureDefinition-au-core-smokingstatus.json
+DEBUG:services:Found SD: id=au-core-waistcircum, name=AUCoreWaistCircumference, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-waistcircum, path=package/StructureDefinition-au-core-waistcircum.json
+DEBUG:__main__:Retrieved 8 Must Support paths for 'au-core-allergyintolerance' from processed IG hl7.fhir.au.core-1.1.0#preview
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 07:09:27] "GET /get-structure?package_name=hl7.fhir.au.core-1.1.0&package_version=preview&resource_type=au-core-allergyintolerance HTTP/1.1" 200 -
+DEBUG:__main__:Attempting to find SD for 'au-core-patient' in hl7.fhir.au.core-1.1.0-preview.tgz
+DEBUG:services:Searching for SD matching 'au-core-patient' with profile 'None' in hl7.fhir.au.core-1.1.0-preview.tgz
+DEBUG:services:Found SD: id=au-core-allergyintolerance, name=AUCoreAllergyIntolerance, type=AllergyIntolerance, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-allergyintolerance, path=package/StructureDefinition-au-core-allergyintolerance.json
+DEBUG:services:Found SD: id=au-core-bloodpressure, name=AUCoreBloodPressure, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bloodpressure, path=package/StructureDefinition-au-core-bloodpressure.json
+DEBUG:services:Found SD: id=au-core-bodyheight, name=AUCoreBodyHeight, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bodyheight, path=package/StructureDefinition-au-core-bodyheight.json
+DEBUG:services:Found SD: id=au-core-bodytemp, name=AUCoreBodyTemperature, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bodytemp, path=package/StructureDefinition-au-core-bodytemp.json
+DEBUG:services:Found SD: id=au-core-bodyweight, name=AUCoreBodyWeight, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-bodyweight, path=package/StructureDefinition-au-core-bodyweight.json
+DEBUG:services:Found SD: id=au-core-condition, name=AUCoreCondition, type=Condition, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-condition, path=package/StructureDefinition-au-core-condition.json
+DEBUG:services:Found SD: id=au-core-diagnosticresult-path, name=AUCorePathologyResult, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-diagnosticresult-path, path=package/StructureDefinition-au-core-diagnosticresult-path.json
+DEBUG:services:Found SD: id=au-core-diagnosticresult, name=AUCoreDiagnosticResult, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-diagnosticresult, path=package/StructureDefinition-au-core-diagnosticresult.json
+DEBUG:services:Found SD: id=au-core-encounter, name=AUCoreEncounter, type=Encounter, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-encounter, path=package/StructureDefinition-au-core-encounter.json
+DEBUG:services:Found SD: id=au-core-heartrate, name=AUCoreHeartRate, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-heartrate, path=package/StructureDefinition-au-core-heartrate.json
+DEBUG:services:Found SD: id=au-core-immunization, name=AUCoreImmunization, type=Immunization, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-immunization, path=package/StructureDefinition-au-core-immunization.json
+DEBUG:services:Found SD: id=au-core-location, name=AUCoreLocation, type=Location, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-location, path=package/StructureDefinition-au-core-location.json
+DEBUG:services:Found SD: id=au-core-medication, name=AUCoreMedication, type=Medication, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-medication, path=package/StructureDefinition-au-core-medication.json
+DEBUG:services:Found SD: id=au-core-medicationrequest, name=AUCoreMedicationRequest, type=MedicationRequest, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-medicationrequest, path=package/StructureDefinition-au-core-medicationrequest.json
+DEBUG:services:Found SD: id=au-core-medicationstatement, name=AUCoreMedicationStatement, type=MedicationStatement, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-medicationstatement, path=package/StructureDefinition-au-core-medicationstatement.json
+DEBUG:services:Found SD: id=au-core-organization, name=AUCoreOrganization, type=Organization, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-organization, path=package/StructureDefinition-au-core-organization.json
+DEBUG:services:Found SD: id=au-core-patient, name=AUCorePatient, type=Patient, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-patient, path=package/StructureDefinition-au-core-patient.json
+INFO:services:Found matching SD for 'au-core-patient' at path: package/StructureDefinition-au-core-patient.json
+DEBUG:services:Found SD: id=au-core-practitioner, name=AUCorePractitioner, type=Practitioner, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-practitioner, path=package/StructureDefinition-au-core-practitioner.json
+DEBUG:services:Found SD: id=au-core-practitionerrole, name=AUCorePractitionerRole, type=PractitionerRole, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-practitionerrole, path=package/StructureDefinition-au-core-practitionerrole.json
+DEBUG:services:Found SD: id=au-core-procedure, name=AUCoreProcedure, type=Procedure, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-procedure, path=package/StructureDefinition-au-core-procedure.json
+DEBUG:services:Found SD: id=au-core-relatedperson, name=AUCoreRelatedPerson, type=RelatedPerson, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-relatedperson, path=package/StructureDefinition-au-core-relatedperson.json
+DEBUG:services:Found SD: id=au-core-resprate, name=AUCoreRespirationRate, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-resprate, path=package/StructureDefinition-au-core-resprate.json
+DEBUG:services:Found SD: id=au-core-rsg-sexassignedab, name=AUCoreSexAssignedAtBirth, type=Extension, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-rsg-sexassignedab, path=package/StructureDefinition-au-core-rsg-sexassignedab.json
+DEBUG:services:Found SD: id=au-core-smokingstatus, name=AUCoreSmokingStatus, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-smokingstatus, path=package/StructureDefinition-au-core-smokingstatus.json
+DEBUG:services:Found SD: id=au-core-waistcircum, name=AUCoreWaistCircumference, type=Observation, url=http://hl7.org.au/fhir/core/StructureDefinition/au-core-waistcircum, path=package/StructureDefinition-au-core-waistcircum.json
+DEBUG:__main__:Retrieved 19 Must Support paths for 'au-core-patient' from processed IG hl7.fhir.au.core-1.1.0#preview
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 07:09:28] "GET /get-structure?package_name=hl7.fhir.au.core-1.1.0&package_version=preview&resource_type=au-core-patient HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 07:09:32] "GET /get-example?package_name=hl7.fhir.au.core-1.1.0&package_version=preview&filename=package/example/Patient-banks-mia-leanne.json HTTP/1.1" 200 -
+DEBUG:services:Processed input: /tmp/tmpgwv6g5vl/input.json
+INFO:services:GoFSH executed successfully for /tmp/tmpgwv6g5vl/input.json
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 07:10:23] "POST /fsh-converter HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 07:10:23] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 07:11:09] "GET /download-fsh HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 07:16:19] "GET /fhir HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 07:16:19] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 07:16:56] "GET /fsh-converter HTTP/1.1" 200 -
+INFO:werkzeug:172.19.0.1 - - [17/Apr/2025 07:16:56] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -

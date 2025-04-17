@@ -8,6 +8,9 @@ from flask import current_app, Blueprint, request, jsonify
 from collections import defaultdict
 from pathlib import Path
 import datetime
+import subprocess
+import tempfile
+import xml.etree.ElementTree as ET
 
 # Define Blueprint
 services_bp = Blueprint('services', __name__)
@@ -1437,4 +1440,73 @@ if __name__ == '__main__':
         print(f"  Processing Errors: {processing_results.get('errors', [])}")
     else:
         print(f"\n--- Skipping Processing Test (Import failed for {pkg_name_to_test}#{pkg_version_to_test}) ---")
+
+# Add new functions for GoFSH integration
+def run_gofsh(input_path, output_dir, output_style, log_level, fhir_version=None):
+    """Run GoFSH on the input FHIR resource and return the FSH output."""
+    cmd = ["gofsh", input_path, "-o", output_dir, "-s", output_style, "-l", log_level]
+    if fhir_version:
+        cmd.extend(["-u", fhir_version])
+    
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        # Read all FSH files from the output directory
+        fsh_content = []
+        for root, _, files in os.walk(output_dir):
+            for file in files:
+                if file.endswith(".fsh"):
+                    with open(os.path.join(root, file), 'r', encoding='utf-8') as f:
+                        fsh_content.append(f.read())
+        logger.info(f"GoFSH executed successfully for {input_path}")
+        return "\n\n".join(fsh_content), None
+    except subprocess.CalledProcessError as e:
+        logger.error(f"GoFSH failed: {e.stderr}")
+        return None, f"GoFSH failed: {e.stderr}"
+    except Exception as e:
+        logger.error(f"Error running GoFSH: {str(e)}", exc_info=True)
+        return None, f"Error running GoFSH: {str(e)}"
+
+def process_fhir_input(input_mode, fhir_file, fhir_text):
+    """Process user input (file or text) and save to a temporary file."""
+    temp_dir = tempfile.mkdtemp()
+    temp_file = None
+    
+    try:
+        if input_mode == 'file' and fhir_file:
+            content = fhir_file.read().decode('utf-8')
+            file_type = 'json' if content.strip().startswith('{') else 'xml'
+            temp_file = os.path.join(temp_dir, f"input.{file_type}")
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+        elif input_mode == 'text' and fhir_text:
+            content = fhir_text.strip()
+            file_type = 'json' if content.startswith('{') else 'xml'
+            temp_file = os.path.join(temp_dir, f"input.{file_type}")
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+        else:
+            return None, None, "No input provided"
+        
+        # Basic validation
+        if file_type == 'json':
+            try:
+                json.loads(content)
+            except json.JSONDecodeError:
+                return None, None, "Invalid JSON format"
+        elif file_type == 'xml':
+            try:
+                ET.fromstring(content)
+            except ET.ParseError:
+                return None, None, "Invalid XML format"
+        
+        logger.debug(f"Processed input: {temp_file}")
+        return temp_file, temp_dir, None
+    except Exception as e:
+        logger.error(f"Error processing input: {str(e)}", exc_info=True)
+        return None, None, f"Error processing input: {str(e)}"
 
