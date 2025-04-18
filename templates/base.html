@@ -799,6 +799,10 @@ html[data-theme="dark"] .structure-tree-root .list-group-item-warning {
                 sunIcon.classList.remove('d-none');
                 moonIcon.classList.add('d-none');
             }
+            if (typeof loadLottieAnimation === 'function') {
+                const newTheme = toggle.checked ? 'dark' : 'light';
+                loadLottieAnimation(newTheme);
+            }
             // Set cookie to persist theme
             document.cookie = `theme=${toggle.checked ? 'dark' : 'light'}; path=/; max-age=31536000`;
         }
