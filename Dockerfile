@@ -1,15 +1,15 @@
 # Base image with Python and Java
 FROM tomcat:10.1-jdk17
 
-# Install build dependencies and Node.js 18
+# Install build dependencies, Node.js 18, and coreutils (for stdbuf)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip python3-venv curl \
+    python3 python3-pip python3-venv curl coreutils \
     && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install GoFSH globally
-RUN npm install -g gofsh
+# Install specific versions of GoFSH and SUSHI
+RUN npm install -g gofsh fsh-sushi
 
 # Set up Python environment
 WORKDIR /app

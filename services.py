@@ -1,9 +1,11 @@
+# services.py
 import requests
 import os
 import tarfile
 import json
 import re
 import logging
+import shutil
 from flask import current_app, Blueprint, request, jsonify
 from collections import defaultdict
 from pathlib import Path
@@ -1442,71 +1444,245 @@ if __name__ == '__main__':
         print(f"\n--- Skipping Processing Test (Import failed for {pkg_name_to_test}#{pkg_version_to_test}) ---")
 
 # Add new functions for GoFSH integration
-def run_gofsh(input_path, output_dir, output_style, log_level, fhir_version=None):
-    """Run GoFSH on the input FHIR resource and return the FSH output."""
-    cmd = ["gofsh", input_path, "-o", output_dir, "-s", output_style, "-l", log_level]
+def run_gofsh(input_path, output_dir, output_style, log_level, fhir_version=None, fishing_trip=False, dependencies=None, indent_rules=False, meta_profile='only-one', alias_file=None, no_alias=False):
+    """Run GoFSH with advanced options and return FSH output and optional comparison report."""
+    # Use a temporary output directory for initial GoFSH run
+    temp_output_dir = tempfile.mkdtemp()
+    os.chmod(temp_output_dir, 0o777)
+    
+    cmd = ["gofsh", input_path, "-o", temp_output_dir, "-s", output_style, "-l", log_level]
     if fhir_version:
         cmd.extend(["-u", fhir_version])
+    if dependencies:
+        for dep in dependencies:
+            cmd.extend(["--dependency", dep.strip()])
+    if indent_rules:
+        cmd.append("--indent")
+    if no_alias:
+        cmd.append("--no-alias")
+    if alias_file:
+        cmd.extend(["--alias-file", alias_file])
+    if meta_profile != 'only-one':
+        cmd.extend(["--meta-profile", meta_profile])
+    
+    # Set environment to disable TTY interactions
+    env = os.environ.copy()
+    env["NODE_NO_READLINE"] = "1"
+    env["NODE_NO_INTERACTIVE"] = "1"
+    env["TERM"] = "dumb"
+    env["CI"] = "true"
+    env["FORCE_COLOR"] = "0"
+    env["NODE_ENV"] = "production"
+    
+    # Create a wrapper script in /tmp
+    wrapper_script = "/tmp/gofsh_wrapper.sh"
+    output_file = "/tmp/gofsh_output.log"
+    try:
+        with open(wrapper_script, 'w') as f:
+            f.write("#!/bin/bash\n")
+            # Redirect /dev/tty writes to /dev/null
+            f.write("exec 3>/dev/null\n")
+            f.write(" ".join([f'"{arg}"' for arg in cmd]) + f" </dev/null >{output_file} 2>&1\n")
+        os.chmod(wrapper_script, 0o755)
+        
+        # Log the wrapper script contents for debugging
+        with open(wrapper_script, 'r') as f:
+            logger.debug(f"Wrapper script contents:\n{f.read()}")
+    except Exception as e:
+        logger.error(f"Failed to create wrapper script {wrapper_script}: {str(e)}", exc_info=True)
+        return None, None, f"Failed to create wrapper script: {str(e)}"
     
     try:
+        # Log directory contents before execution
+        logger.debug(f"Temp output directory contents before GoFSH: {os.listdir(temp_output_dir)}")
+        
         result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True
+            [wrapper_script],
+            check=True,
+            env=env
         )
-        # Read all FSH files from the output directory
+        # Read output from the log file
+        with open(output_file, 'r', encoding='utf-8') as f:
+            output = f.read()
+        logger.debug(f"GoFSH output:\n{output}")
+        
+        # Prepare final output directory
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
+        os.chmod(output_dir, 0o777)
+        
+        # Copy .fsh files, sushi-config.yaml, and input JSON to final output directory
+        copied_files = []
+        for root, _, files in os.walk(temp_output_dir):
+            for file in files:
+                src_path = os.path.join(root, file)
+                if file.endswith(".fsh") or file == "sushi-config.yaml":
+                    relative_path = os.path.relpath(src_path, temp_output_dir)
+                    dst_path = os.path.join(output_dir, relative_path)
+                    os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+                    shutil.copy2(src_path, dst_path)
+                    copied_files.append(relative_path)
+        
+        # Copy input JSON to final directory
+        input_filename = os.path.basename(input_path)
+        dst_input_path = os.path.join(output_dir, "input", input_filename)
+        os.makedirs(os.path.dirname(dst_input_path), exist_ok=True)
+        shutil.copy2(input_path, dst_input_path)
+        copied_files.append(os.path.join("input", input_filename))
+        
+        # Create a minimal sushi-config.yaml if missing
+        sushi_config_path = os.path.join(output_dir, "sushi-config.yaml")
+        if not os.path.exists(sushi_config_path):
+            minimal_config = {
+                "id": "fhirflare.temp",
+                "canonical": "http://fhirflare.org",
+                "name": "FHIRFLARETempIG",
+                "version": "0.1.0",
+                "fhirVersion": fhir_version or "4.0.1",
+                "FSHOnly": True,
+                "dependencies": dependencies or []
+            }
+            with open(sushi_config_path, 'w') as f:
+                json.dump(minimal_config, f, indent=2)
+            copied_files.append("sushi-config.yaml")
+        
+        # Run GoFSH with --fshing-trip in a fresh temporary directory
+        comparison_report = None
+        if fishing_trip:
+            fishing_temp_dir = tempfile.mkdtemp()
+            os.chmod(fishing_temp_dir, 0o777)
+            gofsh_fishing_cmd = ["gofsh", input_path, "-o", fishing_temp_dir, "-s", output_style, "-l", log_level, "--fshing-trip"]
+            if fhir_version:
+                gofsh_fishing_cmd.extend(["-u", fhir_version])
+            if dependencies:
+                for dep in dependencies:
+                    gofsh_fishing_cmd.extend(["--dependency", dep.strip()])
+            if indent_rules:
+                gofsh_fishing_cmd.append("--indent")
+            if no_alias:
+                gofsh_fishing_cmd.append("--no-alias")
+            if alias_file:
+                gofsh_fishing_cmd.extend(["--alias-file", alias_file])
+            if meta_profile != 'only-one':
+                gofsh_fishing_cmd.extend(["--meta-profile", meta_profile])
+            
+            try:
+                with open(wrapper_script, 'w') as f:
+                    f.write("#!/bin/bash\n")
+                    f.write("exec 3>/dev/null\n")
+                    f.write("exec >/dev/null 2>&1\n")  # Suppress all output to /dev/tty
+                    f.write(" ".join([f'"{arg}"' for arg in gofsh_fishing_cmd]) + f" </dev/null >{output_file} 2>&1\n")
+                os.chmod(wrapper_script, 0o755)
+                
+                logger.debug(f"GoFSH fishing-trip wrapper script contents:\n{open(wrapper_script, 'r').read()}")
+                
+                result = subprocess.run(
+                    [wrapper_script],
+                    check=True,
+                    env=env
+                )
+                with open(output_file, 'r', encoding='utf-8') as f:
+                    fishing_output = f.read()
+                logger.debug(f"GoFSH fishing-trip output:\n{fishing_output}")
+                
+                # Copy fshing-trip-comparison.html to final directory
+                for root, _, files in os.walk(fishing_temp_dir):
+                    for file in files:
+                        if file.endswith(".html") and "fshing-trip-comparison" in file.lower():
+                            src_path = os.path.join(root, file)
+                            dst_path = os.path.join(output_dir, file)
+                            shutil.copy2(src_path, dst_path)
+                            copied_files.append(file)
+                            with open(dst_path, 'r', encoding='utf-8') as f:
+                                comparison_report = f.read()
+            except subprocess.CalledProcessError as e:
+                error_output = ""
+                if os.path.exists(output_file):
+                    with open(output_file, 'r', encoding='utf-8') as f:
+                        error_output = f.read()
+                logger.error(f"GoFSH fishing-trip failed: {error_output}")
+                return None, None, f"GoFSH fishing-trip failed: {error_output}"
+            finally:
+                if os.path.exists(fishing_temp_dir):
+                    shutil.rmtree(fishing_temp_dir, ignore_errors=True)
+        
+        # Read FSH files from final output directory
         fsh_content = []
         for root, _, files in os.walk(output_dir):
             for file in files:
                 if file.endswith(".fsh"):
                     with open(os.path.join(root, file), 'r', encoding='utf-8') as f:
                         fsh_content.append(f.read())
+        fsh_output = "\n\n".join(fsh_content)
+        
+        # Log copied files
+        logger.debug(f"Copied files to final output directory: {copied_files}")
+        
         logger.info(f"GoFSH executed successfully for {input_path}")
-        return "\n\n".join(fsh_content), None
+        return fsh_output, comparison_report, None
     except subprocess.CalledProcessError as e:
-        logger.error(f"GoFSH failed: {e.stderr}")
-        return None, f"GoFSH failed: {e.stderr}"
+        error_output = ""
+        if os.path.exists(output_file):
+            with open(output_file, 'r', encoding='utf-8') as f:
+                error_output = f.read()
+        logger.error(f"GoFSH failed: {error_output}")
+        return None, None, f"GoFSH failed: {error_output}"
     except Exception as e:
         logger.error(f"Error running GoFSH: {str(e)}", exc_info=True)
-        return None, f"Error running GoFSH: {str(e)}"
+        return None, None, f"Error running GoFSH: {str(e)}"
+    finally:
+        # Clean up temporary files
+        if os.path.exists(wrapper_script):
+            os.remove(wrapper_script)
+        if os.path.exists(output_file):
+            os.remove(output_file)
+        if os.path.exists(temp_output_dir):
+            shutil.rmtree(temp_output_dir, ignore_errors=True)
 
-def process_fhir_input(input_mode, fhir_file, fhir_text):
-    """Process user input (file or text) and save to a temporary file."""
+def process_fhir_input(input_mode, fhir_file, fhir_text, alias_file=None):
+    """Process user input (file or text) and save to temporary files."""
     temp_dir = tempfile.mkdtemp()
-    temp_file = None
+    input_file = None
+    alias_path = None
     
     try:
         if input_mode == 'file' and fhir_file:
             content = fhir_file.read().decode('utf-8')
             file_type = 'json' if content.strip().startswith('{') else 'xml'
-            temp_file = os.path.join(temp_dir, f"input.{file_type}")
-            with open(temp_file, 'w', encoding='utf-8') as f:
+            input_file = os.path.join(temp_dir, f"input.{file_type}")
+            with open(input_file, 'w') as f:
                 f.write(content)
         elif input_mode == 'text' and fhir_text:
             content = fhir_text.strip()
-            file_type = 'json' if content.startswith('{') else 'xml'
-            temp_file = os.path.join(temp_dir, f"input.{file_type}")
-            with open(temp_file, 'w', encoding='utf-8') as f:
+            file_type = 'json' if content.strip().startswith('{') else 'xml'
+            input_file = os.path.join(temp_dir, f"input.{file_type}")
+            with open(input_file, 'w') as f:
                 f.write(content)
         else:
-            return None, None, "No input provided"
+            return None, None, None, "No input provided"
         
         # Basic validation
         if file_type == 'json':
             try:
                 json.loads(content)
             except json.JSONDecodeError:
-                return None, None, "Invalid JSON format"
+                return None, None, None, "Invalid JSON format"
         elif file_type == 'xml':
             try:
                 ET.fromstring(content)
             except ET.ParseError:
-                return None, None, "Invalid XML format"
+                return None, None, None, "Invalid XML format"
         
-        logger.debug(f"Processed input: {temp_file}")
-        return temp_file, temp_dir, None
+        # Process alias file if provided
+        if alias_file:
+            alias_content = alias_file.read().decode('utf-8')
+            alias_path = os.path.join(temp_dir, "aliases.fsh")
+            with open(alias_path, 'w') as f:
+                f.write(alias_content)
+        
+        logger.debug(f"Processed input: {(input_file, alias_path)}")
+        return input_file, temp_dir, alias_path, None
     except Exception as e:
         logger.error(f"Error processing input: {str(e)}", exc_info=True)
-        return None, None, f"Error processing input: {str(e)}"
-
+        return None, None, None, f"Error processing input: {str(e)}"

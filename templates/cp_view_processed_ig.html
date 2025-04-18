@@ -147,11 +147,11 @@
             <div class="card">
                  <div class="card-header d-flex justify-content-between align-items-center">
                      <span>Raw Structure Definition for <code id="raw-structure-title"></code></span>
-                     <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="copy-raw-def-button"
-                             data-bs-toggle="tooltip" data-bs-placement="top" title="Copy Raw Definition JSON">
-                         <i class="bi bi-clipboard" aria-hidden="true"></i>
-                         <span class="visually-hidden">Copy Raw Definition JSON to clipboard</span>
-                     </button>
+                     <button type="button" class="btn btn-sm btn-outline-secondary btn-copy" id="copy-raw-def-button"
+                            data-bs-toggle="tooltip" data-bs-placement="top" title="Copy Raw Definition JSON">
+                        <i class="bi bi-clipboard" aria-hidden="true"></i>
+                        <span class="visually-hidden">Copy Raw Definition JSON to clipboard</span>
+                    </button>
                  </div>
                 <div class="card-body">
                     <div id="raw-structure-loading" class="text-center py-3" style="display: none;">
@@ -179,22 +179,22 @@
                             <div class="col-md-6">
                                 <div class="d-flex justify-content-between align-items-center mb-1">
                                      <h6>Raw Content</h6>
-                                     <button type="button" class="btn btn-sm btn-outline-secondary" id="copy-raw-content-button"
-                                             data-bs-toggle="tooltip" data-bs-placement="top" title="Copy Raw Content">
-                                         <i class="bi bi-clipboard" aria-hidden="true"></i>
-                                         <span class="visually-hidden">Copy raw example content to clipboard</span>
-                                     </button>
+                                     <button type="button" class="btn btn-sm btn-outline-secondary btn-copy" id="copy-raw-def-button"
+                                            data-bs-toggle="tooltip" data-bs-placement="top" title="Copy Raw Definition JSON">
+                                        <i class="bi bi-clipboard" aria-hidden="true"></i>
+                                        <span class="visually-hidden">Copy Raw Definition JSON to clipboard</span>
+                                    </button>
                                  </div>
                                 <pre><code id="example-content-raw" class="p-2 d-block border bg-light" style="max-height: 400px; overflow-y: auto;"></code></pre>
                             </div>
                             <div class="col-md-6">
                                  <div class="d-flex justify-content-between align-items-center mb-1">
                                     <h6>Pretty-Printed JSON</h6>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="copy-pretty-json-button"
-                                            data-bs-toggle="tooltip" data-bs-placement="top" title="Copy JSON">
-                                        <i class="bi bi-clipboard" aria-hidden="true"></i>
-                                        <span class="visually-hidden">Copy JSON example to clipboard</span>
-                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary btn-copy" id="copy-pretty-json-button"
+                                             data-bs-toggle="tooltip" data-bs-placement="top" title="Copy JSON">
+                                         <i class="bi bi-clipboard" aria-hidden="true"></i>
+                                         <span class="visually-hidden">Copy JSON example to clipboard</span>
+                                     </button>
                                 </div>
                                 <pre><code id="example-content-json" class="p-2 d-block border bg-light" style="max-height: 400px; overflow-y: auto;"></code></pre>
                             </div>

@@ -1,17 +1,56 @@
-2025-04-17 06:25:17,514 CRIT Supervisor is running as root.  Privileges were not dropped because no user is specified in the config file.  If you intend to run as root, you can set user=root in the config file to avoid this message.
-2025-04-17 06:25:17,521 INFO supervisord started with pid 1
-2025-04-17 06:25:18,537 INFO spawned: 'flask' with pid 7
-2025-04-17 06:25:18,542 INFO spawned: 'tomcat' with pid 8
-2025-04-17 06:25:29,060 INFO success: flask entered RUNNING state, process has stayed up for > than 10 seconds (startsecs)
-2025-04-17 06:25:48,549 INFO success: tomcat entered RUNNING state, process has stayed up for > than 30 seconds (startsecs)
-2025-04-17 07:05:48,346 WARN received SIGTERM indicating exit request
-2025-04-17 07:05:48,354 INFO waiting for flask, tomcat to die
-2025-04-17 07:05:51,475 WARN stopped: tomcat (exit status 143)
-2025-04-17 07:05:51,483 INFO waiting for flask to die
-2025-04-17 07:05:52,495 WARN stopped: flask (terminated by SIGTERM)
-2025-04-17 07:08:06,100 CRIT Supervisor is running as root.  Privileges were not dropped because no user is specified in the config file.  If you intend to run as root, you can set user=root in the config file to avoid this message.
-2025-04-17 07:08:06,109 INFO supervisord started with pid 1
-2025-04-17 07:08:07,117 INFO spawned: 'flask' with pid 7
-2025-04-17 07:08:07,122 INFO spawned: 'tomcat' with pid 8
-2025-04-17 07:08:17,381 INFO success: flask entered RUNNING state, process has stayed up for > than 10 seconds (startsecs)
-2025-04-17 07:08:37,990 INFO success: tomcat entered RUNNING state, process has stayed up for > than 30 seconds (startsecs)
+2025-04-18 14:38:01,410 CRIT Supervisor is running as root.  Privileges were not dropped because no user is specified in the config file.  If you intend to run as root, you can set user=root in the config file to avoid this message.
+2025-04-18 14:38:01,416 INFO supervisord started with pid 1
+2025-04-18 14:38:02,423 INFO spawned: 'flask' with pid 7
+2025-04-18 14:38:02,429 INFO spawned: 'tomcat' with pid 8
+2025-04-18 14:38:12,439 INFO success: flask entered RUNNING state, process has stayed up for > than 10 seconds (startsecs)
+2025-04-18 14:38:32,593 INFO success: tomcat entered RUNNING state, process has stayed up for > than 30 seconds (startsecs)
+2025-04-18 14:40:50,270 WARN received SIGTERM indicating exit request
+2025-04-18 14:40:50,271 INFO waiting for flask, tomcat to die
+2025-04-18 14:40:51,200 WARN stopped: tomcat (exit status 143)
+2025-04-18 14:40:51,204 WARN stopped: flask (terminated by SIGTERM)
+2025-04-18 14:45:28,046 CRIT Supervisor is running as root.  Privileges were not dropped because no user is specified in the config file.  If you intend to run as root, you can set user=root in the config file to avoid this message.
+2025-04-18 14:45:28,051 INFO supervisord started with pid 1
+2025-04-18 14:45:29,057 INFO spawned: 'flask' with pid 8
+2025-04-18 14:45:29,060 INFO spawned: 'tomcat' with pid 9
+2025-04-18 14:45:39,314 INFO success: flask entered RUNNING state, process has stayed up for > than 10 seconds (startsecs)
+2025-04-18 14:45:59,118 INFO success: tomcat entered RUNNING state, process has stayed up for > than 30 seconds (startsecs)
+2025-04-18 14:48:15,641 WARN received SIGTERM indicating exit request
+2025-04-18 14:48:15,642 INFO waiting for flask, tomcat to die
+2025-04-18 14:48:16,755 WARN stopped: tomcat (exit status 143)
+2025-04-18 14:48:16,762 WARN stopped: flask (terminated by SIGTERM)
+2025-04-18 14:50:03,021 CRIT Supervisor is running as root.  Privileges were not dropped because no user is specified in the config file.  If you intend to run as root, you can set user=root in the config file to avoid this message.
+2025-04-18 14:50:03,030 INFO supervisord started with pid 1
+2025-04-18 14:50:04,035 INFO spawned: 'flask' with pid 7
+2025-04-18 14:50:04,041 INFO spawned: 'tomcat' with pid 8
+2025-04-18 14:50:14,298 INFO success: flask entered RUNNING state, process has stayed up for > than 10 seconds (startsecs)
+2025-04-18 14:50:34,529 INFO success: tomcat entered RUNNING state, process has stayed up for > than 30 seconds (startsecs)
+2025-04-18 14:51:37,046 WARN received SIGTERM indicating exit request
+2025-04-18 14:51:37,047 INFO waiting for flask, tomcat to die
+2025-04-18 14:51:38,220 WARN stopped: tomcat (exit status 143)
+2025-04-18 14:51:38,225 WARN stopped: flask (terminated by SIGTERM)
+2025-04-18 14:53:15,586 CRIT Supervisor is running as root.  Privileges were not dropped because no user is specified in the config file.  If you intend to run as root, you can set user=root in the config file to avoid this message.
+2025-04-18 14:53:15,594 INFO supervisord started with pid 1
+2025-04-18 14:53:16,598 INFO spawned: 'flask' with pid 7
+2025-04-18 14:53:16,601 INFO spawned: 'tomcat' with pid 8
+2025-04-18 14:53:27,378 INFO success: flask entered RUNNING state, process has stayed up for > than 10 seconds (startsecs)
+2025-04-18 14:53:47,426 INFO success: tomcat entered RUNNING state, process has stayed up for > than 30 seconds (startsecs)
+2025-04-18 14:55:41,989 WARN received SIGTERM indicating exit request
+2025-04-18 14:55:41,989 INFO waiting for flask, tomcat to die
+2025-04-18 14:55:43,011 WARN stopped: tomcat (exit status 143)
+2025-04-18 14:55:43,018 WARN stopped: flask (terminated by SIGTERM)
+2025-04-18 14:57:22,683 CRIT Supervisor is running as root.  Privileges were not dropped because no user is specified in the config file.  If you intend to run as root, you can set user=root in the config file to avoid this message.
+2025-04-18 14:57:22,688 INFO supervisord started with pid 1
+2025-04-18 14:57:23,693 INFO spawned: 'flask' with pid 7
+2025-04-18 14:57:23,697 INFO spawned: 'tomcat' with pid 8
+2025-04-18 14:57:34,418 INFO success: flask entered RUNNING state, process has stayed up for > than 10 seconds (startsecs)
+2025-04-18 14:57:53,722 INFO success: tomcat entered RUNNING state, process has stayed up for > than 30 seconds (startsecs)
+2025-04-18 14:59:18,910 WARN received SIGTERM indicating exit request
+2025-04-18 14:59:18,925 INFO waiting for flask, tomcat to die
+2025-04-18 14:59:20,423 WARN stopped: tomcat (exit status 143)
+2025-04-18 14:59:20,430 WARN stopped: flask (terminated by SIGTERM)
+2025-04-18 15:00:50,025 CRIT Supervisor is running as root.  Privileges were not dropped because no user is specified in the config file.  If you intend to run as root, you can set user=root in the config file to avoid this message.
+2025-04-18 15:00:50,043 INFO supervisord started with pid 1
+2025-04-18 15:00:51,049 INFO spawned: 'flask' with pid 7
+2025-04-18 15:00:51,053 INFO spawned: 'tomcat' with pid 8
+2025-04-18 15:01:01,646 INFO success: flask entered RUNNING state, process has stayed up for > than 10 seconds (startsecs)
+2025-04-18 15:01:21,365 INFO success: tomcat entered RUNNING state, process has stayed up for > than 30 seconds (startsecs)

@@ -56,7 +56,7 @@
                 <div class="mb-3" id="requestBodyGroup" style="display: none;">
                     <div class="d-flex align-items-center mb-2">
                         <label for="requestBody" class="form-label me-2 mb-0">Request Body</label>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="copyRequestBody" title="Copy to Clipboard"><i class="bi bi-clipboard"></i></button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm btn-copy" id="copyRequestBody" title="Copy to Clipboard"><i class="bi bi-clipboard"></i></button>
                     </div>
                     <textarea class="form-control" id="requestBody" name="request_body" rows="6" placeholder="For POST: JSON resource (e.g., {'resourceType': 'Patient', ...}) or search params (e.g., name=John&birthdate=gt2000)"></textarea>
                     <div id="jsonError" class="text-danger mt-1" style="display: none;"></div>
@@ -72,12 +72,12 @@
             <h5>Status: <span id="responseStatus" class="badge"></span></h5>
             <div class="d-flex align-items-center mb-2">
                 <h6 class="me-2 mb-0">Headers</h6>
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="copyResponseHeaders" title="Copy to Clipboard"><i class="bi bi-clipboard"></i></button>
+                <button type="button" class="btn btn-outline-secondary btn-sm btn-copy" id="copyResponseHeaders" title="Copy to Clipboard"><i class="bi bi-clipboard"></i></button>
             </div>
             <pre id="responseHeaders" class="border p-2 bg-light mb-3" style="max-height: 200px; overflow-y: auto;"></pre>
             <div class="d-flex align-items-center mb-2">
                 <h6 class="me-2 mb-0">Body</h6>
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="copyResponseBody" title="Copy to Clipboard"><i class="bi bi-clipboard"></i></button>
+                <button type="button" class="btn btn-outline-secondary btn-sm btn-copy" id="copyResponseBody" title="Copy to Clipboard"><i class="bi bi-clipboard"></i></button>
             </div>
             <pre id="responseBody" class="border p-2 bg-light" style="max-height: 400px; overflow-y: auto;"></pre>
         </div>

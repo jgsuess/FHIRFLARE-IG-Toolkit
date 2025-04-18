@@ -2,7 +2,8 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 import datetime
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response, current_app, session, send_file
+import shutil
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response, current_app, session, send_file, make_response
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
@@ -943,70 +944,168 @@ def proxy_hapi(subpath):
         logger.error(f"Proxy error: {str(e)}")
         return jsonify({'error': str(e)}), response.status_code if 'response' in locals() else 500
 
+# Assuming 'app' and 'logger' are defined, and other necessary imports are present above
+
 @app.route('/fsh-converter', methods=['GET', 'POST'])
 def fsh_converter():
     form = FSHConverterForm()
-    error = None
     fsh_output = None
-    
-    # Populate package choices
+    error = None
+    comparison_report = None
+
+    # --- Populate package choices ---
     packages = []
-    packages_dir = app.config['FHIR_PACKAGES_DIR']
+    packages_dir = app.config.get('FHIR_PACKAGES_DIR', '/app/instance/fhir_packages') # Use .get with default
+    logger.debug(f"Scanning packages directory: {packages_dir}")
     if os.path.exists(packages_dir):
-        for filename in os.listdir(packages_dir):
-            if filename.endswith('.tgz'):
-                try:
-                    with tarfile.open(os.path.join(packages_dir, filename), 'r:gz') as tar:
-                        package_json = tar.extractfile('package/package.json')
-                        if package_json:
-                            pkg_info = json.load(package_json)
-                            name = pkg_info.get('name')
-                            version = pkg_info.get('version')
-                            if name and version:
-                                packages.append((f"{name}#{version}", f"{name}#{version}"))
-                except Exception as e:
-                    logger.warning(f"Error reading package {filename}: {e}")
-                    continue
-    form.package.choices = [('', 'None')] + sorted(packages, key=lambda x: x[0])
-    
-    if form.validate_on_submit():
+        tgz_files = [f for f in os.listdir(packages_dir) if f.endswith('.tgz')]
+        logger.debug(f"Found {len(tgz_files)} .tgz files: {tgz_files}")
+        for filename in tgz_files:
+            package_file_path = os.path.join(packages_dir, filename)
+            try:
+                # Check if it's a valid tar.gz file before opening
+                if not tarfile.is_tarfile(package_file_path):
+                     logger.warning(f"Skipping non-tarfile or corrupted file: {filename}")
+                     continue
+
+                with tarfile.open(package_file_path, 'r:gz') as tar:
+                    # Find package.json case-insensitively and handle potential path variations
+                    package_json_path = next((m for m in tar.getmembers() if m.name.lower().endswith('package.json') and m.isfile() and ('/' not in m.name.replace('package/','', 1).lower())), None) # Handle package/ prefix better
+
+                    if package_json_path:
+                        package_json_stream = tar.extractfile(package_json_path)
+                        if package_json_stream:
+                            try:
+                                pkg_info = json.load(package_json_stream)
+                                name = pkg_info.get('name')
+                                version = pkg_info.get('version')
+                                if name and version:
+                                    package_id = f"{name}#{version}"
+                                    packages.append((package_id, package_id))
+                                    logger.debug(f"Added package: {package_id}")
+                                else:
+                                    logger.warning(f"Missing name or version in {filename}/package.json: name={name}, version={version}")
+                            except json.JSONDecodeError as json_e:
+                                logger.warning(f"Error decoding package.json from {filename}: {json_e}")
+                            except Exception as read_e:
+                                logger.warning(f"Error reading stream from package.json in {filename}: {read_e}")
+                            finally:
+                                package_json_stream.close() # Ensure stream is closed
+                        else:
+                             logger.warning(f"Could not extract package.json stream from {filename} (path: {package_json_path.name})")
+                    else:
+                        logger.warning(f"No suitable package.json found in {filename}")
+            except tarfile.ReadError as tar_e:
+                 logger.warning(f"Tarfile read error for {filename}: {tar_e}")
+            except Exception as e:
+                logger.warning(f"Error processing package {filename}: {str(e)}")
+                continue # Continue to next file
+    else:
+        logger.warning(f"Packages directory does not exist: {packages_dir}")
+
+    unique_packages = sorted(list(set(packages)), key=lambda x: x[0])
+    form.package.choices = [('', 'None')] + unique_packages
+    logger.debug(f"Set package choices: {form.package.choices}")
+    # --- End package choices ---
+
+    if form.validate_on_submit(): # This block handles POST requests
         input_mode = form.input_mode.data
-        fhir_file = form.fhir_file.data
+        # Use request.files.get to safely access file data
+        fhir_file_storage = request.files.get(form.fhir_file.name)
+        fhir_file = fhir_file_storage if fhir_file_storage and fhir_file_storage.filename != '' else None
+
         fhir_text = form.fhir_text.data
+
+        alias_file_storage = request.files.get(form.alias_file.name)
+        alias_file = alias_file_storage if alias_file_storage and alias_file_storage.filename != '' else None
+
         output_style = form.output_style.data
         log_level = form.log_level.data
-        fhir_version = form.fhir_version.data or None
-        
-        # Process input
-        input_path, temp_dir, error = services.process_fhir_input(input_mode, fhir_file, fhir_text)
-        if error:
+        fhir_version = form.fhir_version.data if form.fhir_version.data != 'auto' else None
+        fishing_trip = form.fishing_trip.data
+        dependencies = [dep.strip() for dep in form.dependencies.data.splitlines() if dep.strip()] if form.dependencies.data else None # Use splitlines()
+        indent_rules = form.indent_rules.data
+        meta_profile = form.meta_profile.data
+        no_alias = form.no_alias.data
+
+        logger.debug(f"Processing input: mode={input_mode}, has_file={bool(fhir_file)}, has_text={bool(fhir_text)}, has_alias={bool(alias_file)}")
+        # Pass the FileStorage object directly if needed by process_fhir_input
+        input_file, temp_dir, alias_path, input_error = services.process_fhir_input(input_mode, fhir_file, fhir_text, alias_file)
+
+        if input_error:
+            error = input_error
             flash(error, 'error')
-            return render_template('fsh_converter.html', form=form, error=error, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
-        
-        # Run GoFSH
-        output_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'fsh_output')
-        os.makedirs(output_dir, exist_ok=True)
-        fsh_output, error = services.run_gofsh(input_path, output_dir, output_style, log_level, fhir_version)
-        
-        # Clean up temporary files
-        if temp_dir and os.path.exists(temp_dir):
-            import shutil
-            shutil.rmtree(temp_dir)
-        
-        if error:
-            flash(error, 'error')
-            return render_template('fsh_converter.html', form=form, error=error, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
-        
-        # Store output for download
-        session['fsh_output'] = fsh_output
-        flash('Conversion successful!', 'success')
-        return render_template('fsh_converter.html', form=form, fsh_output=fsh_output, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
-    
-    return render_template('fsh_converter.html', form=form, error=error, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+            logger.error(f"Input processing error: {error}")
+            if temp_dir and os.path.exists(temp_dir):
+                 try: shutil.rmtree(temp_dir, ignore_errors=True)
+                 except Exception as cleanup_e: logger.warning(f"Error removing temp dir after input error {temp_dir}: {cleanup_e}")
+        else:
+            # Proceed only if input processing was successful
+            output_dir = os.path.join(app.config.get('UPLOAD_FOLDER', '/app/static/uploads'), 'fsh_output') # Use .get
+            os.makedirs(output_dir, exist_ok=True)
+            logger.debug(f"Running GoFSH with input: {input_file}, output_dir: {output_dir}")
+            # Pass form data directly to run_gofsh
+            fsh_output, comparison_report, gofsh_error = services.run_gofsh(
+                input_file, output_dir, output_style, log_level, fhir_version,
+                fishing_trip, dependencies, indent_rules, meta_profile, alias_path, no_alias
+            )
+            # Clean up temp dir after GoFSH run
+            if temp_dir and os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    logger.debug(f"Successfully removed temp directory: {temp_dir}")
+                except Exception as cleanup_e:
+                     logger.warning(f"Error removing temp directory {temp_dir}: {cleanup_e}")
+
+            if gofsh_error:
+                error = gofsh_error
+                flash(error, 'error')
+                logger.error(f"GoFSH error: {error}")
+            else:
+                # Store potentially large output carefully - session might have limits
+                session['fsh_output'] = fsh_output
+                flash('Conversion successful!', 'success')
+                logger.info("FSH conversion successful")
+
+        # Return response for POST (AJAX or full page)
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            logger.debug("Returning partial HTML for AJAX POST request.")
+            return render_template('_fsh_output.html', form=form, error=error, fsh_output=fsh_output, comparison_report=comparison_report)
+        else:
+             # For standard POST, re-render the full page with results/errors
+             logger.debug("Handling standard POST request, rendering full page.")
+             return render_template('fsh_converter.html', form=form, error=error, fsh_output=fsh_output, comparison_report=comparison_report, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+
+    # --- Handle GET request (Initial Page Load or Failed POST Validation) ---
+    else:
+        if request.method == 'POST': # POST but validation failed
+             logger.warning("POST request failed form validation.")
+             # Render the full page, WTForms errors will be displayed by render_field
+             return render_template('fsh_converter.html', form=form, error="Form validation failed. Please check fields.", fsh_output=None, comparison_report=None, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+        else:
+             # This is the initial GET request
+             logger.debug("Handling GET request for FSH converter page.")
+             # **** FIX APPLIED HERE ****
+             # Make the response object to add headers
+             response = make_response(render_template(
+                 'fsh_converter.html',
+                 form=form, # Pass the empty form
+                 error=None,
+                 fsh_output=None,
+                 comparison_report=None,
+                 site_name='FHIRFLARE IG Toolkit',
+                 now=datetime.datetime.now()
+             ))
+             # Add headers to prevent caching
+             response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+             response.headers['Pragma'] = 'no-cache'
+             response.headers['Expires'] = '0'
+             return response
+             # **** END OF FIX ****
 
 @app.route('/download-fsh')
 def download_fsh():
-    fsh_output = session.get('fsh_output', '')
+    fsh_output = session.get('fsh_output')
     if not fsh_output:
         flash('No FSH output available for download.', 'error')
         return redirect(url_for('fsh_converter'))
@@ -1017,6 +1116,19 @@ def download_fsh():
     
     return send_file(temp_file, as_attachment=True, download_name='output.fsh')
 
+@app.route('/favicon.ico')
+def favicon():
+    return send_file(os.path.join(app.static_folder, 'favicon.ico'), mimetype='image/x-icon')
+
 
 if __name__ == '__main__':
+    with app.app_context():
+        logger.debug(f"Instance path configuration: {app.instance_path}")
+        logger.debug(f"Database URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
+        logger.debug(f"Packages path: {app.config['FHIR_PACKAGES_DIR']}")
+        logger.debug(f"Flask instance folder path: {app.instance_path}")
+        logger.debug(f"Directories created/verified: Instance: {app.instance_path}, Packages: {app.config['FHIR_PACKAGES_DIR']}")
+        logger.debug(f"Attempting to create database tables for URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
+        db.create_all()
+        logger.info("Database tables created successfully (if they didn't exist).")
     app.run(host='0.0.0.0', port=5000, debug=False)
