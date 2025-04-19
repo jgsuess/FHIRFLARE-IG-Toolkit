@@ -7,6 +7,7 @@ import re
 import logging
 import shutil
 from flask import current_app, Blueprint, request, jsonify
+from fhirpathpy import evaluate
 from collections import defaultdict
 from pathlib import Path
 import datetime
@@ -325,6 +326,10 @@ def process_package_file(tgz_path):
                     if not isinstance(data, dict) or data.get('resourceType') != 'StructureDefinition':
                         continue
 
+                    # Remove narrative text element from StructureDefinition
+                    if 'text' in data:
+                        del data['text']
+
                     profile_id = data.get('id') or data.get('name')
                     sd_type = data.get('type')
                     sd_base = data.get('baseDefinition')
@@ -436,6 +441,10 @@ def process_package_file(tgz_path):
                         if not isinstance(data, dict): continue
                         resource_type = data.get('resourceType')
                         if not resource_type: continue
+
+                        # Remove narrative text element from example
+                        if 'text' in data:
+                            del data['text']
 
                         profile_meta = data.get('meta', {}).get('profile', [])
                         found_profile_match = False
@@ -574,8 +583,8 @@ def process_package_file(tgz_path):
 
     return results
 
-# --- Validation Functions ---
-def navigate_fhir_path(resource, path, extension_url=None):
+# --- Validation Functions ---------------------------------------------------------------------------------------------------------------FHIRPATH CHANGES STARTED
+def _legacy_navigate_fhir_path(resource, path, extension_url=None):
     """Navigates a FHIR resource using a FHIRPath-like expression, handling nested structures."""
     logger.debug(f"Navigating FHIR path: {path}")
     if not resource or not path:
@@ -650,8 +659,27 @@ def navigate_fhir_path(resource, path, extension_url=None):
     result = current if (current is not None and (not isinstance(current, list) or current)) else None
     logger.debug(f"Path {path} resolved to: {result}")
     return result
+#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def validate_resource_against_profile(package_name, version, resource, include_dependencies=True):
+def navigate_fhir_path(resource, path, extension_url=None):
+    """Navigates a FHIR resource using FHIRPath expressions."""
+    logger.debug(f"Navigating FHIR path: {path}, extension_url={extension_url}")
+    if not resource or not path:
+        return None
+    try:
+        # Adjust path for extension filtering
+        if extension_url and 'extension' in path:
+            path = f"{path}[url='{extension_url}']"
+        result = evaluate(resource, path)
+        # Return first result if list, None if empty
+        return result[0] if result else None
+    except Exception as e:
+        logger.error(f"FHIRPath evaluation failed for {path}: {e}")
+        # Fallback to legacy navigation for compatibility
+        return _legacy_navigate_fhir_path(resource, path, extension_url)
+
+##------------------------------------------------------------------------------------------------------------------------------------and fhirpath here
+def _legacy_validate_resource_against_profile(package_name, version, resource, include_dependencies=True):
     """Validates a FHIR resource against a StructureDefinition in the specified package."""
     logger.debug(f"Validating resource {resource.get('resourceType')} against {package_name}#{version}, include_dependencies={include_dependencies}")
     result = {
@@ -830,6 +858,146 @@ def validate_resource_against_profile(package_name, version, resource, include_d
         'warning_count': len(warnings)
     }
     logger.debug(f"Validation result: valid={result['valid']}, errors={len(result['errors'])}, warnings={len(result['warnings'])}")
+    return result
+##--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+def validate_resource_against_profile(package_name, version, resource, include_dependencies=True):
+    result = {
+        'valid': True,
+        'errors': [],
+        'warnings': [],
+        'details': [],
+        'resource_type': resource.get('resourceType'),
+        'resource_id': resource.get('id', 'unknown'),
+        'profile': resource.get('meta', {}).get('profile', [None])[0]
+    }
+
+    # Attempt HAPI validation if a profile is specified
+    if result['profile']:
+        try:
+            hapi_url = f"http://localhost:8080/fhir/{resource['resourceType']}/$validate?profile={result['profile']}"
+            response = requests.post(
+                hapi_url,
+                json=resource,
+                headers={'Content-Type': 'application/fhir+json', 'Accept': 'application/fhir+json'},
+                timeout=10
+            )
+            response.raise_for_status()
+            outcome = response.json()
+            if outcome.get('resourceType') == 'OperationOutcome':
+                for issue in outcome.get('issue', []):
+                    severity = issue.get('severity')
+                    diagnostics = issue.get('diagnostics', issue.get('details', {}).get('text', 'No details provided'))
+                    detail = {
+                        'issue': diagnostics,
+                        'severity': severity,
+                        'description': issue.get('details', {}).get('text', diagnostics)
+                    }
+                    if severity in ['error', 'fatal']:
+                        result['valid'] = False
+                        result['errors'].append(diagnostics)
+                    elif severity == 'warning':
+                        result['warnings'].append(diagnostics)
+                    result['details'].append(detail)
+                result['summary'] = {
+                    'error_count': len(result['errors']),
+                    'warning_count': len(result['warnings'])
+                }
+                logger.debug(f"HAPI validation for {result['resource_type']}/{result['resource_id']}: valid={result['valid']}, errors={len(result['errors'])}, warnings={len(result['warnings'])}")
+                return result
+            else:
+                logger.warning(f"HAPI returned non-OperationOutcome: {outcome.get('resourceType')}")
+        except requests.RequestException as e:
+            logger.error(f"HAPI validation failed for {result['resource_type']}/{result['resource_id']}: {e}")
+            result['details'].append({
+                'issue': f"HAPI validation failed: {str(e)}",
+                'severity': 'warning',
+                'description': 'Falling back to local validation due to HAPI server error.'
+            })
+
+    # Fallback to local validation
+    download_dir = _get_download_dir()
+    if not download_dir:
+        result['valid'] = False
+        result['errors'].append("Could not access download directory")
+        result['details'].append({
+            'issue': "Could not access download directory",
+            'severity': 'error',
+            'description': "The server could not locate the directory where FHIR packages are stored."
+        })
+        return result
+
+    tgz_path = os.path.join(download_dir, construct_tgz_filename(package_name, version))
+    sd_data, sd_path = find_and_extract_sd(tgz_path, resource.get('resourceType'), result['profile'])
+    if not sd_data:
+        result['valid'] = False
+        result['errors'].append(f"No StructureDefinition found for {resource.get('resourceType')}")
+        result['details'].append({
+            'issue': f"No StructureDefinition found for {resource.get('resourceType')}",
+            'severity': 'error',
+            'description': f"The package {package_name}#{version} does not contain a matching StructureDefinition."
+        })
+        return result
+
+    elements = sd_data.get('snapshot', {}).get('element', [])
+    for element in elements:
+        path = element.get('path')
+        min_val = element.get('min', 0)
+        must_support = element.get('mustSupport', False)
+        slicing = element.get('slicing')
+        slice_name = element.get('sliceName')
+
+        # Check required elements
+        if min_val > 0:
+            value = navigate_fhir_path(resource, path)
+            if value is None or (isinstance(value, list) and not any(value)):
+                result['valid'] = False
+                result['errors'].append(f"Required element {path} missing")
+                result['details'].append({
+                    'issue': f"Required element {path} missing",
+                    'severity': 'error',
+                    'description': f"Element {path} has min={min_val} in profile {result['profile'] or 'unknown'}"
+                })
+
+        # Check must-support elements
+        if must_support:
+            value = navigate_fhir_path(resource, slice_name if slice_name else path)
+            if value is None or (isinstance(value, list) and not any(value)):
+                result['warnings'].append(f"Must Support element {path} missing or empty")
+                result['details'].append({
+                    'issue': f"Must Support element {path} missing or empty",
+                    'severity': 'warning',
+                    'description': f"Element {path} is marked as Must Support in profile {result['profile'] or 'unknown'}"
+                })
+
+        # Validate slicing
+        if slicing and not slice_name:  # Parent slicing element
+            discriminator = slicing.get('discriminator', [])
+            for d in discriminator:
+                d_type = d.get('type')
+                d_path = d.get('path')
+                if d_type == 'value':
+                    sliced_elements = navigate_fhir_path(resource, path)
+                    if isinstance(sliced_elements, list):
+                        seen_values = set()
+                        for elem in sliced_elements:
+                            d_value = navigate_fhir_path(elem, d_path)
+                            if d_value in seen_values:
+                                result['valid'] = False
+                                result['errors'].append(f"Duplicate discriminator value {d_value} for {path}.{d_path}")
+                            seen_values.add(d_value)
+                elif d_type == 'type':
+                    sliced_elements = navigate_fhir_path(resource, path)
+                    if isinstance(sliced_elements, list):
+                        for elem in sliced_elements:
+                            if not navigate_fhir_path(elem, d_path):
+                                result['valid'] = False
+                                result['errors'].append(f"Missing discriminator type {d_path} for {path}")
+
+    result['summary'] = {
+        'error_count': len(result['errors']),
+        'warning_count': len(result['warnings'])
+    }
     return result
 
 def validate_bundle_against_profile(package_name, version, bundle, include_dependencies=True):

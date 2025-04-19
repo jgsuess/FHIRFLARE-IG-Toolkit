@@ -381,12 +381,12 @@ def view_ig(processed_ig_id):
                            config=current_app.config)
 
 @app.route('/get-structure')
-def get_structure_definition():
+def get_structure():
     package_name = request.args.get('package_name')
     package_version = request.args.get('package_version')
-    resource_identifier = request.args.get('resource_type')
-    if not all([package_name, package_version, resource_identifier]):
-        logger.warning("get_structure_definition: Missing query parameters.")
+    resource_type = request.args.get('resource_type')
+    if not all([package_name, package_version, resource_type]):
+        logger.warning("get_structure: Missing query parameters: package_name=%s, package_version=%s, resource_type=%s", package_name, package_version, resource_type)
         return jsonify({"error": "Missing required query parameters: package_name, package_version, resource_type"}), 400
     packages_dir = current_app.config.get('FHIR_PACKAGES_DIR')
     if not packages_dir:
@@ -397,16 +397,23 @@ def get_structure_definition():
     sd_data = None
     fallback_used = False
     source_package_id = f"{package_name}#{package_version}"
-    logger.debug(f"Attempting to find SD for '{resource_identifier}' in {tgz_filename}")
+    logger.debug(f"Attempting to find SD for '{resource_type}' in {tgz_filename}")
     if os.path.exists(tgz_path):
         try:
-            sd_data, _ = services.find_and_extract_sd(tgz_path, resource_identifier)
+            sd_data, _ = services.find_and_extract_sd(tgz_path, resource_type)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parsing error for SD '{resource_type}' in {tgz_path}: {e}")
+            return jsonify({"error": f"Invalid JSON in StructureDefinition: {str(e)}"}), 500
+        except tarfile.TarError as e:
+            logger.error(f"TarError extracting SD '{resource_type}' from {tgz_path}: {e}")
+            return jsonify({"error": f"Error reading package archive: {str(e)}"}), 500
         except Exception as e:
-            logger.error(f"Error extracting SD for '{resource_identifier}' from {tgz_path}: {e}", exc_info=True)
+            logger.error(f"Unexpected error extracting SD '{resource_type}' from {tgz_path}: {e}", exc_info=True)
+            return jsonify({"error": f"Unexpected error reading StructureDefinition: {str(e)}"}), 500
     else:
         logger.warning(f"Package file not found: {tgz_path}")
     if sd_data is None:
-        logger.info(f"SD for '{resource_identifier}' not found in {source_package_id}. Attempting fallback to {services.CANONICAL_PACKAGE_ID}.")
+        logger.info(f"SD for '{resource_type}' not found in {source_package_id}. Attempting fallback to {services.CANONICAL_PACKAGE_ID}.")
         core_package_name, core_package_version = services.CANONICAL_PACKAGE
         core_tgz_filename = services.construct_tgz_filename(core_package_name, core_package_version)
         core_tgz_path = os.path.join(packages_dir, core_tgz_filename)
@@ -415,104 +422,115 @@ def get_structure_definition():
             try:
                 result = services.import_package_and_dependencies(core_package_name, core_package_version, dependency_mode='direct')
                 if result['errors'] and not result['downloaded']:
-                    err_msg = f"Failed to download fallback core package {services.CANONICAL_PACKAGE_ID}: {result['errors'][0]}"
-                    logger.error(err_msg)
-                    return jsonify({"error": f"SD for '{resource_identifier}' not found in primary package, and failed to download core package: {result['errors'][0]}"}), 500
+                    logger.error(f"Failed to download fallback core package {services.CANONICAL_PACKAGE_ID}: {result['errors'][0]}")
+                    return jsonify({"error": f"SD for '{resource_type}' not found in primary package, and failed to download core package: {result['errors'][0]}"}), 500
                 elif not os.path.exists(core_tgz_path):
-                    err_msg = f"Core package download reported success but file {core_tgz_filename} still not found."
-                    logger.error(err_msg)
-                    return jsonify({"error": f"SD for '{resource_identifier}' not found, and core package download failed unexpectedly."}), 500
-                else:
-                    logger.info(f"Successfully downloaded core package {services.CANONICAL_PACKAGE_ID}.")
+                    logger.error(f"Core package download reported success but file {core_tgz_filename} still not found.")
+                    return jsonify({"error": f"SD for '{resource_type}' not found, and core package download failed unexpectedly."}), 500
             except Exception as e:
                 logger.error(f"Error downloading core package {services.CANONICAL_PACKAGE_ID}: {str(e)}", exc_info=True)
-                return jsonify({"error": f"SD for '{resource_identifier}' not found, and error downloading core package: {str(e)}"}), 500
-        if os.path.exists(core_tgz_path):
-            try:
-                sd_data, _ = services.find_and_extract_sd(core_tgz_path, resource_identifier)
-                if sd_data is not None:
-                    fallback_used = True
-                    source_package_id = services.CANONICAL_PACKAGE_ID
-                    logger.info(f"Found SD for '{resource_identifier}' in fallback package {source_package_id}.")
-                else:
-                    logger.error(f"SD for '{resource_identifier}' not found in primary package OR fallback {services.CANONICAL_PACKAGE_ID}.")
-                    return jsonify({"error": f"StructureDefinition for '{resource_identifier}' not found in {package_name}#{package_version} or in core FHIR package."}), 404
-            except Exception as e:
-                logger.error(f"Error extracting SD for '{resource_identifier}' from fallback {core_tgz_path}: {e}", exc_info=True)
-                return jsonify({"error": f"Error reading core FHIR package: {str(e)}"}), 500
-        else:
-            logger.error(f"Core package {core_tgz_path} missing even after download attempt.")
-            return jsonify({"error": f"SD not found, and core package could not be located/downloaded."}), 500
+                return jsonify({"error": f"SD for '{resource_type}' not found, and error downloading core package: {str(e)}"}), 500
+        try:
+            sd_data, _ = services.find_and_extract_sd(core_tgz_path, resource_type)
+            if sd_data is not None:
+                fallback_used = True
+                source_package_id = services.CANONICAL_PACKAGE_ID
+                logger.info(f"Found SD for '{resource_type}' in fallback package {source_package_id}.")
+            else:
+                logger.error(f"SD for '{resource_type}' not found in primary package OR fallback {services.CANONICAL_PACKAGE_ID}.")
+                return jsonify({"error": f"StructureDefinition for '{resource_type}' not found in {package_name}#{package_version} or in core FHIR package."}), 404
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parsing error for SD '{resource_type}' in fallback {core_tgz_path}: {e}")
+            return jsonify({"error": f"Invalid JSON in fallback StructureDefinition: {str(e)}"}), 500
+        except tarfile.TarError as e:
+            logger.error(f"TarError extracting SD '{resource_type}' from fallback {core_tgz_path}: {e}")
+            return jsonify({"error": f"Error reading fallback package archive: {str(e)}"}), 500
+        except Exception as e:
+            logger.error(f"Unexpected error extracting SD '{resource_type}' from fallback {core_tgz_path}: {e}", exc_info=True)
+            return jsonify({"error": f"Unexpected error reading fallback StructureDefinition: {str(e)}"}), 500
+    # Remove narrative text element (ensure applied after fallback)
+    if sd_data and 'text' in sd_data:
+        logger.debug(f"Removing narrative text from SD for '{resource_type}'")
+        del sd_data['text']
+    if not sd_data:
+        logger.error(f"SD for '{resource_type}' not found in primary or fallback package.")
+        return jsonify({"error": f"StructureDefinition for '{resource_type}' not found."}), 404
     elements = sd_data.get('snapshot', {}).get('element', [])
     if not elements and 'differential' in sd_data:
-        logger.debug(f"Using differential elements for {resource_identifier} as snapshot is missing.")
+        logger.debug(f"Using differential elements for {resource_type} as snapshot is missing.")
         elements = sd_data.get('differential', {}).get('element', [])
     if not elements:
-        logger.warning(f"No snapshot or differential elements found in the SD for '{resource_identifier}' from {source_package_id}")
+        logger.warning(f"No snapshot or differential elements found in the SD for '{resource_type}' from {source_package_id}")
     must_support_paths = []
     processed_ig = ProcessedIg.query.filter_by(package_name=package_name, version=package_version).first()
     if processed_ig and processed_ig.must_support_elements:
-        must_support_paths = processed_ig.must_support_elements.get(resource_identifier, [])
-        logger.debug(f"Retrieved {len(must_support_paths)} Must Support paths for '{resource_identifier}' from processed IG {package_name}#{package_version}")
+        must_support_paths = processed_ig.must_support_elements.get(resource_type, [])
+        logger.debug(f"Retrieved {len(must_support_paths)} Must Support paths for '{resource_type}' from processed IG {package_name}#{package_version}")
+    # Serialize with indent=4 and sort_keys=False for consistent formatting
     response_data = {
-        "elements": elements,
-        "must_support_paths": must_support_paths,
-        "fallback_used": fallback_used,
-        "source_package": source_package_id,
-        "requested_identifier": resource_identifier,
-        "original_package": f"{package_name}#{package_version}"
+        'structure_definition': sd_data,
+        'must_support_paths': must_support_paths,
+        'fallback_used': fallback_used,
+        'source_package': source_package_id
     }
-    return jsonify(response_data)
+    return Response(json.dumps(response_data, indent=4, sort_keys=False), mimetype='application/json')
 
 @app.route('/get-example')
-def get_example_content():
+def get_example():
     package_name = request.args.get('package_name')
-    package_version = request.args.get('package_version')
-    example_member_path = request.args.get('filename')
-    if not all([package_name, package_version, example_member_path]):
-        logger.warning(f"get_example_content: Missing query parameters: name={package_name}, version={package_version}, path={example_member_path}")
+    version = request.args.get('package_version')
+    filename = request.args.get('filename')
+    if not all([package_name, version, filename]):
+        logger.warning("get_example: Missing query parameters: package_name=%s, version=%s, filename=%s", package_name, version, filename)
         return jsonify({"error": "Missing required query parameters: package_name, package_version, filename"}), 400
-    if not example_member_path.startswith('package/') or '..' in example_member_path:
-        logger.warning(f"Invalid example file path requested: {example_member_path}")
+    if not filename.startswith('package/') or '..' in filename:
+        logger.warning(f"Invalid example file path requested: {filename}")
         return jsonify({"error": "Invalid example file path."}), 400
     packages_dir = current_app.config.get('FHIR_PACKAGES_DIR')
     if not packages_dir:
         logger.error("FHIR_PACKAGES_DIR not configured.")
         return jsonify({"error": "Server configuration error: Package directory not set."}), 500
-    tgz_filename = services.construct_tgz_filename(package_name, package_version)
+    tgz_filename = services.construct_tgz_filename(package_name, version)
     tgz_path = os.path.join(packages_dir, tgz_filename)
     if not os.path.exists(tgz_path):
-        logger.error(f"Package file not found for example extraction: {tgz_path}")
-        return jsonify({"error": f"Package file not found: {package_name}#{package_version}"}), 404
+        logger.error(f"Package file not found: {tgz_path}")
+        return jsonify({"error": f"Package {package_name}#{version} not found"}), 404
     try:
         with tarfile.open(tgz_path, "r:gz") as tar:
             try:
-                example_member = tar.getmember(example_member_path)
+                example_member = tar.getmember(filename)
                 with tar.extractfile(example_member) as example_fileobj:
                     content_bytes = example_fileobj.read()
                 content_string = content_bytes.decode('utf-8-sig')
-                content_type = 'application/json' if example_member_path.lower().endswith('.json') else \
-                               'application/xml' if example_member_path.lower().endswith('.xml') else \
-                               'text/plain'
-                return Response(content_string, mimetype=content_type)
+                # Parse JSON to remove narrative
+                content = json.loads(content_string)
+                if 'text' in content:
+                    logger.debug(f"Removing narrative text from example '{filename}'")
+                    del content['text']
+                # Return filtered JSON content as a compact string
+                filtered_content_string = json.dumps(content, separators=(',', ':'), sort_keys=False)
+                return Response(filtered_content_string, mimetype='application/json')
             except KeyError:
-                logger.error(f"Example file '{example_member_path}' not found within {tgz_filename}")
-                return jsonify({"error": f"Example file '{os.path.basename(example_member_path)}' not found in package."}), 404
-            except tarfile.TarError as e:
-                logger.error(f"TarError reading example {example_member_path} from {tgz_filename}: {e}")
-                return jsonify({"error": f"Error reading package archive: {e}"}), 500
+                logger.error(f"Example file '{filename}' not found within {tgz_filename}")
+                return jsonify({"error": f"Example file '{os.path.basename(filename)}' not found in package."}), 404
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON parsing error for example '{filename}' in {tgz_filename}: {e}")
+                return jsonify({"error": f"Invalid JSON in example file: {str(e)}"}), 500
             except UnicodeDecodeError as e:
-                logger.error(f"Encoding error reading example {example_member_path} from {tgz_filename}: {e}")
-                return jsonify({"error": f"Error decoding example file (invalid UTF-8?): {e}"}), 500
+                logger.error(f"Encoding error reading example '{filename}' from {tgz_filename}: {e}")
+                return jsonify({"error": f"Error decoding example file (invalid UTF-8?): {str(e)}"}), 500
+            except tarfile.TarError as e:
+                logger.error(f"TarError reading example '{filename}' from {tgz_filename}: {e}")
+                return jsonify({"error": f"Error reading package archive: {str(e)}"}), 500
     except tarfile.TarError as e:
         logger.error(f"Error opening package file {tgz_path}: {e}")
-        return jsonify({"error": f"Error reading package archive: {e}"}), 500
+        return jsonify({"error": f"Error reading package archive: {str(e)}"}), 500
     except FileNotFoundError:
         logger.error(f"Package file disappeared: {tgz_path}")
-        return jsonify({"error": f"Package file not found: {package_name}#{package_version}"}), 404
+        return jsonify({"error": f"Package file not found: {package_name}#{version}"}), 404
     except Exception as e:
-        logger.error(f"Unexpected error getting example {example_member_path} from {tgz_filename}: {e}", exc_info=True)
-        return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
+        logger.error(f"Unexpected error getting example '{filename}' from {tgz_filename}: {e}", exc_info=True)
+        return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
 
 @app.route('/get-package-metadata')
 def get_package_metadata():
@@ -924,7 +942,8 @@ def proxy_hapi(subpath):
             headers=headers,
             data=request.get_data(),
             cookies=request.cookies,
-            allow_redirects=False
+            allow_redirects=False,
+            timeout=5
         )
         response.raise_for_status()
         # Strip hop-by-hop headers to avoid chunked encoding issues
@@ -936,13 +955,44 @@ def proxy_hapi(subpath):
                 'proxy-authorization', 'te', 'trailers', 'upgrade'
             )
         }
-        # Ensure Content-Length matches the actual body
         response_headers['Content-Length'] = str(len(response.content))
-        logger.debug(f"Response: {response.status_code} {response.reason}")
+        logger.debug(f"HAPI response: {response.status_code} {response.reason}")
         return response.content, response.status_code, response_headers.items()
     except requests.RequestException as e:
-        logger.error(f"Proxy error: {str(e)}")
-        return jsonify({'error': str(e)}), response.status_code if 'response' in locals() else 500
+        logger.error(f"HAPI proxy error for {subpath}: {str(e)}")
+        error_message = "HAPI FHIR server is unavailable. Please check server status."
+        if clean_subpath == 'metadata':
+            error_message = "Unable to connect to HAPI FHIR server for status check. Local validation will be used."
+        return jsonify({'error': error_message, 'details': str(e)}), 503
+
+
+@app.route('/api/load-ig-to-hapi', methods=['POST'])
+def load_ig_to_hapi():
+    data = request.get_json()
+    package_name = data.get('package_name')
+    version = data.get('version')
+    tgz_path = os.path.join(current_app.config['FHIR_PACKAGES_DIR'], construct_tgz_filename(package_name, version))
+    if not os.path.exists(tgz_path):
+        return jsonify({"error": "Package not found"}), 404
+    try:
+        with tarfile.open(tgz_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.name.endswith('.json') and member.name not in ['package/package.json', 'package/.index.json']:
+                    resource = json.load(tar.extractfile(member))
+                    resource_type = resource.get('resourceType')
+                    resource_id = resource.get('id')
+                    if resource_type and resource_id:
+                        response = requests.put(
+                            f"http://localhost:8080/fhir/{resource_type}/{resource_id}",
+                            json=resource,
+                            headers={'Content-Type': 'application/fhir+json'}
+                        )
+                        response.raise_for_status()
+        return jsonify({"status": "success", "message": f"Loaded {package_name}#{version} to HAPI"})
+    except Exception as e:
+        logger.error(f"Failed to load IG to HAPI: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 # Assuming 'app' and 'logger' are defined, and other necessary imports are present above
 

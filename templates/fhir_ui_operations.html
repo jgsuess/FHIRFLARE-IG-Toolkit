@@ -13,6 +13,10 @@
     .btn-success.active { background-color: #1e7e34; border-color: #1e7e34; } /* Keep active style */
 
     /* --- Rest of the styles remain unchanged --- */
+
+    /* Attempt to fix font rendering glitch in example format select */
+    .opblock-section.responses-section .example-media-type-select { font-family: Arial, Helvetica, sans-serif !important; }
+
     /* Operation Block */
     .opblock { margin-bottom: 10px; border: 1px solid #dee2e6; border-radius: 4px; background: #fff; }
     .opblock-summary { display: flex; align-items: center; padding: 10px; cursor: pointer; background: #f8f9fa; border-bottom: 1px solid #dee2e6; }
@@ -340,54 +344,95 @@ document.addEventListener('DOMContentLoaded', () => {
     let fetchedMetadataCache = null;
     let operationDefinitionCache = {}; // <<< ADD THIS LINE: Cache for fetched OperationDefinitions
 
-    // <<< ADD THIS NEW ASYNC FUNCTION >>>
-    async function fetchOperationDefinition(url) {
-        if (!url) return null; // No definition URL provided
+// <<< REFINED fetchOperationDefinition >>>
+    async function fetchOperationDefinition(definitionUrl) {
+        if (!definitionUrl) return null;
 
-        // Check cache first
-        if (operationDefinitionCache.hasOwnProperty(url)) {
-            console.log(`Using cached OperationDefinition: ${url}`);
-            return operationDefinitionCache[url]; // Return cached definition (could be null if fetch failed before)
+        if (operationDefinitionCache.hasOwnProperty(definitionUrl)) {
+            // console.log(`Using cached OperationDefinition: ${definitionUrl}`);
+            return operationDefinitionCache[definitionUrl];
         }
 
-        // Determine actual fetch URL
-        // Simplification: Assume the URL is directly fetchable or the /fhir proxy handles it if relative.
-        // Production code might need more robust logic to handle base URLs.
-        const fetchUrl = url;
-        console.log(`Fetching OperationDefinition: ${fetchUrl}`);
+        // --- Determine Fetch URL (Allow Same-Origin Absolute, Prevent External) ---
+        let fetchUrl;
+        const currentBaseUrl = isUsingLocalHapi ? '/fhir' : (fhirServerUrlInput.value.trim().replace(/\/+$/, '') || '/fhir');
+        let currentOrigin = '';
+         // Determine the origin of the current FHIR server target
+         try {
+             // For the local proxy '/fhir', the origin is the app's origin
+             if (isUsingLocalHapi || currentBaseUrl.startsWith('/')) {
+                  currentOrigin = window.location.origin;
+             } else {
+                  currentOrigin = new URL(currentBaseUrl).origin;
+             }
+         } catch(e) {
+              console.error("Could not determine origin for current FHIR base URL:", currentBaseUrl, e);
+              // Fallback: Treat as different origin to be safe
+              currentOrigin = window.location.origin; // Or potentially block all absolute URLs if this fails
+         }
+
 
         try {
+            // Check if definitionUrl is an absolute HTTP/S URL
+            if (definitionUrl.startsWith('http://') || definitionUrl.startsWith('https://')) {
+                 const definitionOrigin = new URL(definitionUrl).origin;
+                 // ALLOW fetch if definition URL origin MATCHES the current FHIR target origin
+                 if (definitionOrigin === currentOrigin) {
+                     // It's an absolute URL, but points to the same server target.
+                     // If using local HAPI proxy, we need to rewrite the URL
+                     // to go through the proxy.
+                     if (isUsingLocalHapi) {
+                          // Extract path after base URL/port
+                          const urlParts = definitionUrl.split('/');
+                          // Find the part after the hostname/port (usually index 3)
+                          const pathIndex = urlParts.findIndex((part, index) => index > 2 && part);
+                          const relativePath = pathIndex !== -1 ? urlParts.slice(pathIndex).join('/') : '';
+
+                          if (relativePath) {
+                               fetchUrl = `${currentBaseUrl}/${relativePath}`; // Use '/fhir/...'
+                               console.log(`Workspaceing same-origin absolute OperationDefinition via proxy: ${fetchUrl} (Original: ${definitionUrl})`);
+                          } else {
+                               console.warn(`Could not determine relative path for same-origin absolute URL: ${definitionUrl}. Skipping.`);
+                               operationDefinitionCache[definitionUrl] = null; return null;
+                          }
+                     } else {
+                          // If using a custom URL, fetch it directly
+                          fetchUrl = definitionUrl;
+                          console.log(`Workspaceing same-origin absolute OperationDefinition directly: ${fetchUrl}`);
+                     }
+                 } else {
+                     // Absolute URL pointing to a DIFFERENT origin - skip due to CORS
+                     console.warn(`Skipping fetch for absolute external OperationDefinition URL: ${definitionUrl}`);
+                     operationDefinitionCache[definitionUrl] = null; // Cache failure
+                     return null;
+                 }
+            } else {
+                 // Not an absolute HTTP/S URL - treat as relative
+                 fetchUrl = `${currentBaseUrl}/${definitionUrl.startsWith('/') ? definitionUrl.substring(1) : definitionUrl}`;
+                 console.log(`Workspaceing relative OperationDefinition: ${fetchUrl} (Original: ${definitionUrl})`);
+            }
+        } catch (e) {
+             // If definitionUrl parsing failed (e.g., "Patient/$everything"), treat as relative
+             fetchUrl = `${currentBaseUrl}/${definitionUrl.startsWith('/') ? definitionUrl.substring(1) : definitionUrl}`;
+             console.log(`Workspaceing relative OperationDefinition (parse failed): ${fetchUrl} (Original: ${definitionUrl})`);
+        }
+        // --- End URL Determination ---
+
+        console.log(`Attempting to fetch OperationDefinition from: ${fetchUrl}`);
+        try {
             const response = await fetch(fetchUrl, {
+                method: 'GET',
                 headers: { 'Accept': 'application/fhir+json' }
             });
-
-            if (!response.ok) {
-                // Don't cache HTTP errors permanently, maybe allow retry later?
-                // For now, just log and return null.
-                console.error(`HTTP ${response.status} fetching OperationDefinition ${url}`);
-                operationDefinitionCache[url] = null; // Cache failure for this session
-                return null;
-            }
-
+            if (!response.ok) { /* ... handle HTTP error ... */ console.error(`HTTP ${response.status} fetching OperationDefinition ${fetchUrl}`); operationDefinitionCache[definitionUrl] = null; return null; }
             const definition = await response.json();
-
-            if (definition.resourceType !== 'OperationDefinition') {
-                console.error(`Expected OperationDefinition, got ${definition.resourceType} from ${url}`);
-                operationDefinitionCache[url] = null; // Cache invalid response
-                return null;
-            }
-
-            console.log(`Successfully fetched and parsed OperationDefinition: ${url}`);
-            operationDefinitionCache[url] = definition; // Cache successful fetch
+            if (definition.resourceType !== 'OperationDefinition') { /* ... handle wrong type ... */ console.error(`Expected OperationDefinition, got ${definition.resourceType} from ${fetchUrl}`); operationDefinitionCache[definitionUrl] = null; return null; }
+            console.log(`Successfully fetched and parsed OperationDefinition: ${fetchUrl}`);
+            operationDefinitionCache[definitionUrl] = definition;
             return definition;
-
-        } catch (error) {
-            console.error(`Failed to fetch or parse OperationDefinition ${url}:`, error);
-            operationDefinitionCache[url] = null; // Cache fetch/parse failure
-            return null;
-        }
+        } catch (error) { /* ... handle fetch/parse error ... */ console.error(`Failed to fetch or parse OperationDefinition ${fetchUrl}:`, error); operationDefinitionCache[definitionUrl] = null; return null; }
     }
-    // <<< END OF NEW FUNCTION >>>
+    // <<< END REFINED fetchOperationDefinition >>>
 
 
     
@@ -429,62 +474,62 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error("Toggle server button (#toggleServer) not found!");
     }
 
-// --- Generate Query Examples (Defining sinceParam) ---
-    function getQueryExamplesForResourceType(resourceType) {
+// --- Generate Query Examples (Modified for Async Operation Fetching) ---
+    async function getQueryExamplesForResourceType(resourceType) { // <<< Added async
         if (!fetchedMetadataCache?.rest?.[0]) return [];
         const restSection = fetchedMetadataCache.rest[0];
         const resourceMetadata = restSection.resource?.find(r => r.type === resourceType);
 
         if (!resourceMetadata) {
-             console.warn(`No metadata found for resource type: ${resourceType}`);
-             return [];
+            console.warn(`No metadata found for resource type: ${resourceType}`);
+            return [];
         }
 
         const supportedInteractions = resourceMetadata.interaction?.map(i => i.code) || [];
         const resourceSpecificOperations = resourceMetadata.operation || [];
         const allSearchParameters = resourceMetadata.searchParam || [];
-        const queries = [];
+        const queries = []; // Initialize empty queries array
 
         // --- Define Standard Parameters ---
         const formatParam = { name: '_format', in: 'query', type: 'string', required: false, description: 'Response format (e.g., json, xml)', example: 'json' };
         const idPathParam = { name: 'id', in: 'path', type: 'string', required: true, description: 'Resource logical ID', example: 'example' };
         const versionIdPathParam = { name: 'version_id', in: 'path', type: 'string', required: true, description: 'Version ID', example: '1' };
         const countQueryParam = { name: '_count', in: 'query', type: 'integer', required: false, description: 'Results per page', example: '10' };
-        const sinceParam = { name: '_since', in: 'query', type: 'instant', required: false, description: 'Only return updates after this time', example: new Date().toISOString() }; // <<< DEFINE sinceParam HERE
+        const sinceParam = { name: '_since', in: 'query', type: 'instant', required: false, description: 'Only return updates after this time', example: new Date().toISOString() };
 
         // --- Define Common Search Parameters Separately ---
         const commonStandardParams = [
             { name: '_id', in: 'query', type: 'token', required: false, description: 'Search by resource logical ID', example: 'example' },
             { name: '_lastUpdated', in: 'query', type: 'date', required: false, description: 'Search by last updated date', example: 'ge2024-01-01' },
-            { name: '_profile', in: 'query', type: 'uri', required: false, description: 'Search by profile canonical URL', example: ''},
-            { name: '_tag', in: 'query', type: 'token', required: false, description: 'Search by tag (code or system|code)', example: ''},
-            { name: '_security', in: 'query', type: 'token', required: false, description: 'Search by security label (system|code)', example: ''},
-            { name: '_text', in: 'query', type: 'string', required: false, description: 'Search narrative content', example: ''},
-            { name: '_content', in: 'query', type: 'string', required: false, description: 'Search all resource content', example: ''},
-            { name: '_list', in: 'query', type: 'string', required: false, description: 'Search within a list', example: ''},
-            { name: '_has', in: 'query', type: 'string', required: false, description: 'Reverse chaining search', example: ''},
+            { name: '_profile', in: 'query', type: 'uri', required: false, description: 'Search by profile canonical URL', example: '' },
+            { name: '_tag', in: 'query', type: 'token', required: false, description: 'Search by tag (code or system|code)', example: '' },
+            { name: '_security', in: 'query', type: 'token', required: false, description: 'Search by security label (system|code)', example: '' },
+            { name: '_text', in: 'query', type: 'string', required: false, description: 'Search narrative content', example: '' },
+            { name: '_content', in: 'query', type: 'string', required: false, description: 'Search all resource content', example: '' },
+            { name: '_list', in: 'query', type: 'string', required: false, description: 'Search within a list', example: '' },
+            { name: '_has', in: 'query', type: 'string', required: false, description: 'Reverse chaining search', example: '' },
             { name: '_type', in: 'query', type: 'string', required: false, description: 'Specify resource type (in compartment search)', example: resourceType },
-            { name: '_source', in: 'query', type: 'uri', required: false, description: 'Search by source URI', example: ''},
-            { name: '_filter', in: 'query', type: 'string', required: false, description: 'Advanced search filter', example: ''}
+            { name: '_source', in: 'query', type: 'uri', required: false, description: 'Search by source URI', example: '' },
+            { name: '_filter', in: 'query', type: 'string', required: false, description: 'Advanced search filter', example: '' }
         ];
         const commonStandardParamNames = new Set(commonStandardParams.map(p => p.name));
 
         // --- Map ALL Search Parameters from Metadata ---
         const specificSearchParams = allSearchParameters
-             .map(sp => ({
-                 name: sp.name,
-                 in: 'query',
-                 type: sp.type,
-                 required: false,
-                 description: sp.documentation || `Search by ${sp.name} (${sp.type})`,
-                 example: sp.type === 'reference' ? `${resourceType}/example` :
-                          sp.type === 'token' ? 'system|code' :
-                          sp.type === 'date' ? '2024-01-01' :
-                          sp.type === 'number' ? '10' :
-                          sp.type === 'quantity' ? '5|mg' :
-                          sp.type === 'uri' ? 'http://example.com' :
-                          ''
-             }));
+            .map(sp => ({
+                name: sp.name,
+                in: 'query',
+                type: sp.type,
+                required: false,
+                description: sp.documentation || `Search by ${sp.name} (${sp.type})`,
+                example: sp.type === 'reference' ? `${resourceType}/example` :
+                         sp.type === 'token' ? 'system|code' :
+                         sp.type === 'date' ? '2024-01-01' :
+                         sp.type === 'number' ? '10' :
+                         sp.type === 'quantity' ? '5|mg' :
+                         sp.type === 'uri' ? 'http://example.com' :
+                         ''
+            }));
 
         // Combine common params (_count, _format), specific params from metadata, and standard _params
         const allUniqueParamsMap = new Map();
@@ -494,10 +539,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!allUniqueParamsMap.has(formatParam.name)) allUniqueParamsMap.set(formatParam.name, formatParam);
 
         const searchGetParams = Array.from(allUniqueParamsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-        const searchPostParams = [countQueryParam, formatParam];
+        const searchPostParams = [countQueryParam, formatParam]; // Only common params for POST search body
 
         // --- Define Example Schemas and Payloads ---
-        // (Keep existing schema/payload definitions)
         const baseExample = { resourceType, id: "example", text: { status: "generated", div: `<div xmlns="http://www.w3.org/1999/xhtml">Example ${resourceType}</div>` } };
         const baseExampleString = JSON.stringify(baseExample, null, 2);
         const createExampleString = JSON.stringify({ ...baseExample, id: undefined }, null, 2);
@@ -509,33 +553,207 @@ document.addEventListener('DOMContentLoaded', () => {
         const bundleHistoryExample = JSON.stringify({ resourceType: "Bundle", type: "history", total: 1, entry: [{ resource: baseExample }] }, null, 2);
         const patchExample = JSON.stringify({ resourceType: "Parameters", parameter: [{ name: "operation", part: [{ name: 'type', valueCode: 'replace' }, { name: 'path', valueString: `${resourceType}.active` }, { name: 'value', valueBoolean: false }] }] }, null, 2);
         const deleteExample = JSON.stringify({ resourceType: "OperationOutcome", issue: [{ severity: "information", code: "informational", diagnostics: "Successful deletion" }] }, null, 2);
+        // Example body for POST search (x-www-form-urlencoded)
         const postSearchExample = searchGetParams
             .filter(p => p.in === 'query' && p.example && !['_count', '_format'].includes(p.name))
             .map(p => `${p.name}=${encodeURIComponent(p.example)}`)
             .join('&');
 
         // --- Define Interaction Map ---
-        // (Use the defined sinceParam variable)
         const interactionMap = {
             'read': { label: `Read ${resourceType}`, method: 'GET', path: `${resourceType}/:id`, description: `Read a ${resourceType} by ID`, parameters: [idPathParam, formatParam], schema: baseSchema, example: baseExampleString },
             'vread': { label: `VRead ${resourceType}`, method: 'GET', path: `${resourceType}/:id/_history/:version_id`, description: `Read specific version`, parameters: [idPathParam, versionIdPathParam, formatParam], schema: baseSchema, example: JSON.stringify({ ...baseExample, meta: { versionId: "1" } }, null, 2) },
             'update': { label: `Update ${resourceType}`, method: 'PUT', path: `${resourceType}/:id`, description: `Update ${resourceType} with ID`, parameters: [idPathParam, formatParam], requestBody: true, schema: baseSchema, example: baseExampleString },
             'patch': { label: `Patch ${resourceType}`, method: 'PATCH', path: `${resourceType}/:id`, description: `Patch ${resourceType} by ID`, parameters: [idPathParam, formatParam], requestBody: true, schema: paramsSchema, example: patchExample },
             'delete': { label: `Delete ${resourceType}`, method: 'DELETE', path: `${resourceType}/:id`, description: `Delete ${resourceType}`, parameters: [idPathParam, formatParam], schema: outcomeSchema, example: deleteExample },
-            'create': { label: `Create ${resourceType}`, method: 'POST', path: `${resourceType}`, description: `Create new ${resourceType}`, parameters: [formatParam], requestBody: true, schema: baseSchema, example: createExampleString },
+            'create': { label: `Create ${resourceType}`, method: 'POST', path: `${resourceType}`, description: `Create new ${resourceType}`, parameters: [], requestBody: true, schema: baseSchema, example: createExampleString },
             'search-type': { label: `Search ${resourceType} (GET)`, method: 'GET', path: `${resourceType}`, description: `Search ${resourceType} using GET`, parameters: searchGetParams, schema: bundleSchema, example: bundleSearchExample },
-            'history-type': { label: `Type History ${resourceType}`, method: 'GET', path: `${resourceType}/_history`, description: `History for all ${resourceType}`, parameters: [countQueryParam, formatParam, sinceParam], schema: bundleSchema, example: bundleHistoryExample }, // <<< Use sinceParam
-            'history-instance': { label: `Instance History ${resourceType}`, method: 'GET', path: `${resourceType}/:id/_history`, description: `History for specific ${resourceType}`, parameters: [idPathParam, countQueryParam, formatParam, sinceParam], schema: bundleSchema, example: bundleHistoryExample }, // <<< Use sinceParam
+            'history-type': { label: `Type History ${resourceType}`, method: 'GET', path: `${resourceType}/_history`, description: `History for all ${resourceType}`, parameters: [countQueryParam, formatParam, sinceParam], schema: bundleSchema, example: bundleHistoryExample },
+            'history-instance': { label: `Instance History ${resourceType}`, method: 'GET', path: `${resourceType}/:id/_history`, description: `History for specific ${resourceType}`, parameters: [idPathParam, countQueryParam, formatParam, sinceParam], schema: bundleSchema, example: bundleHistoryExample },
         };
 
-        // --- Build Query List ---
-        // (Rest of the function remains the same)
-        supportedInteractions.forEach(code => { if (interactionMap[code]) queries.push(interactionMap[code]); });
-        if (supportedInteractions.includes('search-type')) { queries.push({ label: `Search ${resourceType} (POST)`, method: 'POST', path: `${resourceType}/_search`, description: `Search ${resourceType} using POST (parameters in x-www-form-urlencoded body)`, parameters: searchPostParams, requestBody: true, schema: bundleSchema, example: postSearchExample }); }
-        resourceSpecificOperations.forEach(opDef => { const opName = opDef.name.startsWith('$') ? opDef.name : `$${opDef.name}`; const opDoc = opDef.documentation || `Execute ${opName} on ${resourceType}`; const opExample = JSON.stringify({ resourceType: "Parameters", parameter: [{ name: "example-param", valueString: "example-value" }] }, null, 2); const opMethod = opDef.definition?.toLowerCase().includes('get') ? 'GET' : 'POST'; const isInstanceLevel = opDef.definition?.toLowerCase().includes('/{id}/$') || opDef.instance === true; const opParams = [formatParam]; if (isInstanceLevel) opParams.unshift(idPathParam); queries.push({ label: `${opName} (${isInstanceLevel ? 'Instance' : 'Type'})`, method: opMethod, path: isInstanceLevel ? `${resourceType}/:id/${opName}` : `${resourceType}/${opName}`, description: opDoc, parameters: opParams, requestBody: opMethod !== 'GET', schema: paramsSchema, example: opExample }); });
-        availableSystemOperations.forEach(op => { const opName = op.name.startsWith('$') ? op.name : `$${op.name}`; const opParams = [formatParam]; const opExample = JSON.stringify({ resourceType: "Parameters", parameter: [{ name: "info", valueString: `Input for ${opName}` }] }, null, 2); if (op.levels.includes('type')) { op.methods.forEach(method => { queries.push({ label: `${opName} (Type)`, method: method, path: `${resourceType}/${opName}`, description: op.documentation || `Type-level ${opName} on ${resourceType}`, parameters: opParams, requestBody: method !== 'GET', schema: paramsSchema, example: opExample }); }); } if (op.levels.includes('instance')) { op.methods.forEach(method => { queries.push({ label: `${opName} (Instance)`, method: method, path: `${resourceType}/:id/${opName}`, description: op.documentation || `Instance-level ${opName} on ${resourceType}`, parameters: [idPathParam, ...opParams], requestBody: method !== 'GET', schema: paramsSchema, example: opExample }); }); } });
-        return queries.filter((q, i, arr) => i === arr.findIndex(x => x.path === q.path && x.method === q.method));
-    } // End getQueryExamplesForResourceType
+        // --- Build Query List: Standard Interactions ---
+        supportedInteractions.forEach(code => {
+            if (interactionMap[code]) {
+                queries.push(interactionMap[code]);
+            }
+        });
+        if (supportedInteractions.includes('search-type')) {
+            queries.push({
+                label: `Search ${resourceType} (POST)`,
+                method: 'POST',
+                path: `${resourceType}/_search`,
+                description: `Search ${resourceType} using POST (parameters in x-www-form-urlencoded body)`,
+                parameters: searchPostParams,
+                requestBody: true,
+                schema: bundleSchema,
+                example: postSearchExample
+            });
+        }
+
+        // --- Build Query List: Resource Specific Operations (Asynchronously) ---
+        const resourceOperationPromises = resourceSpecificOperations.map(async opDef => { // <<< Add async and map
+            const opName = opDef.name.startsWith('$') ? opDef.name : `$${opDef.name}`;
+            const opDoc = opDef.documentation || `Execute ${opName} on ${resourceType}`;
+
+            // Basic method guess (can be refined)
+            let opMethod = 'POST'; // Default to POST for operations
+            // Refined guess based on common read-only operations or definition hints
+            if (['$meta', '$validate', '$snapshot'].includes(opName) || opDef.definition?.toLowerCase().includes('get')) {
+                 opMethod = 'GET';
+            }
+
+            const isInstanceLevel = opDef.definition?.toLowerCase().includes('/{id}/$') || opDef.instance === true;
+            let operationParameters = [formatParam]; // Default params
+            let operationRequestBody = opMethod !== 'GET'; // Default request body logic
+            let operationSchema = paramsSchema; // Default schema
+            let operationExample = JSON.stringify({ resourceType: "Parameters", parameter: [{ name: "example-param", valueString: "example-value" }] }, null, 2); // Default example
+
+            // --- Fetch OperationDefinition ---
+            const definitionUrl = opDef.definition;
+            const fetchedOpDef = await fetchOperationDefinition(definitionUrl); // <<< Fetch definition
+
+            if (fetchedOpDef && fetchedOpDef.parameter) {
+                try {
+                    const parsedParams = fetchedOpDef.parameter
+                        .filter(p => p.use === 'in') // Only input parameters
+                        .map(p => ({
+                            name: p.name || 'unknown',
+                            // Refined 'in' logic: Assume query for GET, body for POST unless searchType specified
+                            in: (opMethod === 'GET' || p.searchType) ? 'query' : 'body (Parameters)',
+                            type: p.type || 'string', // <<< Capture parameter type
+                            required: (p.min || 0) > 0,
+                            description: p.documentation || `Parameter ${p.name || ''}`,
+                            // Basic example generation, could be improved
+                            example: p.example ? (p.example[0]?.valueString || p.example[0]?.valueCode || p.example[0]?.valueBoolean) : `(${p.type || 'string'})`, // Try to extract from example[0].value[x]
+                            // <<< ADD binding if present >>>
+                            binding: p.binding // e.g., { strength: 'required', valueSet: 'http://...' }
+                        }));
+
+                    // Add id param if it's instance level and not already defined
+                    if (isInstanceLevel && !parsedParams.some(p => p.name === 'id' && p.in === 'path')) {
+                         operationParameters = [idPathParam, formatParam, ...parsedParams];
+                    } else {
+                         operationParameters = [formatParam, ...parsedParams];
+                    }
+
+                    operationSchema = fetchedOpDef; // Use the fetched definition as schema
+
+                    // Generate example Parameters resource if POST/PUT/PATCH and has input parameters
+                    if (operationRequestBody && parsedParams.length > 0) {
+                        const bodyParams = parsedParams.filter(p => p.in === 'body (Parameters)');
+                        if (bodyParams.length > 0) {
+                             const exampleParamBody = {
+                                 resourceType: "Parameters",
+                                 parameter: bodyParams.map(p => {
+                                     // Create a simple example value based on type
+                                     let exampleValue;
+                                     switch (p.type) {
+                                         case 'boolean': exampleValue = { valueBoolean: true }; break;
+                                         case 'integer': exampleValue = { valueInteger: 1 }; break;
+                                         case 'code': exampleValue = { valueCode: 'example-code' }; break;
+                                         case 'uri': exampleValue = { valueUri: 'http://example.org' }; break;
+                                         case 'canonical': exampleValue = { valueCanonical: 'http://example.org/fhir/StructureDefinition/example' }; break;
+                                         case 'date': exampleValue = { valueDate: new Date().toISOString().split('T')[0] }; break;
+                                         case 'dateTime': exampleValue = { valueDateTime: new Date().toISOString() }; break;
+                                         case 'instant': exampleValue = { valueInstant: new Date().toISOString() }; break;
+                                         // Add more types as needed
+                                         default: exampleValue = { valueString: `example-${p.type || 'value'}` };
+                                     }
+                                     return { name: p.name, ...exampleValue };
+                                 })
+                             };
+                             operationExample = JSON.stringify(exampleParamBody, null, 2);
+                        } else {
+                             // If it's POST/PUT but no 'body' parameters defined, use empty Parameters
+                             operationExample = JSON.stringify({ resourceType: "Parameters", parameter: [] }, null, 2);
+                        }
+                    } else if (!operationRequestBody) {
+                         // Use a relevant example for GET operations (e.g., a Bundle or the base resource)
+                         operationExample = bundleSearchExample; // Or potentially baseExampleString
+                    }
+                } catch (parseError) {
+                    console.error(`Error parsing parameters for ${opName} from definition ${definitionUrl}:`, parseError);
+                     // Fallback to basic params if parsing fails
+                     operationParameters = [formatParam];
+                     if (isInstanceLevel) operationParameters.unshift(idPathParam);
+                     operationRequestBody = opMethod !== 'GET'; // Reset requestBody based on method
+                     operationSchema = paramsSchema; // Reset schema
+                     // Keep default example
+                }
+            } else {
+                 // Fallback if fetch failed or no parameters defined
+                 operationParameters = [formatParam];
+                 if (isInstanceLevel) operationParameters.unshift(idPathParam);
+                 // Keep default example, schema, requestBody
+            }
+
+            // Return the query definition object for this operation
+            return {
+                label: `${opName} (${isInstanceLevel ? 'Instance' : 'Type'})`,
+                method: opMethod,
+                path: isInstanceLevel ? `${resourceType}/:id/${opName}` : `${resourceType}/${opName}`,
+                description: opDoc,
+                parameters: operationParameters,
+                requestBody: operationRequestBody,
+                schema: operationSchema,
+                example: operationExample,
+                definitionUrl: definitionUrl // Store definition URL for potential later use
+            };
+        }); // <<< End map over resourceSpecificOperations
+
+        // Wait for all resource operation fetches to complete
+        const resourceQueries = await Promise.all(resourceOperationPromises); // <<< Wait for promises
+        queries.push(...resourceQueries); // <<< Add resolved queries
+
+        // --- Add System-Level Operations (If applicable - Type/Instance Level) ---
+        // This adds system operations like $meta to resource-level lists where appropriate
+        availableSystemOperations.forEach(op => {
+            const opName = op.name.startsWith('$') ? op.name : `$${op.name}`;
+            const opExample = JSON.stringify({ resourceType: "Parameters", parameter: [{ name: "info", valueString: `Input for ${opName}` }] }, null, 2);
+
+            // Check if the system operation applies at the Type level for this resource type
+            if (op.levels.includes('type')) {
+                op.methods.forEach(method => {
+                    // Fetch definition to get parameters (similar logic as above)
+                    // For simplicity here, we'll use basic params, but ideally fetch definition
+                    const opParams = [formatParam]; // <<< Replace with fetched params if enhancing further
+                    queries.push({
+                        label: `${opName} (Type)`, method: method, path: `${resourceType}/${opName}`,
+                        description: op.documentation || `Type-level ${opName} on ${resourceType}`,
+                        parameters: opParams, requestBody: method !== 'GET',
+                        schema: paramsSchema, example: opExample // <<< Use fetched schema/example if enhancing
+                    });
+                });
+            }
+            // Check if the system operation applies at the Instance level for this resource type
+            if (op.levels.includes('instance')) {
+                op.methods.forEach(method => {
+                    // Fetch definition to get parameters (similar logic as above)
+                     const opParams = [idPathParam, formatParam]; // <<< Replace with fetched params if enhancing further
+                    queries.push({
+                        label: `${opName} (Instance)`, method: method, path: `${resourceType}/:id/${opName}`,
+                        description: op.documentation || `Instance-level ${opName} on ${resourceType}`,
+                        parameters: opParams, requestBody: method !== 'GET',
+                        schema: paramsSchema, example: opExample // <<< Use fetched schema/example if enhancing
+                    });
+                });
+            }
+        });
+
+        // Filter duplicates (ensuring path AND method match)
+        const uniqueQueries = [];
+        const seenQueries = new Set();
+        for (const q of queries) {
+             const key = `${q.method} ${q.path}`;
+             if (!seenQueries.has(key)) {
+                 uniqueQueries.push(q);
+                 seenQueries.add(key);
+             }
+        }
+
+        return uniqueQueries; // Return the consolidated list
+    } // End getQueryExamplesForResourceType (async)
 
  // --- Generate System-Level Queries (ASYNC VERSION fetching OperationDefinitions - CORRECTED) ---
     async function getSystemLevelQueries() { // Added async keyword
@@ -675,57 +893,181 @@ document.addEventListener('DOMContentLoaded', () => {
     } // End getSystemLevelQueries (async)
 
 
-    async function updateQueryListUI(resourceType) { // <<< Added async
+// Updated async function to handle resource type selection and display queries
+    async function updateQueryListUI(resourceType) { // Marked as async
         currentSelectedResource = resourceType;
         selectedResourceSpan.textContent = resourceType === 'System' ? 'System Operations' : resourceType;
-        queryListContainer.innerHTML = '<p class="text-muted">Loading operations...</p>'; // Show loading state
-        swaggerUiContainer.style.display = 'block'; // Show container early
+        queryListContainer.innerHTML = '<p class="text-muted">Loading operations...</p>'; // Loading message
+        swaggerUiContainer.style.display = 'block'; // Show container
 
-        // <<< Use await when calling the potentially async function
+        // Fetch queries asynchronously
         const queries = resourceType === 'System'
             ? await getSystemLevelQueries()
-            : getQueryExamplesForResourceType(resourceType); // Assume this one is still sync for now
+            // <<< Assumes getQueryExamplesForResourceType is now async >>>
+            : await getQueryExamplesForResourceType(resourceType);
 
         queryListContainer.innerHTML = ''; // Clear loading message
 
         if (!queries || !queries.length) {
-            // (rest of the function remains the same)
             queryListContainer.innerHTML = '<p>No operations defined or supported for this type.</p>';
-             swaggerUiContainer.style.display = 'block';
-             return;
+            swaggerUiContainer.style.display = 'block';
+            return;
         }
 
-        queries.sort(/* ... */)
-        .forEach((query, i) => {
+        // Sort queries before displaying (example sorting, adjust as needed)
+        queries.sort((a, b) => {
+            const pathCompare = a.path.localeCompare(b.path);
+            if (pathCompare !== 0) return pathCompare;
+            const methodOrder = { 'GET': 1, 'POST': 2, 'PUT': 3, 'PATCH': 4, 'DELETE': 5 };
+            return (methodOrder[a.method] || 99) - (methodOrder[b.method] || 99);
+        });
+
+        // Generate HTML for each query block
+        queries.forEach((query, i) => {
             const blockId = `opblock-${i}`;
             const block = document.createElement('div');
             block.id = blockId;
             block.className = `opblock opblock-${query.method.toLowerCase()}`;
             block.dataset.queryIndex = i;
-            block.dataset.queryData = JSON.stringify(query);
+            block.dataset.queryData = JSON.stringify(query); // Store full query data
 
-            // Generate HTML (No changes needed here)
-            block.innerHTML = `
-                <div class="opblock-summary"><span class="opblock-summary-method ${query.method.toLowerCase()}">${query.method}</span><span class="opblock-summary-path">${query.path}</span><span class="opblock-summary-description">${query.description}</span><svg class="arrow" viewBox="0 0 20 20"><path fill="currentColor" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg></div>
-                <div class="opblock-body">
-                    <div class="opblock-section parameters-section"><div class="opblock-section-header"><h4 class="opblock-title">Parameters</h4><div class="try-out"><button class="btn btn-sm btn-primary try-out__btn">Try it out</button></div></div><div class="parameters-container"><table class="parameters-table"><thead><tr><th class="parameters-col_name">Name</th><th class="parameters-col_description">Description</th></tr></thead><tbody>${query.parameters && query.parameters.length ? query.parameters.map(p => `<tr data-param-name="${p.name}" data-param-in="${p.in}"><td class="parameters-col_name"><div class="parameter__name ${p.required ? 'required' : ''}">${p.name}${p.required ? '<span>*</span>' : ''}</div><div class="parameter__type">${p.type}</div><div class="parameter__in">(${p.in})</div></td><td class="parameters-col_description"><div class="renderedMarkdown"><p>${p.description || 'No description'}</p></div>${p.example ? `<div class="renderedMarkdown"><p><i>Example:</i> ${p.example}</p></div>` : ''}<input type="${p.type === 'integer' ? 'number' : 'text'}" placeholder="${p.example || p.name}" data-example="${p.example || ''}" value="" aria-label="${p.name} parameter value" disabled></td></tr>`).join('') : `<tr><td colspan="2"><div class="renderedMarkdown"><p>No parameters defined.</p></div></td></tr>`}</tbody></table></div></div>
-                    ${query.requestBody ? `<div class="opblock-section request-body-section"><div class="opblock-section-header"><h4 class="opblock-title">Request Body</h4> <div class="content-type-wrapper"><label for="${blockId}-request-content-type" class="visually-hidden">Request Content Type</label><select id="${blockId}-request-content-type" class="content-type request-content-type" aria-label="Request body content type" disabled><option value="application/fhir+json" selected>application/fhir+json</option><option value="application/fhir+xml">application/fhir+xml</option>${query.method === 'POST' && query.path.endsWith('_search') ? '<option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded</option>' : ''}</select></div></div><textarea class="request-body-textarea" placeholder="Enter request body..." aria-label="Request body input" disabled>${(query.method === 'POST' && query.path.endsWith('_search')) ? query.example : ''}</textarea><div class="model-example request-body-example" style="margin-top: 10px; ${(query.method === 'POST' && query.path.endsWith('_search')) ? 'display: none;' : ''}"><ul class="tab" role="tablist"><li class="tabitem active"><button class="tablinks badge active" data-name="example">Example Body</button></li></ul><div class="example-panel" style="display: block;"><div class="highlight-code"><pre class="request-example-code"><code class="language-json">${query.example && typeof query.example === 'string' && query.example.startsWith('{') ? query.example : '{}'}</code></pre></div></div></div></div> ` : ''}
-                    <div class="opblock-section execute-section"><button class="btn btn-success execute__btn" disabled>Execute</button></div>
-                    <div class="execute-wrapper" style="display: none;"><div class="opblock-section request-url-section"><h5 class="opblock-title">Request URL</h5><pre class="request-url-output"><code></code></pre></div><div class="opblock-section curl-section"><div class="opblock-section-header"><h5 class="opblock-title">Curl</h5><button type="button" class="btn btn-sm btn-outline-secondary btn-copy copy-curl-btn" title="Copy Curl Command"><i class="bi bi-clipboard"></i> Copy</button></div><pre class="curl-output"><code></code></pre></div><div class="opblock-section-header"><h4 class="opblock-title">Server Response</h4> <div class="response-controls"> <select class="response-format-select" aria-label="Response display format" style="display: none;"><option value="json">JSON</option><option value="xml">XML</option><option value="narrative">Narrative</option></select><button type="button" class="btn btn-sm btn-outline-secondary btn-copy copy-response-btn" title="Copy Response Body" style="display: none;"><i class="bi bi-clipboard"></i> Copy</button> <button type="button" class="btn btn-sm btn-outline-secondary btn-copy download-response-btn" title="Download Response Body" style="display: none;"><i class="bi bi-download"></i> Download</button></div></div><pre class="response-output-content"><code></code></pre><div class="response-output-narrative" style="display:none;"></div><div class="response-status" style="margin-top: 5px; font-weight: bold;"></div></div>
-                    <div class="opblock-section responses-section"><div class="opblock-section-header"><h4>Example Response / Schema</h4></div><table class="responses-table"><thead><tr class="responses-header"><td class="response-col_status">Code</td><td class="response-col_description">Description</td></tr></thead><tbody><tr class="response" data-code="200"><td class="response-col_status">200</td><td class="response-col_description"><div class="response-col_description__inner"><div class="renderedMarkdown"><p>Success</p></div></div><section class="response-controls"><div class="response-control-media-type"><label for="${blockId}-example-media-type" class="response-control-media-type__title">Example Format:</label><div class="content-type-wrapper d-inline-block"><select id="${blockId}-example-media-type" aria-label="Example Media Type" class="content-type example-media-type-select"><option value="application/fhir+json">JSON</option><option value="application/fhir+xml">XML</option></select></div><small class="response-control-media-type__accept-message">Controls example/schema format.</small></div></section><div class="model-example"><ul class="tab" role="tablist"><li class="tabitem active"><button class="tablinks badge active" data-name="example">Example Value</button></li><li class="tabitem"><button class="tablinks badge" data-name="schema">Schema</button></li></ul><div class="example-panel" style="display: block;"><div class="highlight-code"><pre class="example-code-display"><code class="language-json">${query.example && typeof query.example === 'string' ? query.example : '{}'}</code></pre></div></div><div class="schema-panel" style="display: none;"><div class="highlight-code"><pre class="schema-code-display"><code class="language-json">${JSON.stringify(query.schema || {}, null, 2)}</code></pre></div></div></div></td></tr><tr class="response" data-code="4xx/5xx"><td class="response-col_status">4xx/5xx</td><td class="response-col_description"><p>Error (e.g., Not Found, Server Error)</p></td></tr></tbody></table></div>
-                </div>`;
-            queryListContainer.appendChild(block);
+            // --- Generate Parameters Table HTML with Improved Inputs ---
+            const parametersHtml = query.parameters && query.parameters.length
+                ? query.parameters.map(p => {
+                    let inputHtml = '';
+                    const inputId = `${blockId}-param-${p.name}`;
+                    const commonAttrs = `id="${inputId}" aria-label="${p.name} parameter value" disabled data-example="${p.example || ''}"`;
+                    const placeholder = p.example ? `${p.example}` : p.name;
 
-            // --- Get Element References ONCE per block ---
+                    switch (p.type) {
+                        case 'boolean':
+                            inputHtml = `
+                                <div class="form-check form-switch mt-1">
+                                    <input class="form-check-input" type="checkbox" role="switch" value="true" ${commonAttrs}>
+                                    <label class="form-check-label small" for="${inputId}">(${p.required ? 'required' : 'optional'})</label>
+                                </div>`;
+                            break;
+                        case 'code':
+                             if (p.name === '_format') {
+                                 inputHtml = `
+                                     <select class="form-select form-select-sm" ${commonAttrs}>
+                                         <option value="" ${p.example === '' || p.example === null || p.example === undefined ? 'selected' : ''}>Server Default</option>
+                                         <option value="json" ${p.example === 'json' ? 'selected' : ''}>json</option>
+                                         <option value="xml" ${p.example === 'xml' ? 'selected' : ''}>xml</option>
+                                     </select>`;
+                             } else {
+                                inputHtml = `<input type="text" class="form-control form-control-sm" placeholder="${placeholder}" ${commonAttrs}>`;
+                             }
+                            break;
+                        case 'date':
+                            inputHtml = `<input type="date" class="form-control form-control-sm" ${commonAttrs}>`;
+                            break;
+                        case 'dateTime':
+                        case 'instant':
+                            inputHtml = `<input type="datetime-local" class="form-control form-control-sm" placeholder="${placeholder}" ${commonAttrs}>`;
+                            break;
+                        case 'integer': case 'positiveInt': case 'unsignedInt':
+                            inputHtml = `<input type="number" class="form-control form-control-sm" placeholder="${placeholder}" ${commonAttrs}>`;
+                            break;
+                        case 'uri': case 'url': case 'canonical':
+                             inputHtml = `<input type="url" class="form-control form-control-sm" placeholder="${placeholder}" ${commonAttrs}>`;
+                             break;
+                        default:
+                            inputHtml = `<input type="text" class="form-control form-control-sm" placeholder="${placeholder}" ${commonAttrs}>`;
+                    }
+                    return `
+                        <tr data-param-name="${p.name}" data-param-in="${p.in}">
+                            <td class="parameters-col_name">
+                                <div class="parameter__name ${p.required ? 'required' : ''}">${p.name}${p.required ? '<span>*</span>' : ''}</div>
+                                <div class="parameter__type">${p.type}</div>
+                                <div class="parameter__in">(${p.in})</div>
+                            </td>
+                            <td class="parameters-col_description">
+                                <div class="renderedMarkdown mb-1"><p>${p.description || 'No description'}</p></div>
+                                ${inputHtml}
+                            </td>
+                        </tr>`;
+                }).join('')
+                : `<tr><td colspan="2"><div class="renderedMarkdown"><p>No parameters defined.</p></div></td></tr>`;
+            // --- End Parameters Table HTML Generation ---
+
+
+            // --- Generate Main Block HTML ---
+             block.innerHTML = `
+                 <div class="opblock-summary">
+                     <span class="opblock-summary-method ${query.method.toLowerCase()}">${query.method}</span>
+                     <span class="opblock-summary-path">${query.path}</span>
+                     <span class="opblock-summary-description">${query.description}</span>
+                     <svg class="arrow" viewBox="0 0 20 20"><path fill="currentColor" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+                 </div>
+                 <div class="opblock-body">
+                     <div class="opblock-section parameters-section">
+                         <div class="opblock-section-header">
+                             <h4 class="opblock-title">Parameters</h4>
+                             <div class="try-out"><button class="btn btn-sm btn-primary try-out__btn">Try it out</button></div>
+                         </div>
+                         <div class="parameters-container">
+                             <table class="parameters-table">
+                                 <thead><tr><th class="parameters-col_name">Name</th><th class="parameters-col_description">Description</th></tr></thead>
+                                 <tbody>${parametersHtml}</tbody> {/* <<< Inject parameters HTML */}
+                             </table>
+                         </div>
+                     </div>
+                     ${query.requestBody ? `
+                     <div class="opblock-section request-body-section">
+                          <div class="opblock-section-header">
+                              <h4 class="opblock-title">Request Body</h4>
+                              <div class="content-type-wrapper">
+                                  <label for="${blockId}-request-content-type" class="visually-hidden">Request Content Type</label>
+                                  <select id="${blockId}-request-content-type" class="content-type request-content-type form-select form-select-sm" aria-label="Request body content type" disabled>
+                                      <option value="application/fhir+json" selected>application/fhir+json</option>
+                                      <option value="application/fhir+xml">application/fhir+xml</option>
+                                      ${query.method === 'POST' && query.path.endsWith('_search') ? '<option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded</option>' : ''}
+                                      ${query.parameters.some(p => p.in === 'body (Parameters)') ? '<option value="application/fhir+json">Parameters (JSON)</option>' : ''} {/* Indicate Parameters body */}
+                                  </select>
+                              </div>
+                          </div>
+                          <textarea class="request-body-textarea form-control" placeholder="Enter request body (e.g., FHIR Resource JSON/XML, or Parameters JSON)" aria-label="Request body input" disabled>${
+                              // Pre-fill textarea if example is likely JSON/XML/urlencoded, but NOT Parameters
+                              (query.method === 'POST' && query.path.endsWith('_search')) || (query.example && typeof query.example === 'string' && !query.example.trim().startsWith('{"resourceType":"Parameters"'))
+                              ? query.example
+                              : ''
+                          }</textarea>
+                           <div class="model-example request-body-example" style="margin-top: 10px; ${(query.method === 'POST' && query.path.endsWith('_search')) ? 'display: none;' : ''}">
+                              <ul class="tab" role="tablist"><li class="tabitem active"><button class="tablinks badge active" data-name="example">Example Body</button></li></ul>
+                              <div class="example-panel" style="display: block;"><div class="highlight-code"><pre class="request-example-code"><code class="language-json">${
+                                  // Show example if it's not Parameters resource or if it's specifically urlencoded
+                                  query.example && typeof query.example === 'string' && (!query.example.trim().startsWith('{"resourceType":"Parameters"') || (query.method === 'POST' && query.path.endsWith('_search')))
+                                  ? query.example : '{}'
+                              }</code></pre></div></div>
+                          </div>
+                     </div>` : ''}
+                     <div class="opblock-section execute-section">
+                         <button class="btn btn-success execute__btn" disabled>Execute</button>
+                     </div>
+                     <div class="execute-wrapper" style="display: none;">
+                         <div class="opblock-section request-url-section"><h5 class="opblock-title">Request URL</h5><pre class="request-url-output"><code></code></pre></div>
+                         <div class="opblock-section curl-section"><div class="opblock-section-header"><h5 class="opblock-title">Curl</h5><button type="button" class="btn btn-sm btn-outline-secondary btn-copy copy-curl-btn" title="Copy Curl Command"><i class="bi bi-clipboard"></i> Copy</button></div><pre class="curl-output"><code></code></pre></div>
+                         <div class="opblock-section-header"><h4 class="opblock-title">Server Response</h4> <div class="response-controls"> <select class="response-format-select form-select form-select-sm" aria-label="Response display format" style="display: none;"><option value="json">JSON</option><option value="xml">XML</option><option value="narrative">Narrative</option></select><button type="button" class="btn btn-sm btn-outline-secondary btn-copy copy-response-btn" title="Copy Response Body" style="display: none;"><i class="bi bi-clipboard"></i> Copy</button> <button type="button" class="btn btn-sm btn-outline-secondary btn-copy download-response-btn" title="Download Response Body" style="display: none;"><i class="bi bi-download"></i> Download</button></div></div><pre class="response-output-content"><code></code></pre><div class="response-output-narrative" style="display:none;"></div><div class="response-status" style="margin-top: 5px; font-weight: bold;"></div>
+                     </div>
+                     <div class="opblock-section responses-section">
+                          <div class="opblock-section-header"><h4>Example Response / Schema</h4></div><table class="responses-table"><thead><tr class="responses-header"><td class="response-col_status">Code</td><td class="response-col_description">Description</td></tr></thead><tbody><tr class="response" data-code="200"><td class="response-col_status">200</td><td class="response-col_description"><div class="response-col_description__inner"><div class="renderedMarkdown"><p>Success</p></div></div><section class="response-controls mb-2"><div class="row g-2 align-items-center mb-1">
+                          <div class="col-auto"><label for="${blockId}-example-media-type" class="response-control-media-type__title mb-0">Example Format:</label></div><div class="col-auto"><div class="content-type-wrapper"><select id="${blockId}-example-media-type" aria-label="Example Media Type" class="content-type example-media-type-select form-select form-select-sm" style="width: auto;"><option value="application/fhir+json">JSON</option><option value="application/fhir+xml">XML</option></select></div></div><div class="col"><small class="response-control-media-type__accept-message text-muted">Controls example/schema format.</small></div></div></section><div class="model-example"><ul class="tab list-unstyled ps-0 mb-2" role="tablist"><li class="tabitem active"><button class="tablinks badge active" data-name="example">Example Value</button></li><li class="tabitem"><button class="tablinks badge" data-name="schema">Schema</button></li></ul><div class="example-panel" style="display: block;"><div class="highlight-code"><pre class="example-code-display"><code class="language-json">${query.example && typeof query.example === 'string' ? query.example : '{}'}</code></pre></div></div><div class="schema-panel" style="display: none;"><div class="highlight-code"><pre class="schema-code-display"><code class="language-json">${JSON.stringify(query.schema || {}, null, 2)}</code></pre></div></div></div></td></tr><tr class="response" data-code="4xx/5xx"><td class="response-col_status">4xx/5xx</td><td class="response-col_description"><p>Error (e.g., Not Found, Server Error)</p></td></tr></tbody></table>
+                     </div>
+                 </div>`;
+             queryListContainer.appendChild(block);
+            // --- End Main Block HTML Generation ---
+
+
+            // --- Get Element References (ensure paramInputs selects all relevant elements) ---
             const opblockSummary = block.querySelector('.opblock-summary');
             const opblockBody = block.querySelector('.opblock-body');
             const tryButton = block.querySelector('.try-out__btn');
             const executeButton = block.querySelector('.execute__btn');
-            const paramInputs = block.querySelectorAll('.parameters-section input');
+            const paramInputs = block.querySelectorAll('.parameters-section input, .parameters-section select'); // Select inputs AND selects
             const reqBodyTextarea = block.querySelector('.request-body-textarea');
             const reqContentTypeSelect = block.querySelector('.request-content-type');
             const executeWrapper = block.querySelector('.execute-wrapper');
-            // Ensure executeWrapper exists before querying within it
             const respOutputPre = executeWrapper?.querySelector('.response-output-content');
             const respOutputCode = respOutputPre?.querySelector('code');
             const respNarrativeDiv = executeWrapper?.querySelector('.response-output-narrative');
@@ -741,130 +1083,378 @@ document.addEventListener('DOMContentLoaded', () => {
             const examplePanel = block.querySelector('.responses-section .example-panel');
             const schemaPanel = block.querySelector('.responses-section .schema-panel');
 
-            // --- Attach Event Listeners (using references above, with null checks) ---
+
+            // --- Attach Event Listeners ---
+            // Opblock Toggle
             if (opblockSummary) {
-                opblockSummary.addEventListener('click', (e) => {
+                 opblockSummary.addEventListener('click', (e) => {
                     if (e.target.closest('button, a, input, select')) return;
                     const wasOpen = block.classList.contains('is-open');
-                    document.querySelectorAll('.opblock.is-open').forEach(openBlock => { if (openBlock !== block) { openBlock.classList.remove('is-open'); if(openBlock.querySelector('.opblock-body')) openBlock.querySelector('.opblock-body').style.display = 'none'; }});
                     block.classList.toggle('is-open', !wasOpen);
                     if(opblockBody) opblockBody.style.display = wasOpen ? 'none' : 'block';
-                });
+                 });
             }
 
+            // 'Try it out' Button
             if (tryButton && executeButton) {
                 tryButton.addEventListener('click', () => {
-                    const isEditing = tryButton.classList.contains('cancel'); const enable = !isEditing;
-                    paramInputs.forEach(input => { input.disabled = !enable; if (!enable) { input.value = input.dataset.example || ''; input.classList.remove('is-invalid'); } });
-                    if (reqBodyTextarea) reqBodyTextarea.disabled = !enable; if (reqContentTypeSelect) reqContentTypeSelect.disabled = !enable; if (!enable && reqBodyTextarea) { reqBodyTextarea.value = (query.method === 'POST' && query.path.endsWith('_search')) ? query.example : ''; }
-                    tryButton.textContent = enable ? 'Cancel' : 'Try it out'; tryButton.classList.toggle('cancel', enable); tryButton.classList.toggle('btn-danger', enable); tryButton.classList.toggle('btn-primary', !enable);
-                    executeButton.style.display = enable ? 'inline-block' : 'none'; executeButton.disabled = !enable;
+                    const isEditing = tryButton.classList.contains('cancel');
+                    const enable = !isEditing;
+                    // Enable/Disable and Reset Parameter Inputs
+                    paramInputs.forEach(input => {
+                        input.disabled = !enable;
+                        if (!enable) { // Resetting when canceling
+                             input.classList.remove('is-invalid');
+                             if (input.type === 'checkbox') {
+                                 input.checked = false; // Reset checkbox
+                             } else if (input.tagName === 'SELECT') {
+                                  const exampleValue = input.dataset.example; // Reset select
+                                  if (exampleValue && input.querySelector(`option[value="${exampleValue}"]`)) { input.value = exampleValue; }
+                                  else if (input.options.length > 0) { input.selectedIndex = 0; }
+                             } else {
+                                  input.value = input.dataset.example || ''; // Reset other inputs
+                             }
+                        }
+                    });
+                    // Enable/Disable Request Body Area
+                    if (reqBodyTextarea) reqBodyTextarea.disabled = !enable;
+                    if (reqContentTypeSelect) reqContentTypeSelect.disabled = !enable;
+                    // Reset textarea only if canceling and it's not for Parameters body
+                    if (!enable && reqBodyTextarea && !query.parameters.some(p => p.in === 'body (Parameters)')) {
+                         reqBodyTextarea.value = (query.method === 'POST' && query.path.endsWith('_search')) ? query.example : '';
+                    }
+                    // Toggle Button State
+                    tryButton.textContent = enable ? 'Cancel' : 'Try it out';
+                    tryButton.classList.toggle('cancel', enable);
+                    tryButton.classList.toggle('btn-danger', enable);
+                    tryButton.classList.toggle('btn-primary', !enable);
+                    // Toggle Execute Button and Response Area
+                    executeButton.style.display = enable ? 'inline-block' : 'none';
+                    executeButton.disabled = !enable;
                     if (!enable && executeWrapper) {
                         executeWrapper.style.display = 'none';
-                        if (reqUrlOutput) reqUrlOutput.textContent = ''; if (curlOutput) curlOutput.textContent = '';
-                        if (respOutputCode) respOutputCode.textContent = ''; if (respNarrativeDiv) respNarrativeDiv.innerHTML = '';
+                        // Clear execution results on cancel
+                        if (reqUrlOutput) reqUrlOutput.textContent = '';
+                        if (curlOutput) curlOutput.textContent = '';
+                        if (respOutputCode) respOutputCode.textContent = '';
+                        if (respNarrativeDiv) respNarrativeDiv.innerHTML = '';
                         if (respStatusDiv) respStatusDiv.textContent = '';
                         if (respFormatSelect) respFormatSelect.style.display = 'none';
-                        if (copyRespButton) copyRespButton.style.display = 'none'; if (downloadRespButton) downloadRespButton.style.display = 'none';
+                        if (copyRespButton) copyRespButton.style.display = 'none';
+                        if (downloadRespButton) downloadRespButton.style.display = 'none';
                     }
                 });
             }
 
+            // Request Content Type Change
             if (reqContentTypeSelect && reqBodyTextarea && tryButton) {
-                const reqExampleCode = block.querySelector('.request-example-code code');
-                const reqExampleContainer = block.querySelector('.request-body-example');
-                reqContentTypeSelect.addEventListener('change', () => {
-                    const type = reqContentTypeSelect.value; const isFormUrlEncoded = type === 'application/x-www-form-urlencoded'; const isEditing = tryButton.classList.contains('cancel');
-                    if (reqExampleContainer) reqExampleContainer.style.display = isFormUrlEncoded ? 'none' : 'block';
-                    if (reqBodyTextarea && !isEditing) { reqBodyTextarea.value = isFormUrlEncoded ? query.example : ''; reqBodyTextarea.placeholder = isFormUrlEncoded ? 'e.g., param1=value1&param2=value2' : 'Enter FHIR resource JSON or XML'; }
-                    if (reqExampleCode && !isFormUrlEncoded) { const jsonExample = query.example && typeof query.example === 'string' && query.example.startsWith('{') ? query.example : '{}'; if (type === 'application/fhir+json') { reqExampleCode.className = 'language-json'; reqExampleCode.textContent = jsonExample; } else if (type === 'application/fhir+xml') { reqExampleCode.className = 'language-xml'; reqExampleCode.textContent = jsonToFhirXml(jsonExample); } }
-                });
-                reqContentTypeSelect.dispatchEvent(new Event('change'));
+                 const reqExampleCode = block.querySelector('.request-example-code code');
+                 const reqExampleContainer = block.querySelector('.request-body-example');
+                 reqContentTypeSelect.addEventListener('change', () => {
+                     const type = reqContentTypeSelect.value;
+                     const isFormUrlEncoded = type === 'application/x-www-form-urlencoded';
+                     const isJsonParams = type === 'application/fhir+json' && query.parameters.some(p => p.in === 'body (Parameters)');
+                     const isEditing = tryButton.classList.contains('cancel');
+                     // Hide example display if body will be form data or JSON Parameters
+                     if (reqExampleContainer) reqExampleContainer.style.display = (isFormUrlEncoded || isJsonParams) ? 'none' : 'block';
+                     // Set placeholder and maybe reset value if not editing
+                     if (reqBodyTextarea) {
+                         reqBodyTextarea.placeholder = isFormUrlEncoded ? 'e.g., param1=value1&param2=value2' :
+                                                        isJsonParams ? 'Enter Parameters resource JSON (or leave blank if using inputs above)...' :
+                                                        'Enter FHIR resource JSON or XML...';
+                         if (!isEditing) { // Only reset value if not editing
+                             reqBodyTextarea.value = isFormUrlEncoded ? query.example :
+                                                     isJsonParams ? query.example : // Pre-fill with example Parameters
+                                                      '';
+                         }
+                     }
+                     // Update code block example if applicable
+                     if (reqExampleCode && !isFormUrlEncoded && !isJsonParams) {
+                          const jsonExample = query.example && typeof query.example === 'string' && query.example.startsWith('{') ? query.example : '{}';
+                          if (type === 'application/fhir+json') {
+                              reqExampleCode.className = 'language-json'; reqExampleCode.textContent = jsonExample; Prism.highlightElement(reqExampleCode);
+                          } else if (type === 'application/fhir+xml') {
+                              reqExampleCode.className = 'language-xml'; reqExampleCode.textContent = jsonToFhirXml(jsonExample); Prism.highlightElement(reqExampleCode);
+                          }
+                     }
+                 });
+                 reqContentTypeSelect.dispatchEvent(new Event('change')); // Trigger initial state
             }
 
-            if (executeButton && executeWrapper && respStatusDiv && reqUrlOutput && curlOutput && respFormatSelect && copyRespButton && downloadRespButton && respOutputCode && respNarrativeDiv && respOutputPre) {
+// Execute Button (Includes Enhanced Error Display)
+             // <<< Execute Button Listener with Logging and Array Conversion Fix >>>
+             if (executeButton && executeWrapper && respStatusDiv && reqUrlOutput && curlOutput && respFormatSelect && copyRespButton && downloadRespButton && respOutputCode && respNarrativeDiv && respOutputPre) {
                  executeButton.addEventListener('click', async () => {
+                    console.log("[LOG 1] Execute button clicked. Starting listener...");
+                    // --- Reset UI and Disable Button ---
                     executeButton.disabled = true; executeButton.textContent = 'Executing...';
-                    executeWrapper.style.display = 'block'; reqUrlOutput.textContent = 'Building request...'; curlOutput.textContent = 'Building request...'; respOutputCode.textContent = ''; respNarrativeDiv.innerHTML = ''; respNarrativeDiv.style.display = 'none'; respOutputPre.style.display = 'block'; respStatusDiv.textContent = 'Executing request...'; respStatusDiv.style.color = '#6c757d'; respFormatSelect.style.display = 'none'; copyRespButton.style.display = 'none'; downloadRespButton.style.display = 'none'; respFormatSelect.value = 'json';
-                    const queryDef = JSON.parse(block.dataset.queryData); const method = queryDef.method; const headers = { 'Accept': 'application/fhir+json, application/fhir+xml;q=0.9, */*;q=0.8' }; let body; let path = queryDef.path;
-                    // **FIX for Local URL:** Explicitly use '/fhir' if local, otherwise use input value
-                    const baseUrl = isUsingLocalHapi ? '/fhir' : (fhirServerUrlInput.value.trim().replace(/\/+$/, '') || '/fhir'); // Fallback to /fhir if custom URL is empty
-                    let url = `${baseUrl}`; let validParams = true; const missingParams = [];
-                    block.querySelectorAll('.parameters-section tr[data-param-in="path"]').forEach(row => { const paramName = row.dataset.paramName; const input = row.querySelector('input'); const required = queryDef.parameters.find(p => p.name === paramName)?.required; const value = input.value.trim(); input.classList.remove('is-invalid'); if (!value && required) { validParams = false; missingParams.push(`${paramName} (path)`); input.classList.add('is-invalid'); } else if (value) { path = path.replace(`:${paramName}`, encodeURIComponent(value)); } else { path = path.replace(`:${paramName}`, ''); } }); if (path.includes(':')) { const remaining = path.match(/:(\w+)/g) || []; if (remaining.length) { validParams = false; missingParams.push(...remaining); }} url += path.startsWith('/') ? path : `/${path}`; const searchParams = new URLSearchParams(); block.querySelectorAll('.parameters-section tr[data-param-in="query"]').forEach(row => { const paramName = row.dataset.paramName; const input = row.querySelector('input'); const required = queryDef.parameters.find(p => p.name === paramName)?.required; const value = input.value.trim(); input.classList.remove('is-invalid'); if (value) searchParams.set(paramName, value); else if (required) { validParams = false; missingParams.push(`${paramName} (query)`); input.classList.add('is-invalid'); } });
-                    if (!validParams) { const errorMsg = `Error: Missing required parameter(s): ${[...new Set(missingParams)].join(', ')}`; respStatusDiv.textContent = errorMsg; respStatusDiv.style.color = 'red'; reqUrlOutput.textContent = 'Error: Invalid parameters'; curlOutput.textContent = 'Error: Invalid parameters'; executeButton.disabled = false; executeButton.textContent = 'Execute'; return; } const queryString = searchParams.toString(); if (queryString) url += (url.includes('?') ? '&' : '?') + queryString;
-                    if (queryDef.requestBody) { const contentType = reqContentTypeSelect ? reqContentTypeSelect.value : 'application/fhir+json'; headers['Content-Type'] = contentType; body = reqBodyTextarea ? reqBodyTextarea.value : ''; if (contentType === 'application/fhir+xml' && body.trim().startsWith('{')) { try { body = jsonToFhirXml(body); } catch (e) { console.warn("JSON->XML conversion failed", e); }} else if (contentType === 'application/fhir+json' && body.trim().startsWith('<')) { try { body = xmlToFhirJson(body); } catch (e) { console.warn("XML->JSON conversion failed", e); }} if (isUsingLocalHapi && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && fhirOperationsForm.querySelector('input[name="csrf_token"]')) { headers['X-CSRFToken'] = fhirOperationsForm.querySelector('input[name="csrf_token"]').value; } }
-                    reqUrlOutput.textContent = url; curlOutput.textContent = generateCurlCommand(method, url, headers, body); console.log(`Executing: ${method} ${url}`); console.log("Headers:", headers); if (body !== undefined) console.log("Body:", (body || '').substring(0, 300) + (body.length > 300 ? "..." : ""));
+                    executeWrapper.style.display = 'block';
+                    // ... (reset UI elements) ...
+                    if(reqUrlOutput) reqUrlOutput.textContent = 'Building request...'; if(curlOutput) curlOutput.textContent = 'Building request...'; if(respOutputCode) respOutputCode.textContent = ''; if(respNarrativeDiv) respNarrativeDiv.innerHTML = ''; respNarrativeDiv.style.display = 'none'; if(respOutputPre) respOutputPre.style.display = 'block'; if(respStatusDiv) respStatusDiv.textContent = 'Executing request...'; respStatusDiv.style.color = '#6c757d'; if(respFormatSelect) respFormatSelect.style.display = 'none'; respFormatSelect.value = 'json'; if(copyRespButton) copyRespButton.style.display = 'none'; if(downloadRespButton) downloadRespButton.style.display = 'none';
+
+                    // --- Get Query Definition and Base URL ---
+                    const queryDef = JSON.parse(block.dataset.queryData); const method = queryDef.method; const headers = { 'Accept': 'application/fhir+json, application/fhir+xml;q=0.9, */*;q=0.8' }; let body; let path = queryDef.path; const baseUrl = isUsingLocalHapi ? '/fhir' : (fhirServerUrlInput.value.trim().replace(/\/+$/, '') || '/fhir'); let url = `${baseUrl}`; let validParams = true; const missingParams = []; const bodyParamsList = [];
+
+                    console.log("[LOG 2] Starting parameter processing...");
+
+                    // --- Process Path Parameters ---
+                    // <<< FIX: Convert NodeList to Array before forEach >>>
+                    Array.from(block.querySelectorAll('.parameters-section tr[data-param-in="path"]')).forEach(row => {
+                        const paramName = row.dataset.paramName; const input = row.querySelector('input'); const paramDef = queryDef.parameters.find(p => p.name === paramName && p.in === 'path'); const required = paramDef?.required; const value = input?.value.trim(); if (input) input.classList.remove('is-invalid');
+                        if (!value && required) { validParams = false; missingParams.push(`${paramName} (path)`); if (input) input.classList.add('is-invalid'); }
+                        else if (value) { path = path.replace(`:${paramName}`, encodeURIComponent(value)); }
+                        else { path = path.replace(`/:${paramName}`, ''); }
+                    });
+                     if (path.includes(':')) { const remainingPlaceholders = path.match(/:(\w+)/g) || []; const requiredRemaining = queryDef.parameters.filter(p => p.in === 'path' && remainingPlaceholders.includes(`:${p.name}`) && p.required); if (requiredRemaining.length > 0) { validParams = false; missingParams.push(...requiredRemaining.map(p => `${p.name} (path)`)); requiredRemaining.forEach(p => { const el = block.querySelector(`.parameters-section tr[data-param-name="${p.name}"][data-param-in="path"] input`); if (el) el.classList.add('is-invalid'); }); } }
+                    url += path.startsWith('/') ? path : `/${path}`;
+
+                    // --- Process Query and Body Parameters ---
+                    const searchParams = new URLSearchParams();
+                    // <<< FIX: Convert NodeList to Array before forEach >>>
+                    Array.from(block.querySelectorAll('.parameters-section tr[data-param-in="query"], .parameters-section tr[data-param-in="body (Parameters)"]')).forEach(row => {
+                         const paramName = row.dataset.paramName; const paramIn = row.dataset.paramIn; const inputElement = row.querySelector('input, select'); const paramDef = queryDef.parameters.find(p => p.name === paramName && p.in === paramIn); const required = paramDef?.required; let value = ''; if (inputElement) inputElement.classList.remove('is-invalid');
+                         if (inputElement?.type === 'checkbox') { value = inputElement.checked ? (inputElement.value || 'true') : ''; } else if (inputElement) { value = inputElement.value.trim(); }
+                         if (value) { if (paramIn === 'query') { searchParams.set(paramName, value); } else { let paramPart = { name: paramName }; const paramType = paramDef?.type || 'string'; try { switch (paramType) { case 'boolean': paramPart.valueBoolean = (value === 'true'); break; case 'integer': case 'positiveInt': case 'unsignedInt': paramPart.valueInteger = parseInt(value, 10); break; case 'decimal': paramPart.valueDecimal = parseFloat(value); break; case 'date': paramPart.valueDate = value; break; case 'dateTime': paramPart.valueDateTime = value; break; case 'instant': try { paramPart.valueInstant = new Date(value).toISOString(); } catch (dateError) { console.warn(`Instant parse failed: ${dateError}`); paramPart.valueString = value;} break; default: paramPart[`value${paramType.charAt(0).toUpperCase() + paramType.slice(1)}`] = value; } if (Object.keys(paramPart).length > 1) { bodyParamsList.push(paramPart); } } catch (typeError) { console.error(`Error processing body param ${paramName}: ${typeError}`); bodyParamsList.push({ name: paramName, valueString: value }); } } }
+                         else if (required) { validParams = false; missingParams.push(`${paramName} (${paramIn})`); if (inputElement) inputElement.classList.add('is-invalid'); }
+                    });
+
+                    console.log("[LOG 3] Parameter processing finished. Valid:", validParams);
+
+                    // --- Validation Check ---
+                    if (!validParams) {
+                        const errorMsg = `Error: Missing required parameter(s): ${[...new Set(missingParams)].join(', ')}`;
+                        console.error("[LOG 3a] Validation failed:", errorMsg);
+                        if(respStatusDiv) { respStatusDiv.textContent = errorMsg; respStatusDiv.style.color = 'red'; }
+                        if(reqUrlOutput) reqUrlOutput.textContent = 'Error: Invalid parameters';
+                        if(curlOutput) curlOutput.textContent = 'Error: Invalid parameters';
+                        executeButton.disabled = false; executeButton.textContent = 'Execute'; // Re-enable button
+                        return; // Stop execution
+                    }
+
+                    // --- Finalize URL ---
+                    const queryString = searchParams.toString(); if (queryString) url += (url.includes('?') ? '&' : '?') + queryString;
+
+                    // --- Construct Request Body ---
+                    console.log("[LOG 4] Constructing request body...");
+                    if (queryDef.requestBody) {
+                         const contentType = reqContentTypeSelect ? reqContentTypeSelect.value : 'application/fhir+json';
+                         headers['Content-Type'] = contentType;
+                         // <<< Refined Logic >>>
+                         if (bodyParamsList.length > 0) { // If parameters were collected for the body
+                             console.log("[LOG 4a] Using bodyParamsList to construct body.");
+                             if (contentType.includes('json')) { body = JSON.stringify({ resourceType: "Parameters", parameter: bodyParamsList }, null, 2); }
+                             else if (contentType.includes('xml')) { try { body = jsonToFhirXml({ resourceType: "Parameters", parameter: bodyParamsList }); } catch (xmlErr) { console.error("Params->XML failed:", xmlErr); body = JSON.stringify({ resourceType: "Parameters", parameter: bodyParamsList }); headers['Content-Type'] = 'application/fhir+json'; alert("Failed to create XML body. Sending JSON."); } }
+                             else { console.warn(`Unsupported Content-Type ${contentType} for Parameters body. Sending JSON.`); body = JSON.stringify({ resourceType: "Parameters", parameter: bodyParamsList }, null, 2); headers['Content-Type'] = 'application/fhir+json'; }
+                         } else if (reqBodyTextarea && reqBodyTextarea.value.trim() !== '') { // Otherwise, if textarea exists AND has non-whitespace content
+                             console.log("[LOG 4b] Using reqBodyTextarea value for body.");
+                             body = reqBodyTextarea.value; // Use the textarea content directly
+                             // Convert textarea content if needed (e.g., user pasted JSON but selected XML)
+                             if (contentType === 'application/fhir+xml' && body.trim().startsWith('{')) { try { body = jsonToFhirXml(body); } catch (e) { console.warn("Textarea JSON->XML failed", e); } }
+                             else if (contentType === 'application/fhir+json' && body.trim().startsWith('<')) { try { body = xmlToFhirJson(body); } catch (e) { console.warn("Textarea XML->JSON failed", e); } }
+                         } else { // No body params and textarea is missing or empty
+                              console.log("[LOG 4c] No body parameters and textarea is empty/missing. Setting body to empty string.");
+                              body = ''; // Ensure body is an empty string if nothing else applies
+                         }
+                         // Add CSRF token if needed
+                        console.log("[LOG 4d] Current isUsingLocalHapi state:", isUsingLocalHapi); // Log HAPI state
+                        if (isUsingLocalHapi && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+                            console.log("[LOG 4e] Attempting to add CSRF token for local HAPI modifying request.");
+                            // Find the CSRF token input within the form
+                            const csrfTokenInput = fhirOperationsForm.querySelector('input[name="csrf_token"]');
+                             if (csrfTokenInput && csrfTokenInput.value) {
+                                // Add the token value to the request headers object
+                                headers['X-CSRFToken'] = csrfTokenInput.value;
+                                console.log("[LOG 4f] Added X-CSRFToken header:", headers['X-CSRFToken'] ? 'Yes' : 'No'); // Verify it was added
+                             } else {
+                                // Log an error if the token input wasn't found or was empty
+                                console.error("[LOG 4g] CSRF token input not found or has no value!");
+                             }
+                    } else {
+                         // Log if CSRF is not being added and why
+                         console.log("[LOG 4h] Not adding CSRF token (not local HAPI or not modifying method). isUsingLocalHapi:", isUsingLocalHapi, "Method:", method);
+                    }
+                    } else {
+                        // Ensure body is undefined if queryDef.requestBody is false
+                        body = undefined;
+                    }
+                    console.log("[LOG 5] Request body constructed. Body length:", body?.length ?? 'undefined'); // Check body length
+
+                    // --- Log Request ---
+                    if(reqUrlOutput) reqUrlOutput.textContent = url;
+                    // <<< Log body right before generating cURL >>>
+                    console.log("[LOG 5a] Body variable before generateCurlCommand:", body ? body.substring(0,100)+'...' : body);
+                    if(curlOutput) curlOutput.textContent = generateCurlCommand(method, url, headers, body); // Generate cURL
+                    console.log(`Executing: ${method} ${url}`); console.log("Headers:", headers); if (body !== undefined) console.log("Body:", (body || '').substring(0, 300) + ((body?.length ?? 0) > 300 ? "..." : ""));
+
+            // --- Perform Fetch & Process Response ---
+
+                    // --- Perform Fetch & Process Response ---
                     let respData = { json: null, xml: null, narrative: null, text: null, status: 0, statusText: '', contentType: '' };
                     try {
-                        const resp = await fetch(url, { method, headers, body }); respData.status = resp.status; respData.statusText = resp.statusText; respData.contentType = resp.headers.get('Content-Type') || ''; respData.text = await resp.text(); respStatusDiv.textContent = `Status: ${resp.status} ${resp.statusText}`; respStatusDiv.style.color = resp.ok ? 'green' : 'red';
-                        if (respData.text) { if (respData.contentType.includes('json')) { try { respData.json = JSON.parse(respData.text); respData.xml = jsonToFhirXml(respData.json); if (respData.json.text?.div) respData.narrative = respData.json.text.div; } catch (e) {} } else if (respData.contentType.includes('xml')) { respData.xml = respData.text; respData.json = JSON.parse(xmlToFhirJson(respData.xml)); try { const p = new DOMParser(); const xd = p.parseFromString(respData.xml, "application/xml"); const nn = xd.querySelector("div[xmlns='http://www.w3.org/1999/xhtml']"); if (nn) respData.narrative = nn.outerHTML; } catch(e) {} } else { respData.json = { contentType: respData.contentType, content: respData.text }; respData.xml = `<data contentType="${escapeXml(respData.contentType)}">${escapeXml(respData.text)}</data>`; } } else if (resp.ok) { respData.json = { message: "Operation successful, no content returned." }; respData.xml = jsonToFhirXml({}); } else { respData.json = { error: `Request failed with status ${resp.status}`, detail: resp.statusText }; respData.xml = `<error>Request failed with status ${resp.status} ${escapeXml(resp.statusText)}</error>`; }
-                        block.dataset.responseData = JSON.stringify(respData); respFormatSelect.style.display = 'inline-block'; copyRespButton.style.display = 'inline-block'; downloadRespButton.style.display = 'inline-block'; respFormatSelect.disabled = false; const narrativeOption = respFormatSelect.querySelector('option[value="narrative"]'); if (narrativeOption) narrativeOption.disabled = !respData.narrative; respFormatSelect.dispatchEvent(new Event('change'));
-                    } catch (e) { console.error('Fetch Error:', e); respStatusDiv.textContent = `Network Error: ${e.message}`; respStatusDiv.style.color = 'red'; respOutputCode.textContent = `Request failed: ${e.message}\nURL: ${url}`; respOutputCode.className = 'language-text'; respFormatSelect.style.display = 'none'; copyRespButton.style.display = 'none'; downloadRespButton.style.display = 'none'; } finally { executeButton.disabled = false; executeButton.textContent = 'Execute'; }
-                });
-            }
+                        console.log("[LOG 6] Initiating fetch...");
+                        const resp = await fetch(url, { method, headers, body: (body || undefined) });
+                        console.log("[LOG 7] Fetch completed. Status:", resp.status);
 
+                        respData.status = resp.status; respData.statusText = resp.statusText; respData.contentType = resp.headers.get('Content-Type') || '';
+                        console.log("[LOG 8] Reading response text...");
+                        respData.text = await resp.text();
+                        console.log("[LOG 9] Response text read. Length:", respData.text?.length);
+                        if(respStatusDiv) { respStatusDiv.textContent = `Status: ${resp.status} ${resp.statusText}`; respStatusDiv.style.color = resp.ok ? 'green' : 'red'; }
+
+                        // Process body (includes OperationOutcome check)
+                        console.log("[LOG 10] Processing response body...");
+                        let isOperationOutcome = false; let operationOutcomeIssuesHtml = '';
+                        
+                        if (respData.text) { if (respData.contentType.includes('json')) { try { respData.json = JSON.parse(respData.text); try { respData.xml = jsonToFhirXml(respData.json); } catch(xmlConvErr){ respData.xml = `<error>XML conversion failed: ${xmlConvErr.message}</error>`; } if (respData.json.text?.div) respData.narrative = respData.json.text.div; if (respData.json.resourceType === 'OperationOutcome') { isOperationOutcome = true; operationOutcomeIssuesHtml = formatOperationOutcome(respData.json); } } catch (e) { respData.json = { parsingError: e.message, rawText: respData.text }; respData.xml = `<data>${escapeXml(respData.text)}</data>`; } } else if (respData.contentType.includes('xml')) { respData.xml = respData.text; try { respData.json = JSON.parse(xmlToFhirJson(respData.xml)); const p = new DOMParser(), xd = p.parseFromString(respData.xml, "application/xml"), pe = xd.querySelector("parsererror"); if (pe) throw new Error(pe.textContent); if (xd.documentElement && xd.documentElement.tagName === 'OperationOutcome') { isOperationOutcome = true; operationOutcomeIssuesHtml = formatOperationOutcome(respData.json); } const nn = xd.querySelector("div[xmlns='http://www.w3.org/1999/xhtml']"); if (nn) respData.narrative = nn.outerHTML; } catch(e) { respData.json = { parsingError: e.message, rawText: respData.text }; } } else { respData.json = { contentType: respData.contentType, content: respData.text }; respData.xml = `<data contentType="${escapeXml(respData.contentType)}">${escapeXml(respData.text)}</data>`; } } else if (resp.ok) { respData.json = { message: "Success (No Content)" }; respData.xml = jsonToFhirXml({}); } else { respData.json = { error: `Request failed: ${resp.status}`, detail: resp.statusText }; respData.xml = `<error>Request failed: ${resp.status} ${escapeXml(resp.statusText)}</error>`; }
+                        console.log("[LOG 11] Response body processed. Is OperationOutcome:", isOperationOutcome);
+
+                        // --- Update UI ---
+                        block.dataset.responseData = JSON.stringify(respData);
+                        if(respFormatSelect) { respFormatSelect.style.display = 'inline-block'; respFormatSelect.disabled = false; } if(copyRespButton) copyRespButton.style.display = 'inline-block'; if(downloadRespButton) downloadRespButton.style.display = 'inline-block';
+                        // Enhanced Error Display Logic
+                        if (!resp.ok && isOperationOutcome && respNarrativeDiv) {
+                            console.log("[LOG 12a] Displaying formatted OperationOutcome.");
+                            respNarrativeDiv.innerHTML = operationOutcomeIssuesHtml; respNarrativeDiv.style.display = 'block'; respOutputPre.style.display = 'none';
+                            if (respFormatSelect) { const narrativeOpt = respFormatSelect.querySelector('option[value="narrative"]'); if (!narrativeOpt) { const opt = document.createElement('option'); opt.value = 'narrative'; opt.textContent = 'Formatted Issues'; respFormatSelect.insertBefore(opt, respFormatSelect.firstChild); } else { narrativeOpt.textContent = 'Formatted Issues'; narrativeOpt.disabled = false; } respFormatSelect.value = 'narrative'; respFormatSelect.dispatchEvent(new Event('change')); }
+                        } else {
+                             console.log("[LOG 12b] Updating display format dropdown for success or non-OO error.");
+                             const narrativeOption = respFormatSelect?.querySelector('option[value="narrative"]'); if (narrativeOption) { narrativeOption.textContent = 'Narrative'; narrativeOption.disabled = !respData.narrative; }
+                             respFormatSelect.value = (respData.narrative && respFormatSelect.value === 'narrative') ? 'narrative' : 'json';
+                             respFormatSelect?.dispatchEvent(new Event('change')); // This will trigger highlighting via its listener
+                        }
+                         console.log("[LOG 13] UI update triggered.");
+
+                    } catch (e) { // Catch fetch/network/processing errors
+                        console.error('[LOG 14] Error during fetch or response processing:', e);
+                        if(respStatusDiv) { respStatusDiv.textContent = `Error: ${e.message}`; respStatusDiv.style.color = 'red'; } if(respOutputCode) { respOutputCode.textContent = `Request failed: ${e.message}\nURL: ${url}`; respOutputCode.className = 'language-text'; } if(respFormatSelect) respFormatSelect.style.display = 'none'; if(copyRespButton) copyRespButton.style.display = 'none'; if(downloadRespButton) downloadRespButton.style.display = 'none'; if(respNarrativeDiv) respNarrativeDiv.style.display = 'none'; if(respOutputPre) respOutputPre.style.display = 'block';
+                    } finally {
+                        console.log("[LOG 15] Executing finally block."); // <<< LOG 15 (Finally Block)
+                        executeButton.disabled = false;
+                        executeButton.textContent = 'Execute';
+                    }
+                 }); // End executeButton listener
+             } // End if (executeButton && ...)
+
+            // Response Format Change Listener
             if (respFormatSelect && respNarrativeDiv && respOutputPre && respOutputCode) {
-                 respFormatSelect.addEventListener('change', () => { const format = respFormatSelect.value; try { const data = JSON.parse(block.dataset.responseData || '{}'); respNarrativeDiv.style.display = 'none'; respOutputPre.style.display = 'block'; switch (format) { case 'xml': respOutputCode.textContent = data.xml || data.text || '<No XML>'; respOutputCode.className = 'language-xml'; respOutputPre.style.whiteSpace = 'pre'; break; case 'narrative': if (data.narrative) { respNarrativeDiv.innerHTML = data.narrative; respNarrativeDiv.style.display = 'block'; respOutputPre.style.display = 'none'; } else { respOutputCode.textContent = '<Narrative unavailable>'; respOutputCode.className = 'language-text'; respOutputPre.style.whiteSpace = 'pre-wrap'; } break; case 'json': default: respOutputCode.textContent = data.json ? JSON.stringify(data.json, null, 2) : (data.text || '<No JSON>'); respOutputCode.className = 'language-json'; respOutputPre.style.whiteSpace = 'pre-wrap'; break; } } catch (e) {} });
+                 respFormatSelect.addEventListener('change', () => {
+                      const format = respFormatSelect.value;
+                      try {
+                           const data = JSON.parse(block.dataset.responseData || '{}');
+                           respNarrativeDiv.style.display = 'none'; // Hide narrative by default
+                           respOutputPre.style.display = 'block'; // Show pre by default
+                           let langClass = 'language-text'; // Default lang class
+                           let contentToDisplay = '';
+                           let whiteSpace = 'pre-wrap'; // Default whitespace
+
+                           switch (format) {
+                                case 'xml':
+                                    contentToDisplay = data.xml || data.text || '<No XML>';
+                                    langClass = 'language-xml';
+                                    whiteSpace = 'pre'; // Use 'pre' for XML to preserve indenting
+                                    break;
+                                case 'narrative':
+                                    if (data.narrative) {
+                                        respNarrativeDiv.innerHTML = data.narrative;
+                                        respNarrativeDiv.style.display = 'block'; // Show narrative div
+                                        respOutputPre.style.display = 'none'; // Hide pre div
+                                        contentToDisplay = ''; // Clear pre content just in case
+                                    } else {
+                                        contentToDisplay = '<Narrative unavailable>';
+                                        langClass = 'language-text';
+                                    }
+                                    break;
+                                case 'json':
+                                default:
+                                    contentToDisplay = data.json ? JSON.stringify(data.json, null, 2) : (data.text || '<No JSON>');
+                                    langClass = 'language-json';
+                                    break;
+                           }
+
+                           // Only update and highlight the <pre> block if it's visible
+                           if (respOutputPre.style.display === 'block') {
+                                respOutputCode.textContent = contentToDisplay;
+                                respOutputCode.className = langClass; // Set class for Prism
+                                respOutputPre.style.whiteSpace = whiteSpace;
+                                // Check if Prism is loaded before calling
+                                if (typeof Prism !== 'undefined') {
+                                    Prism.highlightElement(respOutputCode); // Highlight after update
+                                } else {
+                                     console.warn("Prism.js not loaded, cannot highlight code.");
+                                }
+                           }
+                      } catch (e) { console.error("Error updating response format view:", e); }
+                 });
             }
 
-            if (exampleTabs.length && examplePanel && schemaPanel) {
-                 exampleTabs.forEach(tab => { // Outer forEach loop for each tab
-                     tab.addEventListener('click', () => { // Add click listener to the current tab
-                         // When a tab is clicked:
-                         // 1. Make all tabs look inactive
-                         exampleTabs.forEach(t => { // Loop through ALL tabs
-                             t.classList.remove('active', 'bg-primary'); // Remove active state and primary bg
-                             t.classList.add('bg-secondary');          // Make it look inactive (secondary bg)
-                         });
-                         // 2. Make the clicked tab look active
-                         tab.classList.add('active', 'bg-primary');    // Add active state and primary bg
-                         tab.classList.remove('bg-secondary');         // Remove inactive look
+            // Example/Schema Tabs Listener
+             if (exampleTabs.length && examplePanel && schemaPanel) {
+                  exampleTabs.forEach(tab => { tab.addEventListener('click', () => { exampleTabs.forEach(t => { t.classList.remove('active'); t.classList.remove('bg-primary'); t.classList.add('bg-secondary');}); tab.classList.add('active', 'bg-primary'); tab.classList.remove('bg-secondary'); const target = tab.dataset.name; examplePanel.style.display = target === 'example' ? 'block' : 'none'; schemaPanel.style.display = target === 'schema' ? 'block' : 'none'; updateStaticExampleFormat(block); }); }); // Highlight will be called by updateStaticExampleFormat
+             }
 
-                         // 3. Show/hide the correct panel (Example or Schema)
-                         const target = tab.dataset.name;
-                         examplePanel.style.display = target === 'example' ? 'block' : 'none';
-                         schemaPanel.style.display = target === 'schema' ? 'block' : 'none';
-
-                         // 4. Update the content format if needed (e.g., JSON/XML)
-                         updateStaticExampleFormat(block);
-                     }); // << End of the arrow function for the click listener
-                 }); // << End of the arrow function for the outer exampleTabs.forEach loop
-            } // << End of the if block
-
+            // Example Media Type Change Listener
             if (exampleMediaTypeSelect) {
-                 exampleMediaTypeSelect.addEventListener('change', () => updateStaticExampleFormat(block));
+                 exampleMediaTypeSelect.addEventListener('change', () => updateStaticExampleFormat(block)); // Highlight will be called by updateStaticExampleFormat
             }
 
-            if (copyCurlButton && curlOutput) {
-                 copyCurlButton.addEventListener('click', (e) => { if (curlOutput.textContent) copyToClipboard(curlOutput.textContent, e.currentTarget); });
-            }
+            // Copy/Download Button Listeners
+            if (copyCurlButton && curlOutput) { copyCurlButton.addEventListener('click', (e) => { if (curlOutput.textContent) copyToClipboard(curlOutput.textContent, e.currentTarget); }); }
+            if (copyRespButton && respFormatSelect) { copyRespButton.addEventListener('click', (e) => { const format = respFormatSelect.value; let content = ''; if (format === 'narrative') { content = respNarrativeDiv ? respNarrativeDiv.innerHTML : ''; } else { content = respOutputCode ? respOutputCode.textContent : ''; } if (content) copyToClipboard(content, e.currentTarget); }); }
+            if (downloadRespButton && respFormatSelect) { downloadRespButton.addEventListener('click', () => { const format = respFormatSelect.value; let content = ''; let ext = 'txt'; let mime = 'text/plain'; const data = JSON.parse(block.dataset.responseData || '{}'); const dateStamp = new Date().toISOString().replace(/[:.]/g, '-'); const filename = `response-${currentSelectedResource || 'system'}-${query.method}-${dateStamp}`; switch (format) { case 'json': content = data.json ? JSON.stringify(data.json, null, 2) : (data.text || ''); ext = 'json'; mime = 'application/json'; break; case 'xml': content = data.xml || data.text || ''; ext = 'xml'; mime = 'application/xml'; break; case 'narrative': content = respNarrativeDiv ? respNarrativeDiv.innerHTML : ''; ext = 'html'; mime = 'text/html'; break; } if (content) downloadFile(content, `${filename}.${ext}`, mime); }); }
 
-            if (copyRespButton && respFormatSelect) {
-                 copyRespButton.addEventListener('click', (e) => { const format = respFormatSelect.value; let content = ''; if (format === 'narrative') { content = respNarrativeDiv ? respNarrativeDiv.innerHTML : ''; } else { content = respOutputCode ? respOutputCode.textContent : ''; } if (content) copyToClipboard(content, e.currentTarget); });
-            }
+            // Initialize static example format and highlight it
+            updateStaticExampleFormat(block);
 
-            if (downloadRespButton && respFormatSelect) {
-                 downloadRespButton.addEventListener('click', () => { const format = respFormatSelect.value; let content = ''; let ext = 'txt'; let mime = 'text/plain'; const data = JSON.parse(block.dataset.responseData || '{}'); const dateStamp = new Date().toISOString().replace(/[:.]/g, '-'); const filename = `response-${currentSelectedResource || 'system'}-${query.method}-${dateStamp}`; switch (format) { case 'json': content = data.json ? JSON.stringify(data.json, null, 2) : (data.text || ''); ext = 'json'; mime = 'application/json'; break; case 'xml': content = data.xml || data.text || ''; ext = 'xml'; mime = 'application/xml'; break; case 'narrative': content = respNarrativeDiv ? respNarrativeDiv.innerHTML : ''; ext = 'html'; mime = 'text/html'; break; } if (content) downloadFile(content, `${filename}.${ext}`, mime); });
-            }
-
-            updateStaticExampleFormat(block); // Initialize example format
         }); // End forEach query
 
         swaggerUiContainer.style.display = 'block';
     } // End updateQueryListUI
 
-    // --- Update Static Example/Schema Format Display (Unchanged) ---
+    // --- Update Static Example/Schema Format Display (WITH HIGHLIGHTING) ---
     function updateStaticExampleFormat(block) {
         const data = JSON.parse(block.dataset.queryData || '{}');
         const mediaTypeSelect = block.querySelector('.example-media-type-select');
-        const examplePre = block.querySelector('.responses-section .example-code-display');
-        const exampleCode = examplePre?.querySelector('code');
-        const schemaPre = block.querySelector('.responses-section .schema-code-display');
-        const schemaCode = schemaPre?.querySelector('code');
-        if (!mediaTypeSelect || !exampleCode || !schemaCode || !examplePre || !schemaPre) return;
-        const mediaType = mediaTypeSelect.value; const example = data.example || ''; const isJsonLike = typeof example === 'string' && example.trim().startsWith('{'); const exampleJson = isJsonLike ? example : '{}'; const schemaJson = JSON.stringify(data.schema || {}, null, 2);
-        if (mediaType === 'application/fhir+json') { exampleCode.textContent = exampleJson; exampleCode.className = 'language-json'; schemaCode.textContent = schemaJson; schemaCode.className = 'language-json'; examplePre.style.whiteSpace = 'pre-wrap'; schemaPre.style.whiteSpace = 'pre-wrap'; }
-        else if (mediaType === 'application/fhir+xml') { exampleCode.textContent = isJsonLike ? jsonToFhirXml(exampleJson) : `<value>${escapeXml(example)}</value>`; exampleCode.className = 'language-xml'; schemaCode.textContent = jsonToFhirXml(data.schema || {}); schemaCode.className = 'language-xml'; examplePre.style.whiteSpace = 'pre'; schemaPre.style.whiteSpace = 'pre'; }
+        const examplePanel = block.querySelector('.responses-section .example-panel'); // Find parent panel
+        const examplePre = examplePanel?.querySelector('.example-code-display'); // Find pre within panel
+        const exampleCode = examplePre?.querySelector('code'); // Find code within pre
+        const schemaPanel = block.querySelector('.responses-section .schema-panel'); // Find parent panel
+        const schemaPre = schemaPanel?.querySelector('.schema-code-display'); // Find pre within panel
+        const schemaCode = schemaPre?.querySelector('code'); // Find code within pre
+
+        if (!mediaTypeSelect || !exampleCode || !schemaCode || !examplePre || !schemaPre || !examplePanel || !schemaPanel) {
+             console.warn("Missing elements required for updateStaticExampleFormat in block:", block.id);
+             return;
+        }
+
+        const mediaType = mediaTypeSelect.value;
+        const example = data.example || '';
+        const isJsonLike = typeof example === 'string' && example.trim().startsWith('{');
+        const exampleJson = isJsonLike ? example : '{}';
+        const schemaJson = JSON.stringify(data.schema || {}, null, 2);
+
+        // Update content and classes based on selected media type
+        if (mediaType === 'application/fhir+json') {
+             exampleCode.textContent = exampleJson; exampleCode.className = 'language-json';
+             schemaCode.textContent = schemaJson; schemaCode.className = 'language-json';
+             examplePre.style.whiteSpace = 'pre-wrap'; schemaPre.style.whiteSpace = 'pre-wrap';
+        }
+        else if (mediaType === 'application/fhir+xml') {
+             exampleCode.textContent = isJsonLike ? jsonToFhirXml(exampleJson) : `<value>${escapeXml(example)}</value>`; exampleCode.className = 'language-xml';
+             schemaCode.textContent = jsonToFhirXml(data.schema || {}); schemaCode.className = 'language-xml';
+             examplePre.style.whiteSpace = 'pre'; schemaPre.style.whiteSpace = 'pre';
+        }
+
+        // Highlight the code *only if its panel is visible* and Prism exists
+        if (typeof Prism !== 'undefined') {
+             if (examplePanel.style.display !== 'none') {
+                  Prism.highlightElement(exampleCode);
+             }
+             if (schemaPanel.style.display !== 'none') {
+                  Prism.highlightElement(schemaCode);
+             }
+        } else {
+             console.warn("Prism.js not loaded, cannot highlight static examples/schemas.");
+        }
     }
 
     // --- Fetch Server Metadata (FIXED Local URL Handling) ---
@@ -928,6 +1518,60 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     } else {
          console.error("Fetch Metadata button (#fetchMetadata) not found!");
+    }
+
+    // Helper function to format OperationOutcome issues into HTML
+    function formatOperationOutcome(outcome) {
+        if (!outcome || outcome.resourceType !== 'OperationOutcome' || !outcome.issue || outcome.issue.length === 0) {
+            return '<p><em>Received error status, but no detailed OperationOutcome issues found.</em></p>';
+        }
+
+        let html = '<div class="operation-outcome-details">';
+        html += '<h5>Operation Outcome Issues:</h5>';
+        html += '<ul class="list-unstyled">';
+
+        outcome.issue.forEach(issue => {
+            const severity = issue.severity || 'information';
+            const code = issue.code || 'unknown';
+            const diagnostics = issue.diagnostics ? escapeXml(issue.diagnostics) : ''; // Escape HTML in diagnostics
+            const detailsText = issue.details?.text ? escapeXml(issue.details.text) : '';
+            const location = issue.location ? issue.location.join(', ') : '';
+
+            let iconClass = 'bi-info-circle-fill text-info'; // Default icon
+            let severityClass = 'text-info';
+            switch (severity) {
+                case 'fatal':
+                case 'error':
+                    iconClass = 'bi-x-octagon-fill text-danger';
+                    severityClass = 'text-danger';
+                    break;
+                case 'warning':
+                    iconClass = 'bi-exclamation-triangle-fill text-warning';
+                    severityClass = 'text-warning';
+                    break;
+                case 'information':
+                     iconClass = 'bi-info-circle-fill text-info';
+                     severityClass = 'text-info';
+                     break;
+            }
+
+            html += `<li class="mb-2 border-bottom pb-1">`;
+            html += `<strong class="${severityClass}"><i class="bi ${iconClass} me-2"></i>${severity.toUpperCase()} (${code})</strong>`;
+            if (location) {
+                html += `<br><small class="text-muted">Location: ${location}</small>`;
+            }
+            if (detailsText) {
+                html += `<p class="mb-0 mt-1 small">${detailsText}</p>`;
+            }
+             if (diagnostics) {
+                html += `<p class="mb-0 mt-1 small"><em>Diagnostics: ${diagnostics}</em></p>`;
+            }
+            html += `</li>`;
+        });
+
+        html += '</ul>';
+        html += '</div>';
+        return html;
     }
 
 

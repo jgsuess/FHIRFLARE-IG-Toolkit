@@ -10,7 +10,8 @@ services:
     volumes:
       - ./instance:/app/instance
       - ./static/uploads:/app/static/uploads
-      - ./hapi-fhir-jpaserver/target/h2-data:/app/h2-data
+      # - ./hapi-fhir-jpaserver/target/h2-data:/app/h2-data
+      - ./instance/hapi-h2-data/:/app/h2-data
       - ./logs:/app/logs
     environment:
       - FLASK_APP=app.py

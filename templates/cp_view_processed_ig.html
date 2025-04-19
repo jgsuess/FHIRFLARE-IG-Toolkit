@@ -157,7 +157,7 @@
                     <div id="raw-structure-loading" class="text-center py-3" style="display: none;">
                         <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
                     </div>
-                    <pre><code id="raw-structure-content" class="p-2 d-block border bg-light" style="max-height: 400px; overflow-y: auto;"></code></pre>
+                    <pre><code id="raw-structure-content" class="p-2 d-block border bg-light language-json" style="max-height: 400px; overflow-y: auto;"></code></pre>
                 </div>
             </div>
         </div>
@@ -179,13 +179,13 @@
                             <div class="col-md-6">
                                 <div class="d-flex justify-content-between align-items-center mb-1">
                                      <h6>Raw Content</h6>
-                                     <button type="button" class="btn btn-sm btn-outline-secondary btn-copy" id="copy-raw-def-button"
-                                            data-bs-toggle="tooltip" data-bs-placement="top" title="Copy Raw Definition JSON">
+                                     <button type="button" class="btn btn-sm btn-outline-secondary btn-copy" id="copy-raw-ex-button"
+                                            data-bs-toggle="tooltip" data-bs-placement="top" title="Copy Raw Content">
                                         <i class="bi bi-clipboard" aria-hidden="true"></i>
-                                        <span class="visually-hidden">Copy Raw Definition JSON to clipboard</span>
+                                        <span class="visually-hidden">Copy Raw Content to clipboard</span>
                                     </button>
                                  </div>
-                                <pre><code id="example-content-raw" class="p-2 d-block border bg-light" style="max-height: 400px; overflow-y: auto;"></code></pre>
+                                <pre><code id="example-content-raw" class="p-2 d-block border bg-light language-json" style="max-height: 400px; overflow-y: auto; white-space: pre;"></code></pre>
                             </div>
                             <div class="col-md-6">
                                  <div class="d-flex justify-content-between align-items-center mb-1">
@@ -196,7 +196,7 @@
                                          <span class="visually-hidden">Copy JSON example to clipboard</span>
                                      </button>
                                 </div>
-                                <pre><code id="example-content-json" class="p-2 d-block border bg-light" style="max-height: 400px; overflow-y: auto;"></code></pre>
+                                <pre><code id="example-content-json" class="p-2 d-block border bg-light language-json" style="max-height: 400px; overflow-y: auto;"></code></pre>
                             </div>
                         </div>
                     </div>
@@ -208,6 +208,8 @@
     {% endif %}
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
 <script>const examplesData = {{ examples_by_type | tojson | safe }};</script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -230,76 +232,79 @@ document.addEventListener('DOMContentLoaded', function() {
         const rawStructureTitle = document.getElementById('raw-structure-title');
         const rawStructureContent = document.getElementById('raw-structure-content');
         const rawStructureLoading = document.getElementById('raw-structure-loading');
-        // --- Added: Buttons & Tooltips Constants (Using Corrected IDs) ---
         const copyRawDefButton = document.getElementById('copy-raw-def-button');
-        const copyRawExButton = document.getElementById('copy-raw-content-button');
+        const copyRawExButton = document.getElementById('copy-raw-ex-button');
         const copyPrettyJsonButton = document.getElementById('copy-pretty-json-button');
         let copyRawDefTooltipInstance = null;
         let copyRawExTooltipInstance = null;
         let copyPrettyJsonTooltipInstance = null;
 
-        const structureBaseUrl = "{{ url_for('get_structure_definition') }}";
-        const exampleBaseUrl = "{{ url_for('get_example_content') }}";
+        const structureBaseUrl = "{{ url_for('get_structure') }}";
+        const exampleBaseUrl = "{{ url_for('get_example') }}";
 
-        // --- Added: Generic Copy Logic Function ---
+        // Initialize Highlight.js
+        hljs.configure({ languages: ['json'] });
+        hljs.highlightAll();
+
+        // Generic Copy Logic Function
         function setupCopyButton(buttonElement, sourceElement, tooltipInstance, successTitle, originalTitle, errorTitle, nothingTitle) {
             if (!buttonElement || !sourceElement) {
                 console.warn("Copy button or source element not found for setup:", buttonElement?.id, sourceElement?.id);
                 return null;
             }
-             // Dispose previous instance if exists, then create new one
             bootstrap.Tooltip.getInstance(buttonElement)?.dispose();
             tooltipInstance = new bootstrap.Tooltip(buttonElement);
 
-            // Store handler reference to potentially remove later if needed
             const clickHandler = () => {
-               const textToCopy = sourceElement.textContent;
-               const copyIcon = buttonElement.querySelector('i');
-               console.log(`Copy button clicked: ${buttonElement.id}`);
-               if (textToCopy && textToCopy.trim() && textToCopy !== '(Not valid JSON)') {
-                   navigator.clipboard.writeText(textToCopy).then(() => {
-                       console.log(` > Content copied successfully!`);
-                       buttonElement.setAttribute('data-bs-original-title', successTitle);
-                       tooltipInstance.show();
-                       if (copyIcon) copyIcon.classList.replace('bi-clipboard', 'bi-check-lg');
-                       setTimeout(() => {
-                           if (buttonElement.isConnected) {
-                               tooltipInstance.hide();
-                               buttonElement.setAttribute('data-bs-original-title', originalTitle);
-                               if (copyIcon) copyIcon.classList.replace('bi-check-lg', 'bi-clipboard');
-                           }
-                       }, 2000);
-                   }).catch(err => {
-                       console.error(` > Failed to copy content for ${buttonElement.id}:`, err);
-                       buttonElement.setAttribute('data-bs-original-title', errorTitle);
+                const textToCopy = sourceElement.textContent;
+                const copyIcon = buttonElement.querySelector('i');
+                console.log(`Copy button clicked: ${buttonElement.id}`);
+                if (textToCopy && textToCopy.trim() && textToCopy !== '(Not valid JSON)') {
+                    navigator.clipboard.writeText(textToCopy).then(() => {
+                        console.log(` > Content copied successfully!`);
+                        buttonElement.setAttribute('data-bs-original-title', successTitle);
                         tooltipInstance.show();
-                       setTimeout(() => {
-                          if (buttonElement.isConnected) {
-                              tooltipInstance.hide();
-                              buttonElement.setAttribute('data-bs-original-title', originalTitle);
-                          }
-                       }, 2000);
-                   });
-               } else {
-                   console.log(' > No valid content to copy.');
-                   buttonElement.setAttribute('data-bs-original-title', nothingTitle);
-                   tooltipInstance.show();
-                   setTimeout(() => {
-                       if (buttonElement.isConnected) {
-                           tooltipInstance.hide();
-                           buttonElement.setAttribute('data-bs-original-title', originalTitle);
-                       }
-                   }, 1500);
-               }
+                        if (copyIcon) copyIcon.classList.replace('bi-clipboard', 'bi-check-lg');
+                        setTimeout(() => {
+                            if (buttonElement.isConnected) {
+                                tooltipInstance.hide();
+                                buttonElement.setAttribute('data-bs-original-title', originalTitle);
+                                if (copyIcon) copyIcon.classList.replace('bi-check-lg', 'bi-clipboard');
+                            }
+                        }, 2000);
+                    }).catch(err => {
+                        console.error(` > Failed to copy content for ${buttonElement.id}:`, err);
+                        buttonElement.setAttribute('data-bs-original-title', errorTitle);
+                        tooltipInstance.show();
+                        setTimeout(() => {
+                            if (buttonElement.isConnected) {
+                                tooltipInstance.hide();
+                                buttonElement.setAttribute('data-bs-original-title', originalTitle);
+                            }
+                        }, 2000);
+                    });
+                } else {
+                    console.log(' > No valid content to copy.');
+                    buttonElement.setAttribute('data-bs-original-title', nothingTitle);
+                    tooltipInstance.show();
+                    setTimeout(() => {
+                        if (buttonElement.isConnected) {
+                            tooltipInstance.hide();
+                            buttonElement.setAttribute('data-bs-original-title', originalTitle);
+                        }
+                    }, 1500);
+                }
             };
-            // Remove potentially old listener - best effort without storing reference
-            // buttonElement.removeEventListener('click', clickHandler); // May not work reliably without named fn
-            buttonElement.addEventListener('click', clickHandler); // Add the listener
-
+            buttonElement.addEventListener('click', clickHandler);
             return tooltipInstance;
         }
-        // --- End Added ---
 
+        // Setup Copy Buttons
+        copyRawDefTooltipInstance = setupCopyButton(copyRawDefButton, rawStructureContent, copyRawDefTooltipInstance, 'Copied Definition!', 'Copy Raw Definition JSON', 'Copy Failed!', 'Nothing to copy');
+        copyRawExTooltipInstance = setupCopyButton(copyRawExButton, exampleContentRaw, copyRawExTooltipInstance, 'Copied Raw!', 'Copy Raw Content', 'Copy Failed!', 'Nothing to copy');
+        copyPrettyJsonTooltipInstance = setupCopyButton(copyPrettyJsonButton, exampleContentJson, copyPrettyJsonTooltipInstance, 'Copied JSON!', 'Copy JSON', 'Copy Failed!', 'Nothing to copy');
+
+        // Handle Resource Type Link Clicks
         document.querySelectorAll('.resource-type-list').forEach(container => {
             container.addEventListener('click', function(event) {
                 const link = event.target.closest('.resource-type-link');
@@ -312,6 +317,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 const resourceType = link.dataset.resourceType;
                 if (!pkgName || !pkgVersion || !resourceType) {
                     console.error("Missing data attributes:", { pkgName, pkgVersion, resourceType });
+                    structureDisplay.innerHTML = `<div class="alert alert-danger">Error: Missing resource type information</div>`;
+                    rawStructureContent.textContent = `Error: Missing resource type information`;
                     return;
                 }
 
@@ -333,28 +340,42 @@ document.addEventListener('DOMContentLoaded', function() {
                 fetch(structureFetchUrl)
                     .then(response => {
                         console.log("Structure fetch response status:", response.status);
-                        return response.json().then(data => ({ ok: response.ok, status: response.status, data }));
-                    })
-                    .then(result => {
-                        if (!result.ok) {
-                            throw new Error(result.data.error || `HTTP error ${result.status}`);
+                        if (!response.ok) {
+                            return response.text().then(text => {
+                                try {
+                                    const errData = JSON.parse(text);
+                                    throw new Error(errData.error || `HTTP error ${response.status}: Server error`);
+                                } catch (e) {
+                                    throw new Error(`HTTP error ${response.status}: Failed to load StructureDefinition for ${resourceType} in ${pkgName}#{pkgVersion}. Please check server logs or try re-importing the package.`);
+                                }
+                            });
                         }
-                        console.log("Structure data received:", result.data);
-                        if (result.data.fallback_used) {
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log("Structure data received:", data);
+                        if (data.fallback_used) {
                             structureFallbackMessage.style.display = 'block';
-                            structureFallbackMessage.textContent = `Structure definition not found in this IG; using base FHIR definition from ${result.data.source_package}.`;
+                            structureFallbackMessage.textContent = `Structure definition not found in this IG; using base FHIR definition from ${data.source_package || 'FHIR core'}.`;
                         } else {
                             structureFallbackMessage.style.display = 'none';
                         }
-                        renderStructureTree(result.data.elements, result.data.must_support_paths || [], resourceType);
-                        rawStructureContent.textContent = JSON.stringify(result.data, null, 2);
+                        renderStructureTree(data.structure_definition.snapshot.element, data.must_support_paths || [], resourceType);
+                        // Client-side fallback to remove narrative
+                        if (data.structure_definition && ('text' in data.structure_definition || 'Text' in data.structure_definition)) {
+                            console.warn(`Narrative text found in StructureDefinition for ${resourceType}, removing client-side`);
+                            delete data.structure_definition.text;
+                            delete data.structure_definition.Text; // Handle case sensitivity
+                        }
+                        rawStructureContent.textContent = JSON.stringify(data.structure_definition, null, 4);
+                        hljs.highlightElement(rawStructureContent);
                         populateExampleSelector(resourceType);
                     })
                     .catch(error => {
                         console.error("Error fetching structure:", error);
                         structureFallbackMessage.style.display = 'none';
                         structureDisplay.innerHTML = `<div class="alert alert-danger">Error loading structure: ${error.message}</div>`;
-                        rawStructureContent.textContent = `Error loading structure: ${error.message}`;
+                        rawStructureContent.textContent = `Error: ${error.message}`;
                         populateExampleSelector(resourceType);
                     })
                     .finally(() => {
@@ -364,6 +385,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
 
+        // Populate Example Selector
         function populateExampleSelector(resourceOrProfileIdentifier) {
             console.log("Populating examples for:", resourceOrProfileIdentifier);
             exampleResourceTypeTitle.textContent = resourceOrProfileIdentifier;
@@ -391,6 +413,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
+        // Handle Example Selection
         if (exampleSelect) {
             exampleSelect.addEventListener('change', function(event) {
                 const selectedFilePath = this.value;
@@ -400,14 +423,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 exampleFilename.textContent = '';
                 exampleContentWrapper.style.display = 'none';
 
-                 // --- ADDED: Reset Example Copy Button Tooltips ---
                 if (copyRawExTooltipInstance && copyRawExButton?.isConnected) {
-                    copyRawExTooltipInstance.hide(); copyRawExButton.setAttribute('data-bs-original-title', 'Copy Raw Content');
-                    copyRawExButton.querySelector('i')?.classList.replace('bi-check-lg', 'bi-clipboard'); }
+                    copyRawExTooltipInstance.hide();
+                    copyRawExButton.setAttribute('data-bs-original-title', 'Copy Raw Content');
+                    copyRawExButton.querySelector('i')?.classList.replace('bi-check-lg', 'bi-clipboard');
+                }
                 if (copyPrettyJsonTooltipInstance && copyPrettyJsonButton?.isConnected) {
-                    copyPrettyJsonTooltipInstance.hide(); copyPrettyJsonButton.setAttribute('data-bs-original-title', 'Copy JSON');
-                    copyPrettyJsonButton.querySelector('i')?.classList.replace('bi-check-lg', 'bi-clipboard'); }
-                // --- END ADDED ---
+                    copyPrettyJsonTooltipInstance.hide();
+                    copyPrettyJsonButton.setAttribute('data-bs-original-title', 'Copy JSON');
+                    copyPrettyJsonButton.querySelector('i')?.classList.replace('bi-check-lg', 'bi-clipboard');
+                }
 
                 if (!selectedFilePath) return;
 
@@ -424,21 +449,37 @@ document.addEventListener('DOMContentLoaded', function() {
                     .then(response => {
                         console.log("Example fetch response status:", response.status);
                         if (!response.ok) {
-                            return response.text().then(errText => { throw new Error(errText || `HTTP error ${response.status}`); });
+                            return response.text().then(text => {
+                                try {
+                                    const errData = JSON.parse(text);
+                                    throw new Error(errData.error || `HTTP error ${response.status}: Server error`);
+                                } catch (e) {
+                                    throw new Error(`HTTP error ${response.status}: Failed to load example ${selectedFilePath.split('/').pop()} in {{ processed_ig.package_name }}#{{ processed_ig.version }}. Please check server logs or try re-importing the package.`);
+                                }
+                            });
                         }
-                        return response.text();
+                        return response.text(); // Get raw JSON string
                     })
-                    .then(content => {
+                    .then(data => {
                         console.log("Example content received.");
                         exampleFilename.textContent = `Source: ${selectedFilePath.split('/').pop()}`;
-                        exampleContentRaw.textContent = content;
+                        // Raw JSON: flat string
+                        exampleContentRaw.textContent = data;
+                        // Pretty JSON: 4-space indented, remove narrative
                         try {
-                            const jsonContent = JSON.parse(content);
-                            exampleContentJson.textContent = JSON.stringify(jsonContent, null, 2);
+                            const parsedData = JSON.parse(data);
+                            if (parsedData && ('text' in parsedData || 'Text' in parsedData)) {
+                                console.warn(`Narrative text found in example ${selectedFilePath}, removing client-side`);
+                                delete parsedData.text;
+                                delete parsedData.Text; // Handle case sensitivity
+                            }
+                            exampleContentJson.textContent = JSON.stringify(parsedData, null, 4);
                         } catch (e) {
-                            console.warn("Example content is not valid JSON:", e.message);
-                            exampleContentJson.textContent = '(Not valid JSON)';
+                            console.error("Error parsing JSON for pretty display:", e);
+                            exampleContentJson.textContent = `Error: Invalid JSON - ${e.message}`;
                         }
+                        hljs.highlightElement(exampleContentRaw);
+                        hljs.highlightElement(exampleContentJson);
                         exampleContentWrapper.style.display = 'block';
                     })
                     .catch(error => {
@@ -453,12 +494,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
             });
         }
-
-        // --- ADDED: Setup Copy Buttons Calls---
-         copyRawDefTooltipInstance = setupCopyButton(copyRawDefButton, rawStructureContent, copyRawDefTooltipInstance, 'Copied Definition!', 'Copy Raw Definition JSON', 'Copy Failed!', 'Nothing to copy');
-         copyRawExTooltipInstance = setupCopyButton(copyRawExButton, exampleContentRaw, copyRawExTooltipInstance, 'Copied Raw!', 'Copy Raw Content', 'Copy Failed!', 'Nothing to copy');
-         copyPrettyJsonTooltipInstance = setupCopyButton(copyPrettyJsonButton, exampleContentJson, copyPrettyJsonTooltipInstance, 'Copied JSON!', 'Copy JSON', 'Copy Failed!', 'Nothing to copy');
-         // --- END ADDED ---
 
         function buildTreeData(elements) {
             const treeRoot = { children: {}, element: null, name: 'Root' };
@@ -488,7 +523,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     currentPath = i === 0 ? cleanPart : `${currentPath}.${cleanPart}`;
                     let nodeKey = isChoiceElement ? part : cleanPart;
 
-                    // Handle slices using id for accurate parent lookup
                     if (sliceName && i === parts.length - 1) {
                         nodeKey = sliceName;
                         currentPath = id || currentPath;
@@ -502,7 +536,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             path: currentPath
                         };
                         let parentPath = i === 0 ? 'Root' : parts.slice(0, i).join('.').replace(/\[\d+\]/g, '').replace('[x]', '');
-                        // Adjust parentPath for slices using id
                         if (id && id.includes(':')) {
                             const idParts = id.split('.');
                             const sliceIndex = idParts.findIndex(p => p.includes(':'));
@@ -519,7 +552,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         nodeMap[currentPath] = newNode;
                         console.log(`Created node: path=${currentPath}, name=${nodeKey}, parentPath=${parentPath}`);
 
-                        // Add modifierExtension for DomainResource, BackboneElement, or explicitly defined
                         if (el.path === cleanPart + '.modifierExtension' || 
                             (el.type && el.type.some(t => t.code === 'DomainResource' || t.code === 'BackboneElement'))) {
                             const modExtPath = `${currentPath}.modifierExtension`;
@@ -549,10 +581,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         targetNode.element = el;
                         console.log(`Assigned element to node: path=${currentPath}, id=${id}, sliceName=${sliceName}`);
 
-                        // Handle choice elements ([x])
                         if (isChoiceElement && el.type && el.type.length > 1) {
                             el.type.forEach(type => {
-                                if (type.code === 'dateTime') return; // Skip dateTime as per FHIR convention
+                                if (type.code === 'dateTime') return;
                                 const typeName = `onset${type.code.charAt(0).toUpperCase() + type.code.slice(1)}`;
                                 const typePath = `${currentPath}.${typeName}`;
                                 const typeNode = {
@@ -603,9 +634,33 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log(`Rendering node: path=${path}, id=${id}, sliceName=${sliceName}`);
 
             let isMustSupport = mustSupportPathsSet.has(path) || (id && mustSupportPathsSet.has(id));
+            let mustSupportTitle = isMustSupport ? 'Must Support' : '';
+            let fhirPathExpression = '';
+            if (sliceName) {
+                const slicePath = `${path}:${sliceName}`;
+                if (mustSupportPathsSet.has(slicePath)) {
+                    isMustSupport = true;
+                    mustSupportTitle = `Must Support (Slice: ${sliceName})`;
+                    fhirPathExpression = `${path}[sliceName='${sliceName}']`;
+                }
+            }
+            mustSupportPathsSet.forEach(msPath => {
+                if (msPath.includes('where') && msPath.startsWith(path)) {
+                    isMustSupport = true;
+                    mustSupportTitle = `Must Support (FHIRPath: ${msPath})`;
+                    fhirPathExpression = msPath;
+                }
+            });
+
             let isOptional = min == 0 && isMustSupport && el.type && el.type.some(t => t.code === 'Extension') && path.includes('extension');
+            if (isOptional) {
+                mustSupportTitle = `Optional Must Support Extension${sliceName ? ` (Slice: ${sliceName})` : ''}`;
+                fhirPathExpression = sliceName ? `${path}[sliceName='${sliceName}']` : path;
+            }
+            mustSupportTitle += isMustSupport ? ' (Validated by HAPI FHIR Server)' : '';
+
             const liClass = isMustSupport ? 'list-group-item py-1 px-2 list-group-item-warning' : 'list-group-item py-1 px-2';
-            const mustSupportDisplay = isMustSupport ? `<i class="bi bi-check-circle-fill ${isOptional ? 'text-info' : 'text-warning'} ms-1" title="${isOptional ? 'Optional Must Support Extension' : 'Must Support'}"></i>` : '';
+            const mustSupportDisplay = isMustSupport ? `<i class="bi bi-check-circle-fill ${isOptional ? 'text-info' : 'text-warning'} ms-1" title="${mustSupportTitle}" data-bs-toggle="tooltip"></i>` : '';
             const hasChildren = Object.keys(node.children).length > 0;
             const collapseId = `collapse-${path.replace(/[\.\:\/\[\]\(\)]/g, '-')}`;
             const padding = level * 20;
@@ -643,7 +698,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 itemHtml += `<i class="bi bi-chevron-right small toggle-icon"></i>`;
             }
             itemHtml += `</span>`;
-            itemHtml += `<code class="fw-bold ms-1" title="${path}">${node.name}</code>`;
+            const displayName = sliceName ? `<i>${node.name}:${sliceName}</i>` : node.name;
+            const pathTitle = fhirPathExpression ? `${path} (FHIRPath: ${fhirPathExpression})` : path + (sliceName ? ` (Slice: ${sliceName})` : '');
+            itemHtml += `<code class="fw-bold ms-1" title="${pathTitle}" data-bs-toggle="tooltip">${displayName}</code>`;
             itemHtml += `</div>`;
             itemHtml += `<div class="col-lg-1 col-md-1 text-center text-muted small"><code>${min}..${max}</code></div>`;
             itemHtml += `<div class="col-lg-3 col-md-3 text-truncate small">${typeString}</div>`;
@@ -651,11 +708,11 @@ document.addEventListener('DOMContentLoaded', function() {
             let descriptionTooltipAttrs = '';
             if (definition) {
                 const escapedDefinition = definition
-                    .replace(/&/g, '&')
-                    .replace(/</g, '<')
-                    .replace(/>/g, '>')
-                    .replace(/"/g, '"')
-                    .replace(/'/g, '\'')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;')
                     .replace(/\n/g, ' ');
                 descriptionTooltipAttrs = `data-bs-toggle="tooltip" data-bs-placement="top" title="${escapedDefinition}"`;
             }
@@ -697,9 +754,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
 
-            // Initialize collapse with manual click handling and debouncing
             let lastClickTime = 0;
-            const debounceDelay = 200; // ms
+            const debounceDelay = 200;
             structureDisplay.querySelectorAll('.collapse-toggle').forEach(toggleEl => {
                 const collapseId = toggleEl.getAttribute('data-collapse-id');
                 if (!collapseId) {
@@ -718,12 +774,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 console.log("Initializing collapse for:", collapseId);
-                // Initialize Bootstrap Collapse
                 const bsCollapse = new bootstrap.Collapse(collapseEl, {
                     toggle: false
                 });
 
-                // Custom click handler with debounce
                 toggleEl.addEventListener('click', event => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -741,7 +795,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 });
 
-                // Update icon and log state
                 collapseEl.addEventListener('show.bs.collapse', event => {
                     console.log("Show collapse triggered for:", event.target.id, "Show class:", event.target.classList.contains('show'));
                     if (toggleIcon) {
@@ -755,12 +808,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         toggleIcon.classList.remove('bi-chevron-down');
                         toggleIcon.classList.add('bi-chevron-right');
                     }
-                });
-                collapseEl.addEventListener('shown.bs.collapse', event => {
-                    console.log("Shown collapse completed for:", event.target.id, "Show class:", event.target.classList.contains('show'));
-                });
-                collapseEl.addEventListener('hidden.bs.collapse', event => {
-                    console.log("Hidden collapse completed for:", event.target.id, "Show class:", event.target.classList.contains('show'));
                 });
             });
         }
