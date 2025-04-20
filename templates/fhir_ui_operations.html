@@ -345,94 +345,87 @@ document.addEventListener('DOMContentLoaded', () => {
     let operationDefinitionCache = {}; // <<< ADD THIS LINE: Cache for fetched OperationDefinitions
 
 // <<< REFINED fetchOperationDefinition >>>
+    // <<< REFINED fetchOperationDefinition (v3 - Handles Local Proxy Target Correctly) >>>
     async function fetchOperationDefinition(definitionUrl) {
         if (!definitionUrl) return null;
 
         if (operationDefinitionCache.hasOwnProperty(definitionUrl)) {
-            // console.log(`Using cached OperationDefinition: ${definitionUrl}`);
             return operationDefinitionCache[definitionUrl];
         }
 
-        // --- Determine Fetch URL (Allow Same-Origin Absolute, Prevent External) ---
         let fetchUrl;
         const currentBaseUrl = isUsingLocalHapi ? '/fhir' : (fhirServerUrlInput.value.trim().replace(/\/+$/, '') || '/fhir');
-        let currentOrigin = '';
-         // Determine the origin of the current FHIR server target
-         try {
-             // For the local proxy '/fhir', the origin is the app's origin
-             if (isUsingLocalHapi || currentBaseUrl.startsWith('/')) {
-                  currentOrigin = window.location.origin;
-             } else {
-                  currentOrigin = new URL(currentBaseUrl).origin;
-             }
-         } catch(e) {
-              console.error("Could not determine origin for current FHIR base URL:", currentBaseUrl, e);
-              // Fallback: Treat as different origin to be safe
-              currentOrigin = window.location.origin; // Or potentially block all absolute URLs if this fails
-         }
-
+        const expectedHapiBase = 'http://localhost:8080/fhir/'; // Define the expected proxied server base
 
         try {
             // Check if definitionUrl is an absolute HTTP/S URL
             if (definitionUrl.startsWith('http://') || definitionUrl.startsWith('https://')) {
-                 const definitionOrigin = new URL(definitionUrl).origin;
-                 // ALLOW fetch if definition URL origin MATCHES the current FHIR target origin
-                 if (definitionOrigin === currentOrigin) {
-                     // It's an absolute URL, but points to the same server target.
-                     // If using local HAPI proxy, we need to rewrite the URL
-                     // to go through the proxy.
-                     if (isUsingLocalHapi) {
-                          // Extract path after base URL/port
-                          const urlParts = definitionUrl.split('/');
-                          // Find the part after the hostname/port (usually index 3)
-                          const pathIndex = urlParts.findIndex((part, index) => index > 2 && part);
-                          const relativePath = pathIndex !== -1 ? urlParts.slice(pathIndex).join('/') : '';
+                // --- Logic when using Local HAPI Proxy ---
+                if (isUsingLocalHapi) {
+                    // If the absolute URL starts with the expected HAPI base, rewrite it for the proxy
+                    if (definitionUrl.startsWith(expectedHapiBase)) {
+                        const relativePath = definitionUrl.substring(expectedHapiBase.length);
+                        fetchUrl = `${currentBaseUrl}/${relativePath}`; // Use '/fhir/...' proxy path
+                        console.log(`Fetching same-origin absolute OpDef via proxy: ${fetchUrl} (Original: ${definitionUrl})`);
+                    } else {
+                        // Absolute URL, using proxy, but NOT pointing to expected HAPI base -> Skip (likely external)
+                        console.warn(`Skipping fetch for external absolute URL while using proxy: ${definitionUrl}`);
+                        operationDefinitionCache[definitionUrl] = null; return null;
+                    }
+                }
+                // --- Logic when using Custom URL ---
+                else {
+                    let currentOrigin = '';
+                    try { currentOrigin = new URL(currentBaseUrl).origin; } catch(e) { currentOrigin = window.location.origin; } // Determine custom server origin
+                    const definitionOrigin = new URL(definitionUrl).origin;
 
-                          if (relativePath) {
-                               fetchUrl = `${currentBaseUrl}/${relativePath}`; // Use '/fhir/...'
-                               console.log(`Workspaceing same-origin absolute OperationDefinition via proxy: ${fetchUrl} (Original: ${definitionUrl})`);
-                          } else {
-                               console.warn(`Could not determine relative path for same-origin absolute URL: ${definitionUrl}. Skipping.`);
-                               operationDefinitionCache[definitionUrl] = null; return null;
-                          }
-                     } else {
-                          // If using a custom URL, fetch it directly
-                          fetchUrl = definitionUrl;
-                          console.log(`Workspaceing same-origin absolute OperationDefinition directly: ${fetchUrl}`);
-                     }
-                 } else {
-                     // Absolute URL pointing to a DIFFERENT origin - skip due to CORS
-                     console.warn(`Skipping fetch for absolute external OperationDefinition URL: ${definitionUrl}`);
-                     operationDefinitionCache[definitionUrl] = null; // Cache failure
-                     return null;
-                 }
-            } else {
-                 // Not an absolute HTTP/S URL - treat as relative
-                 fetchUrl = `${currentBaseUrl}/${definitionUrl.startsWith('/') ? definitionUrl.substring(1) : definitionUrl}`;
-                 console.log(`Workspaceing relative OperationDefinition: ${fetchUrl} (Original: ${definitionUrl})`);
+                    if (definitionOrigin === currentOrigin) {
+                        // Same origin as custom URL - fetch directly
+                        fetchUrl = definitionUrl;
+                        console.log(`Fetching same-origin absolute OpDef directly: ${fetchUrl}`);
+                    } else {
+                        // Different origin than custom URL - skip
+                        console.warn(`Skipping fetch for external absolute URL (different origin): ${definitionUrl}`);
+                        operationDefinitionCache[definitionUrl] = null; return null;
+                    }
+                }
             }
-        } catch (e) {
-             // If definitionUrl parsing failed (e.g., "Patient/$everything"), treat as relative
+            // --- Logic for Relative URLs ---
+            else {
+                // Not an absolute HTTP/S URL - treat as relative to currentBaseUrl
+                fetchUrl = `${currentBaseUrl}/${definitionUrl.startsWith('/') ? definitionUrl.substring(1) : definitionUrl}`;
+                console.log(`Fetching relative OperationDefinition: ${fetchUrl} (Original: ${definitionUrl})`);
+            }
+        } catch (e) { // Catch errors during URL parsing/logic above
+             console.error(`Error determining fetch URL for ${definitionUrl}: ${e}. Treating as relative.`);
              fetchUrl = `${currentBaseUrl}/${definitionUrl.startsWith('/') ? definitionUrl.substring(1) : definitionUrl}`;
-             console.log(`Workspaceing relative OperationDefinition (parse failed): ${fetchUrl} (Original: ${definitionUrl})`);
+             console.log(`Fetching relative OperationDefinition (fallback): ${fetchUrl} (Original: ${definitionUrl})`);
         }
         // --- End URL Determination ---
 
-        console.log(`Attempting to fetch OperationDefinition from: ${fetchUrl}`);
+        if (!fetchUrl) {
+             console.error(`Could not determine a valid fetchUrl for OperationDefinition: ${definitionUrl}`);
+             operationDefinitionCache[definitionUrl] = null; return null;
+        }
+
+        console.log(`Attempting to fetch OperationDefinition from final URL: ${fetchUrl}`);
         try {
             const response = await fetch(fetchUrl, {
                 method: 'GET',
                 headers: { 'Accept': 'application/fhir+json' }
             });
-            if (!response.ok) { /* ... handle HTTP error ... */ console.error(`HTTP ${response.status} fetching OperationDefinition ${fetchUrl}`); operationDefinitionCache[definitionUrl] = null; return null; }
+            if (!response.ok) { console.error(`HTTP ${response.status} fetching OpDef ${fetchUrl}`); operationDefinitionCache[definitionUrl] = null; return null; }
             const definition = await response.json();
-            if (definition.resourceType !== 'OperationDefinition') { /* ... handle wrong type ... */ console.error(`Expected OperationDefinition, got ${definition.resourceType} from ${fetchUrl}`); operationDefinitionCache[definitionUrl] = null; return null; }
+            if (definition.resourceType !== 'OperationDefinition') { console.error(`Expected OpDef, got ${definition.resourceType} from ${fetchUrl}`); operationDefinitionCache[definitionUrl] = null; return null; }
             console.log(`Successfully fetched and parsed OperationDefinition: ${fetchUrl}`);
             operationDefinitionCache[definitionUrl] = definition;
             return definition;
-        } catch (error) { /* ... handle fetch/parse error ... */ console.error(`Failed to fetch or parse OperationDefinition ${fetchUrl}:`, error); operationDefinitionCache[definitionUrl] = null; return null; }
+        } catch (error) {
+            console.error(`Failed to fetch or parse OperationDefinition ${fetchUrl}:`, error);
+            operationDefinitionCache[definitionUrl] = null; return null;
+        }
     }
-    // <<< END REFINED fetchOperationDefinition >>>
+    // <<< END REFINED fetchOperationDefinition (v3) >>>
 
 
     
