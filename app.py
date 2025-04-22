@@ -401,13 +401,126 @@ def view_ig(processed_ig_id):
                            optional_usage_elements=optional_usage_elements,
                            config=current_app.config)
 
+#---------------------------------------------------------------------------------------OLD backup-----------------------------------
+# @app.route('/get-structure')
+# def get_structure():
+#     package_name = request.args.get('package_name')
+#     package_version = request.args.get('package_version')
+#     resource_type = request.args.get('resource_type')
+#     # Keep view parameter for potential future use or caching, though not used directly in this revised logic
+#     view = request.args.get('view', 'snapshot') # Default to snapshot view processing
+
+#     if not all([package_name, package_version, resource_type]):
+#         logger.warning("get_structure: Missing query parameters: package_name=%s, package_version=%s, resource_type=%s", package_name, package_version, resource_type)
+#         return jsonify({"error": "Missing required query parameters: package_name, package_version, resource_type"}), 400
+
+#     packages_dir = current_app.config.get('FHIR_PACKAGES_DIR')
+#     if not packages_dir:
+#         logger.error("FHIR_PACKAGES_DIR not configured.")
+#         return jsonify({"error": "Server configuration error: Package directory not set."}), 500
+
+#     tgz_filename = services.construct_tgz_filename(package_name, package_version)
+#     tgz_path = os.path.join(packages_dir, tgz_filename)
+#     sd_data = None
+#     fallback_used = False
+#     source_package_id = f"{package_name}#{package_version}"
+#     logger.debug(f"Attempting to find SD for '{resource_type}' in {tgz_filename}")
+
+#     # --- Fetch SD Data (Keep existing logic including fallback) ---
+#     if os.path.exists(tgz_path):
+#         try:
+#             sd_data, _ = services.find_and_extract_sd(tgz_path, resource_type)
+#         # Add error handling as before...
+#         except Exception as e:
+#             logger.error(f"Unexpected error extracting SD '{resource_type}' from {tgz_path}: {e}", exc_info=True)
+#             return jsonify({"error": f"Unexpected error reading StructureDefinition: {str(e)}"}), 500
+#     else:
+#          logger.warning(f"Package file not found: {tgz_path}")
+#          # Try fallback... (keep existing fallback logic)
+#     if sd_data is None:
+#         logger.info(f"SD for '{resource_type}' not found in {source_package_id}. Attempting fallback to {services.CANONICAL_PACKAGE_ID}.")
+#         core_package_name, core_package_version = services.CANONICAL_PACKAGE
+#         core_tgz_filename = services.construct_tgz_filename(core_package_name, core_package_version)
+#         core_tgz_path = os.path.join(packages_dir, core_tgz_filename)
+#         if not os.path.exists(core_tgz_path):
+#             # Handle missing core package / download if needed...
+#             logger.error(f"Core package {services.CANONICAL_PACKAGE_ID} not found locally.")
+#             return jsonify({"error": f"SD for '{resource_type}' not found in primary package, and core package is missing."}), 500
+#             # (Add download logic here if desired)
+#         try:
+#             sd_data, _ = services.find_and_extract_sd(core_tgz_path, resource_type)
+#             if sd_data is not None:
+#                 fallback_used = True
+#                 source_package_id = services.CANONICAL_PACKAGE_ID
+#                 logger.info(f"Found SD for '{resource_type}' in fallback package {source_package_id}.")
+#             # Add error handling as before...
+#         except Exception as e:
+#              logger.error(f"Unexpected error extracting SD '{resource_type}' from fallback {core_tgz_path}: {e}", exc_info=True)
+#              return jsonify({"error": f"Unexpected error reading fallback StructureDefinition: {str(e)}"}), 500
+
+#     # --- Check if SD data was found ---
+#     if not sd_data:
+#         logger.error(f"SD for '{resource_type}' not found in primary or fallback package.")
+#         return jsonify({"error": f"StructureDefinition for '{resource_type}' not found."}), 404
+
+#     # --- *** START Backend Modification *** ---
+#     # Extract snapshot and differential elements
+#     snapshot_elements = sd_data.get('snapshot', {}).get('element', [])
+#     differential_elements = sd_data.get('differential', {}).get('element', [])
+
+#     # Create a set of element IDs from the differential for efficient lookup
+#     # Using element 'id' is generally more reliable than 'path' for matching
+#     differential_ids = {el.get('id') for el in differential_elements if el.get('id')}
+#     logger.debug(f"Found {len(differential_ids)} unique IDs in differential.")
+
+#     enriched_elements = []
+#     if snapshot_elements:
+#         logger.debug(f"Processing {len(snapshot_elements)} snapshot elements to add isInDifferential flag.")
+#         for element in snapshot_elements:
+#             element_id = element.get('id')
+#             # Add the isInDifferential flag
+#             element['isInDifferential'] = bool(element_id and element_id in differential_ids)
+#             enriched_elements.append(element)
+#         # Clean narrative from enriched elements (should have been done in find_and_extract_sd, but double check)
+#         enriched_elements = [services.remove_narrative(el) for el in enriched_elements]
+#     else:
+#         # Fallback: If no snapshot, log warning. Maybe return differential only?
+#         # Returning only differential might break frontend filtering logic.
+#         # For now, return empty, but log clearly.
+#         logger.warning(f"No snapshot found for {resource_type} in {source_package_id}. Returning empty element list.")
+#         enriched_elements = [] # Or consider returning differential and handle in JS
+
+#     # --- *** END Backend Modification *** ---
+
+#     # Retrieve must_support_paths from DB (keep existing logic)
+#     must_support_paths = []
+#     processed_ig = ProcessedIg.query.filter_by(package_name=package_name, version=package_version).first()
+#     if processed_ig and processed_ig.must_support_elements:
+#         # Use the profile ID (which is likely the resource_type for profiles) as the key
+#         must_support_paths = processed_ig.must_support_elements.get(resource_type, [])
+#         logger.debug(f"Retrieved {len(must_support_paths)} Must Support paths for '{resource_type}' from processed IG DB record.")
+#     else:
+#          logger.debug(f"No processed IG record or no must_support_elements found in DB for {package_name}#{package_version}, resource {resource_type}")
+
+
+#     # Construct the response
+#     response_data = {
+#         'elements': enriched_elements, # Return the processed list
+#         'must_support_paths': must_support_paths,
+#         'fallback_used': fallback_used,
+#         'source_package': source_package_id
+#         # Removed raw structure_definition to reduce payload size, unless needed elsewhere
+#     }
+
+#     # Use Response object for consistent JSON formatting
+#     return Response(json.dumps(response_data, indent=2), mimetype='application/json') # Use indent=2 for readability if debugging
+#-----------------------------------------------------------------------------------------------------------------------------------
 @app.route('/get-structure')
 def get_structure():
     package_name = request.args.get('package_name')
     package_version = request.args.get('package_version')
-    resource_type = request.args.get('resource_type')
-    # Keep view parameter for potential future use or caching, though not used directly in this revised logic
-    view = request.args.get('view', 'snapshot') # Default to snapshot view processing
+    resource_type = request.args.get('resource_type') # This is the StructureDefinition ID/Name
+    view = request.args.get('view', 'snapshot') # Keep for potential future use
 
     if not all([package_name, package_version, resource_type]):
         logger.warning("get_structure: Missing query parameters: package_name=%s, package_version=%s, resource_type=%s", package_name, package_version, resource_type)
@@ -418,101 +531,131 @@ def get_structure():
         logger.error("FHIR_PACKAGES_DIR not configured.")
         return jsonify({"error": "Server configuration error: Package directory not set."}), 500
 
+    # Paths for primary and core packages
     tgz_filename = services.construct_tgz_filename(package_name, package_version)
     tgz_path = os.path.join(packages_dir, tgz_filename)
+    core_package_name, core_package_version = services.CANONICAL_PACKAGE
+    core_tgz_filename = services.construct_tgz_filename(core_package_name, core_package_version)
+    core_tgz_path = os.path.join(packages_dir, core_tgz_filename)
+
     sd_data = None
+    search_params_data = [] # Initialize search params list
     fallback_used = False
     source_package_id = f"{package_name}#{package_version}"
+    base_resource_type_for_sp = None # Variable to store the base type for SP search
+
     logger.debug(f"Attempting to find SD for '{resource_type}' in {tgz_filename}")
 
-    # --- Fetch SD Data (Keep existing logic including fallback) ---
-    if os.path.exists(tgz_path):
+    # --- Fetch SD Data (Primary Package) ---
+    primary_package_exists = os.path.exists(tgz_path)
+    core_package_exists = os.path.exists(core_tgz_path)
+
+    if primary_package_exists:
         try:
             sd_data, _ = services.find_and_extract_sd(tgz_path, resource_type)
-        # Add error handling as before...
+            if sd_data:
+                base_resource_type_for_sp = sd_data.get('type')
+                logger.debug(f"Determined base resource type '{base_resource_type_for_sp}' from primary SD '{resource_type}'")
         except Exception as e:
-            logger.error(f"Unexpected error extracting SD '{resource_type}' from {tgz_path}: {e}", exc_info=True)
-            return jsonify({"error": f"Unexpected error reading StructureDefinition: {str(e)}"}), 500
-    else:
-         logger.warning(f"Package file not found: {tgz_path}")
-         # Try fallback... (keep existing fallback logic)
+            logger.error(f"Unexpected error extracting SD '{resource_type}' from primary package {tgz_path}: {e}", exc_info=True)
+            sd_data = None # Ensure sd_data is None if extraction failed
+
+    # --- Fallback SD Check (if primary failed or file didn't exist) ---
     if sd_data is None:
-        logger.info(f"SD for '{resource_type}' not found in {source_package_id}. Attempting fallback to {services.CANONICAL_PACKAGE_ID}.")
-        core_package_name, core_package_version = services.CANONICAL_PACKAGE
-        core_tgz_filename = services.construct_tgz_filename(core_package_name, core_package_version)
-        core_tgz_path = os.path.join(packages_dir, core_tgz_filename)
-        if not os.path.exists(core_tgz_path):
-            # Handle missing core package / download if needed...
-            logger.error(f"Core package {services.CANONICAL_PACKAGE_ID} not found locally.")
-            return jsonify({"error": f"SD for '{resource_type}' not found in primary package, and core package is missing."}), 500
-            # (Add download logic here if desired)
+        logger.info(f"SD for '{resource_type}' not found or failed to load from {source_package_id}. Attempting fallback to {services.CANONICAL_PACKAGE_ID}.")
+        if not core_package_exists:
+            logger.error(f"Core package {services.CANONICAL_PACKAGE_ID} not found locally at {core_tgz_path}.")
+            error_message = f"SD for '{resource_type}' not found in primary package, and core package is missing." if primary_package_exists else f"Primary package {package_name}#{package_version} and core package are missing."
+            return jsonify({"error": error_message}), 500 if primary_package_exists else 404
+
         try:
             sd_data, _ = services.find_and_extract_sd(core_tgz_path, resource_type)
             if sd_data is not None:
                 fallback_used = True
                 source_package_id = services.CANONICAL_PACKAGE_ID
-                logger.info(f"Found SD for '{resource_type}' in fallback package {source_package_id}.")
-            # Add error handling as before...
+                base_resource_type_for_sp = sd_data.get('type') # Store base type from fallback SD
+                logger.info(f"Found SD for '{resource_type}' in fallback package {source_package_id}. Base type: '{base_resource_type_for_sp}'")
         except Exception as e:
              logger.error(f"Unexpected error extracting SD '{resource_type}' from fallback {core_tgz_path}: {e}", exc_info=True)
              return jsonify({"error": f"Unexpected error reading fallback StructureDefinition: {str(e)}"}), 500
 
-    # --- Check if SD data was found ---
+    # --- Check if SD data was ultimately found ---
     if not sd_data:
-        logger.error(f"SD for '{resource_type}' not found in primary or fallback package.")
+        # This case should ideally be covered by the checks above, but as a final safety net:
+        logger.error(f"SD for '{resource_type}' could not be found in primary or fallback packages.")
         return jsonify({"error": f"StructureDefinition for '{resource_type}' not found."}), 404
 
-    # --- *** START Backend Modification *** ---
-    # Extract snapshot and differential elements
+    # --- Fetch Search Parameters (Primary Package First) ---
+    if base_resource_type_for_sp and primary_package_exists:
+         try:
+              logger.info(f"Fetching SearchParameters for base type '{base_resource_type_for_sp}' from primary package {tgz_path}")
+              search_params_data = services.find_and_extract_search_params(tgz_path, base_resource_type_for_sp)
+         except Exception as e:
+              logger.error(f"Error extracting SearchParameters for '{base_resource_type_for_sp}' from primary package {tgz_path}: {e}", exc_info=True)
+              search_params_data = [] # Continue with empty list on error
+    elif not primary_package_exists:
+         logger.warning(f"Original package {tgz_path} not found, cannot search it for specific SearchParameters.")
+    elif not base_resource_type_for_sp:
+         logger.warning(f"Base resource type could not be determined for '{resource_type}', cannot search for SearchParameters.")
+
+    # --- Fetch Search Parameters (Fallback to Core Package if needed) ---
+    if not search_params_data and base_resource_type_for_sp and core_package_exists:
+         logger.info(f"No relevant SearchParameters found in primary package for '{base_resource_type_for_sp}'. Searching core package {core_tgz_path}.")
+         try:
+              search_params_data = services.find_and_extract_search_params(core_tgz_path, base_resource_type_for_sp)
+              if search_params_data:
+                   logger.info(f"Found {len(search_params_data)} SearchParameters for '{base_resource_type_for_sp}' in core package.")
+         except Exception as e:
+              logger.error(f"Error extracting SearchParameters for '{base_resource_type_for_sp}' from core package {core_tgz_path}: {e}", exc_info=True)
+              search_params_data = [] # Continue with empty list on error
+    elif not search_params_data and not core_package_exists:
+         logger.warning(f"Core package {core_tgz_path} not found, cannot perform fallback search for SearchParameters.")
+
+
+    # --- Prepare Snapshot/Differential Elements (Existing Logic) ---
     snapshot_elements = sd_data.get('snapshot', {}).get('element', [])
     differential_elements = sd_data.get('differential', {}).get('element', [])
-
-    # Create a set of element IDs from the differential for efficient lookup
-    # Using element 'id' is generally more reliable than 'path' for matching
     differential_ids = {el.get('id') for el in differential_elements if el.get('id')}
     logger.debug(f"Found {len(differential_ids)} unique IDs in differential.")
-
     enriched_elements = []
     if snapshot_elements:
         logger.debug(f"Processing {len(snapshot_elements)} snapshot elements to add isInDifferential flag.")
         for element in snapshot_elements:
             element_id = element.get('id')
-            # Add the isInDifferential flag
             element['isInDifferential'] = bool(element_id and element_id in differential_ids)
             enriched_elements.append(element)
-        # Clean narrative from enriched elements (should have been done in find_and_extract_sd, but double check)
         enriched_elements = [services.remove_narrative(el) for el in enriched_elements]
     else:
-        # Fallback: If no snapshot, log warning. Maybe return differential only?
-        # Returning only differential might break frontend filtering logic.
-        # For now, return empty, but log clearly.
         logger.warning(f"No snapshot found for {resource_type} in {source_package_id}. Returning empty element list.")
-        enriched_elements = [] # Or consider returning differential and handle in JS
+        enriched_elements = []
 
-    # --- *** END Backend Modification *** ---
-
-    # Retrieve must_support_paths from DB (keep existing logic)
+    # --- Retrieve Must Support Paths from DB (Existing Logic - slightly refined key lookup) ---
     must_support_paths = []
     processed_ig = ProcessedIg.query.filter_by(package_name=package_name, version=package_version).first()
     if processed_ig and processed_ig.must_support_elements:
-        # Use the profile ID (which is likely the resource_type for profiles) as the key
-        must_support_paths = processed_ig.must_support_elements.get(resource_type, [])
-        logger.debug(f"Retrieved {len(must_support_paths)} Must Support paths for '{resource_type}' from processed IG DB record.")
+        ms_elements_dict = processed_ig.must_support_elements
+        if resource_type in ms_elements_dict:
+             must_support_paths = ms_elements_dict[resource_type]
+             logger.debug(f"Retrieved {len(must_support_paths)} Must Support paths using profile key '{resource_type}' from processed IG DB record.")
+        elif base_resource_type_for_sp and base_resource_type_for_sp in ms_elements_dict:
+             must_support_paths = ms_elements_dict[base_resource_type_for_sp]
+             logger.debug(f"Retrieved {len(must_support_paths)} Must Support paths using base type key '{base_resource_type_for_sp}' from processed IG DB record.")
+        else:
+             logger.debug(f"No specific Must Support paths found for keys '{resource_type}' or '{base_resource_type_for_sp}' in processed IG DB.")
     else:
-         logger.debug(f"No processed IG record or no must_support_elements found in DB for {package_name}#{package_version}, resource {resource_type}")
+         logger.debug(f"No processed IG record or no must_support_elements found in DB for {package_name}#{package_version}")
 
-
-    # Construct the response
+    # --- Construct the final response ---
     response_data = {
-        'elements': enriched_elements, # Return the processed list
+        'elements': enriched_elements,
         'must_support_paths': must_support_paths,
+        'search_parameters': search_params_data, # Include potentially populated list
         'fallback_used': fallback_used,
         'source_package': source_package_id
-        # Removed raw structure_definition to reduce payload size, unless needed elsewhere
     }
 
-    # Use Response object for consistent JSON formatting
-    return Response(json.dumps(response_data, indent=2), mimetype='application/json') # Use indent=2 for readability if debugging
+    # Use Response object for consistent JSON formatting and smaller payload
+    return Response(json.dumps(response_data, indent=None, separators=(',', ':')), mimetype='application/json')
 
 @app.route('/get-example')
 def get_example():

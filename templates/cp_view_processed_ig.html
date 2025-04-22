@@ -153,6 +153,15 @@
                         <li class="nav-item">
                             <a class="nav-link" id="key-elements-tab" data-bs-toggle="tab" href="#key-elements" role="tab" aria-controls="key-elements" aria-selected="false">Key Elements</a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="constraints-tab" data-bs-toggle="tab" href="#constraints-tab-pane" role="tab">Constraints</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="terminology-tab" data-bs-toggle="tab" href="#terminology-tab-pane" role="tab">Terminology</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="searchparams-tab" data-bs-toggle="tab" href="#searchparams-tab-pane" role="tab">Search Params</a>
+                        </li>
                     </ul>
                     <div class="tab-content mt-3">
                         <div class="tab-pane fade show active" id="differential" role="tabpanel" aria-labelledby="differential-tab">
@@ -195,6 +204,64 @@
                             </div>
                             <ul id="structure-tree-key-elements" class="list-group list-group-flush structure-tree-root"></ul>
                         </div>
+                        <div class="tab-pane fade" id="constraints-tab-pane" role="tabpanel" aria-labelledby="constraints-tab">
+                        <div class="mt-3 table-responsive">
+                            <p>Constraints defined in this profile:</p>
+                            <table class="table table-sm table-bordered table-striped" id="constraints-table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Key</th>
+                                        <th>Severity</th>
+                                        <th>Path</th>
+                                        <th>Description</th>
+                                        <th>Expression (FHIRPath)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="5">No constraints found or data not loaded.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="terminology-tab-pane" role="tabpanel" aria-labelledby="terminology-tab">
+                        <div class="mt-3 table-responsive">
+                            <p>Terminology bindings defined in this profile:</p>
+                            <table class="table table-sm table-bordered table-striped" id="bindings-table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Path</th>
+                                        <th>Strength</th>
+                                        <th>ValueSet</th>
+                                        <th>Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="4">No bindings found or data not loaded.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="searchparams-tab-pane" role="tabpanel" aria-labelledby="searchparams-tab">
+                        <div class="mt-3">
+                            <p>Search parameters associated with this profile:</p>
+                            <div class="alert alert-warning" role="alert">
+                                <strong>Note:</strong> SearchParameter resources. This functionality is NEWLY implemented, please report any bugs)
+                            </div>
+                            <table class="table table-sm table-bordered table-striped" id="searchparams-table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Parameter</th>
+                                        <th>Type</th>
+                                        <th>Conformance</th>
+                                        <th>Requirements / Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="4">Search Parameter data not available. Requires backend implementation.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                     </div>
                 </div>
             </div>
@@ -869,8 +936,9 @@ async function fetchStructure(resourceType, view) {
 }
 
 
-// --- Populate Structure for All Views - V2 (Builds full tree from snapshot first) ---
+// --- Populate Structure for All Views - V4 (Add Search Param Logging) ---
 async function populateStructure(resourceType) {
+    // ... (keep existing variable assignments and UI resets at the beginning) ...
     if (structureTitle) structureTitle.textContent = `${resourceType} ({{ processed_ig.package_name }}#{{ processed_ig.version }})`;
     if (rawStructureTitle) rawStructureTitle.textContent = `${resourceType} ({{ processed_ig.package_name }}#{{ processed_ig.version }})`;
     if (structureLoading) structureLoading.style.display = 'block';
@@ -880,33 +948,76 @@ async function populateStructure(resourceType) {
     if (structureFallbackMessage) { structureFallbackMessage.style.display = 'none'; structureFallbackMessage.textContent = ''; }
     const views = ['differential', 'snapshot', 'must-support', 'key-elements'];
     views.forEach(v => { const tc = document.getElementById(`structure-tree-${v}`); if(tc) tc.innerHTML = ''; });
-    if (rawStructureContent) rawStructureContent.textContent = '';
+    const constraintsTableBody = document.getElementById('constraints-table')?.querySelector('tbody');
+    const bindingsTableBody = document.getElementById('bindings-table')?.querySelector('tbody');
+    const searchParamsTableBody = document.getElementById('searchparams-table')?.querySelector('tbody');
+    if (constraintsTableBody) constraintsTableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted fst-italic">Loading...</td></tr>';
+    if (bindingsTableBody) bindingsTableBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted fst-italic">Loading...</td></tr>';
+    if (searchParamsTableBody) searchParamsTableBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted fst-italic">Loading...</td></tr>';
+    if (rawStructureContent) rawStructureContent.textContent = 'Loading...';
 
     try {
-        console.log(`PopulateStructure V2: Fetching snapshot for ${resourceType}`);
-        const snapshotData = await fetchStructure(resourceType, 'snapshot');
-        if (!snapshotData || !snapshotData.elements) { throw new Error(`Snapshot data missing for ${resourceType}.`); }
-        const snapshotElementsCopy = JSON.parse(JSON.stringify(snapshotData.elements));
-        const mustSupportPaths = new Set(snapshotData.must_support_paths || []);
-        const fallbackUsed = snapshotData.fallback_used || false; const fallbackSource = snapshotData.source_package || 'FHIR core';
-        if (rawStructureContent) { rawStructureContent.textContent = JSON.stringify(snapshotData, null, 4); if (rawStructureContent.classList.contains('hljs')) { rawStructureContent.classList.remove('hljs'); } hljs.highlightElement(rawStructureContent); if (fallbackUsed && structureFallbackMessage) { /* show fallback */ } }
-        else { if (rawStructureContent) rawStructureContent.textContent = '(Raw content display element not found)';}
+        console.log(`PopulateStructure V4: Fetching structure and search params for ${resourceType}`);
+        const structureBaseUrl = "{{ url_for('get_structure') }}";
+        const params = new URLSearchParams({ package_name: "{{ processed_ig.package_name }}", package_version: "{{ processed_ig.version }}", resource_type: resourceType });
+        const fetchUrl = `${structureBaseUrl}?${params.toString()}`;
+        const response = await fetch(fetchUrl);
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP error ${response.status}: ${errorText}`);
+        }
+        const data = await response.json();
+
+        if (!data || !data.elements) { throw new Error(`Structure data or elements missing for ${resourceType}.`); }
+
+        const snapshotElementsCopy = JSON.parse(JSON.stringify(data.elements));
+        const mustSupportPaths = new Set(data.must_support_paths || []);
+        const searchParams = data.search_parameters || []; // Get search params
+        const fallbackUsed = data.fallback_used || false;
+        const fallbackSource = data.source_package || 'FHIR core';
+
+        // *** ADDED LOG: Check received search parameters ***
+        console.log('[populateStructure] Received search_parameters:', searchParams);
+        // *************************************************
+
+        // Update Raw JSON View
+        if (rawStructureContent) {
+            rawStructureContent.textContent = JSON.stringify(data, null, 4);
+             if (rawStructureContent.classList.contains('hljs')) { rawStructureContent.classList.remove('hljs'); }
+             hljs.highlightElement(rawStructureContent);
+             if (fallbackUsed && structureFallbackMessage) {
+                 structureFallbackMessage.textContent = `Note: Displaying structure from fallback package: ${fallbackSource}`;
+                 structureFallbackMessage.style.display = 'block';
+             }
+        } else { if (rawStructureContent) rawStructureContent.textContent = '(Raw content display element not found)';}
+
+        // Render the Tree Views
         for (const view of views) {
-             console.log(`PopulateStructure V2: Rendering view '${view}' for ${resourceType}`);
+             console.log(`PopulateStructure V4: Rendering view '${view}' for ${resourceType}`);
              const treeContainer = document.getElementById(`structure-tree-${view}`);
              if (!treeContainer) { console.error(`Container missing for ${view}`); continue; }
-             // Use V11 buildTreeData (called within renderStructureTree)
              await renderStructureTree(resourceType, view, JSON.parse(JSON.stringify(snapshotElementsCopy)), mustSupportPaths);
         }
+
+        // Render Constraints & Bindings tables
+        renderConstraintsTable(data.elements);
+        renderBindingsTable(data.elements);
+        // Render Search Params table (passing potentially empty array)
+        renderSearchParametersTable(searchParams); // Pass the retrieved data
+
     } catch (error) {
         console.error("Error populating structure:", error);
-        if (structureTreeDifferential) { structureTreeDifferential.innerHTML = `<div class="alert alert-danger">Error loading structure: ${error.message}</div>`; }
+        // ... existing error handling ...
+        views.forEach(v => { const tc = document.getElementById(`structure-tree-${v}`); if(tc) tc.innerHTML = `<div class="alert alert-danger m-2">Error loading structure: ${error.message}</div>`; });
+        if (constraintsTableBody) constraintsTableBody.innerHTML = `<tr><td colspan="5" class="text-danger text-center">Error loading constraints: ${error.message}</td></tr>`;
+        if (bindingsTableBody) bindingsTableBody.innerHTML = `<tr><td colspan="4" class="text-danger text-center">Error loading bindings: ${error.message}</td></tr>`;
+        if (searchParamsTableBody) searchParamsTableBody.innerHTML = `<tr><td colspan="4" class="text-danger text-center">Error loading search params: ${error.message}</td></tr>`; // Show error here too
         if (rawStructureContent) { rawStructureContent.textContent = `Error: ${error.message}`; }
      } finally {
         if (structureLoading) structureLoading.style.display = 'none';
         if (rawStructureLoading) rawStructureLoading.style.display = 'none';
     }
-} // End populateStructure V2
+} // End populateStructure V4
 
 
 // --- Populate Example Selector Dropdown ---
@@ -948,6 +1059,179 @@ function setupCopyButton(buttonElement, sourceElement, tooltipInstance, successT
     const clickHandler = () => { const textToCopy = sourceElement.textContent; const copyIcon = buttonElement.querySelector('i'); const updateTooltip = (newTitle, iconClass) => { buttonElement.setAttribute('data-bs-original-title', newTitle); tooltipInstance?.setContent({ '.tooltip-inner': newTitle }); tooltipInstance?.show(); if (copyIcon) copyIcon.className = `bi ${iconClass}`; setTimeout(() => { if (buttonElement.isConnected) { tooltipInstance?.hide(); buttonElement.setAttribute('data-bs-original-title', originalTitle); if (copyIcon) copyIcon.className = 'bi bi-clipboard'; } }, 1500); }; if (textToCopy && textToCopy.trim() && !textToCopy.startsWith('(Could not') && !textToCopy.startsWith('(Not valid') && !textToCopy.startsWith('Error:')) { navigator.clipboard.writeText(textToCopy).then(() => { updateTooltip(successTitle, 'bi-check-lg'); }).catch(err => { console.error(`Copy failed:`, err); updateTooltip(errorTitle, 'bi-exclamation-triangle'); }); } else { updateTooltip(nothingTitle, 'bi-clipboard'); } };
     buttonElement.removeEventListener('click', clickHandler); buttonElement.addEventListener('click', clickHandler); return tooltipInstance;
 }
+
+// --- Function to Render Constraints Table ---
+function renderConstraintsTable(elements) {
+    const tableBody = document.getElementById('constraints-table')?.querySelector('tbody');
+    if (!tableBody) {
+        console.error('Constraints table body not found');
+        return;
+    }
+    tableBody.innerHTML = ''; // Clear existing rows
+    let constraintsFound = false;
+
+    if (!elements || !Array.isArray(elements)) {
+         console.warn("renderConstraintsTable called with invalid elements data:", elements);
+         elements = []; // Prevent errors later
+    }
+
+
+    elements.forEach(element => {
+        // Check if element exists and has a constraint property which is an array
+        if (element && element.constraint && Array.isArray(element.constraint) && element.constraint.length > 0) {
+            element.constraint.forEach(constraint => {
+                if (constraint) { // Ensure constraint object itself exists
+                    constraintsFound = true;
+                    const row = tableBody.insertRow();
+                    row.insertCell().textContent = constraint.key || 'N/A';
+                    row.insertCell().textContent = constraint.severity || 'N/A';
+                    row.insertCell().textContent = element.path || 'N/A'; // Path of the element the constraint is on
+                    row.insertCell().textContent = constraint.human || 'N/A';
+                    const expressionCell = row.insertCell();
+                    const codeElement = document.createElement('code');
+                    codeElement.className = 'language-fhirpath'; // Use 'language-fhirpath' if you have a FHIRPath grammar for highlight.js
+                    codeElement.textContent = constraint.expression || 'N/A';
+                    expressionCell.appendChild(codeElement);
+                }
+            });
+        }
+    });
+
+    if (!constraintsFound) {
+        const row = tableBody.insertRow();
+        const cell = row.insertCell();
+        cell.colSpan = 5; // Match number of columns
+        cell.textContent = 'No constraints defined in this profile.';
+        cell.style.textAlign = 'center';
+    }
+
+    // Re-run highlight.js for the new code blocks
+    // Use setTimeout to allow the DOM to update before highlighting
+     setTimeout(() => {
+         document.querySelectorAll('#constraints-table code.language-fhirpath').forEach((block) => {
+             // Remove existing highlight classes if any, before re-highlighting
+             block.classList.remove('hljs');
+             hljs.highlightElement(block);
+         });
+     }, 0);
+}
+
+// --- Function to Render Terminology Bindings Table ---
+function renderBindingsTable(elements) {
+    const tableBody = document.getElementById('bindings-table')?.querySelector('tbody');
+    if (!tableBody) {
+        console.error('Bindings table body not found');
+        return;
+    }
+    tableBody.innerHTML = ''; // Clear existing rows
+    let bindingsFound = false;
+
+    if (!elements || !Array.isArray(elements)) {
+         console.warn("renderBindingsTable called with invalid elements data:", elements);
+         elements = []; // Prevent errors later
+    }
+
+    elements.forEach(element => {
+        // Check if element exists and has a binding property which is an object
+        if (element && element.binding && typeof element.binding === 'object') {
+            bindingsFound = true;
+            const binding = element.binding;
+            const row = tableBody.insertRow();
+            row.insertCell().textContent = element.path || 'N/A';
+            row.insertCell().textContent = binding.strength || 'N/A';
+            const valueSetCell = row.insertCell();
+            if (binding.valueSet) {
+                const valueSetLink = document.createElement('a');
+                valueSetLink.href = binding.valueSet; // Ideally, resolve canonical to actual URL if possible
+                // Try to show last part of URL as name, or full URL if no '/'
+                const urlParts = binding.valueSet.split('/');
+                valueSetLink.textContent = urlParts.length > 1 ? urlParts[urlParts.length - 1] : binding.valueSet;
+                valueSetLink.target = '_blank'; // Open in new tab
+                 valueSetLink.title = `Open ValueSet: ${binding.valueSet}`; // Add tooltip
+                 valueSetLink.setAttribute('data-bs-toggle', 'tooltip'); // Enable tooltip
+                valueSetCell.appendChild(valueSetLink);
+                // Re-initialize tooltips for dynamically added links
+                const tooltip = new bootstrap.Tooltip(valueSetLink);
+            } else {
+                valueSetCell.textContent = 'N/A';
+            }
+            row.insertCell().textContent = binding.description || 'N/A';
+        }
+    });
+
+    if (!bindingsFound) {
+        const row = tableBody.insertRow();
+        const cell = row.insertCell();
+        cell.colSpan = 4; // Match number of columns
+        cell.textContent = 'No terminology bindings defined in this profile.';
+        cell.style.textAlign = 'center';
+    }
+}
+
+// --- Function to Render Search Parameters Table (Add Logging) ---
+function renderSearchParametersTable(searchParamsData) {
+    const tableBody = document.getElementById('searchparams-table')?.querySelector('tbody');
+    if (!tableBody) {
+        console.error('Search Params table body not found');
+        return;
+    }
+    tableBody.innerHTML = ''; // Clear existing rows
+
+    // *** ADDED LOG: Check data received by rendering function ***
+    console.log('[renderSearchParametersTable] Received data:', searchParamsData);
+    // **********************************************************
+
+    if (!searchParamsData || !Array.isArray(searchParamsData) || searchParamsData.length === 0) {
+        console.log('[renderSearchParametersTable] No valid search parameter data found, displaying message.'); // Added Log
+        const row = tableBody.insertRow();
+        const cell = row.insertCell();
+        cell.colSpan = 4;
+        cell.textContent = 'No relevant search parameters found for this resource type.';
+        cell.style.textAlign = 'center';
+        cell.classList.add('text-muted', 'fst-italic');
+        return;
+    }
+
+    // Sort parameters alphabetically by code
+    searchParamsData.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+
+    searchParamsData.forEach((param, index) => {
+        // *** ADDED LOG: Log each parameter being processed ***
+        console.log(`[renderSearchParametersTable] Processing param ${index + 1}:`, param);
+        // ***************************************************
+
+        const row = tableBody.insertRow();
+
+        // Parameter Name (using 'code')
+        const nameCell = row.insertCell();
+        nameCell.innerHTML = `<code>${escapeHtmlAttr(param.code || 'N/A')}</code>`;
+
+        // Type
+        row.insertCell().textContent = param.type || 'N/A';
+
+        // Conformance (Placeholder)
+        const conformanceCell = row.insertCell();
+        conformanceCell.textContent = param.conformance || 'N/A'; // Show backend placeholder
+        // Add highlighting later if backend provides is_mandatory
+        // if (param.is_mandatory) { ... }
+
+        // Description
+        const descriptionCell = row.insertCell();
+        descriptionCell.innerHTML = `<small>${escapeHtmlAttr(param.description || 'No description available.')}</small>`;
+        if (param.expression) {
+             descriptionCell.title = `FHIRPath: ${param.expression}`;
+             descriptionCell.setAttribute('data-bs-toggle', 'tooltip');
+             descriptionCell.setAttribute('data-bs-placement', 'top');
+             // Ensure tooltip is initialized for dynamically added elements
+             const existingTooltip = bootstrap.Tooltip.getInstance(descriptionCell);
+             if (existingTooltip) {
+                 existingTooltip.dispose(); // Remove old instance if any
+             }
+             new bootstrap.Tooltip(descriptionCell);
+        }
+    });
+    console.log('[renderSearchParametersTable] Finished rendering parameters.'); // Added Log
+} // End renderSearchParametersTable
 
 
 // --- DOMContentLoaded Listener ---

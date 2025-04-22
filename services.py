@@ -1933,6 +1933,85 @@ def process_fhir_input(input_mode, fhir_file, fhir_text, alias_file=None):
         logger.error(f"Error processing input: {str(e)}", exc_info=True)
         return None, None, None, f"Error processing input: {str(e)}"
 
+# --- ADD THIS NEW FUNCTION TO services.py ---
+def find_and_extract_search_params(tgz_path, base_resource_type):
+    """
+    Finds and extracts SearchParameter resources relevant to a given base resource type
+    from a FHIR package tgz file.
+    """
+    search_params = []
+    if not tgz_path or not os.path.exists(tgz_path):
+        logger.error(f"Package file not found for SearchParameter extraction: {tgz_path}")
+        return search_params # Return empty list on error
+
+    logger.debug(f"Searching for SearchParameters based on '{base_resource_type}' in {os.path.basename(tgz_path)}")
+    try:
+        with tarfile.open(tgz_path, "r:gz") as tar:
+            for member in tar:
+                # Basic filtering for JSON files in package directory, excluding common metadata
+                if not (member.isfile() and member.name.startswith('package/') and member.name.lower().endswith('.json')):
+                    continue
+                if os.path.basename(member.name).lower() in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']:
+                    continue
+
+                fileobj = None
+                try:
+                    fileobj = tar.extractfile(member)
+                    if fileobj:
+                        content_bytes = fileobj.read()
+                        content_string = content_bytes.decode('utf-8-sig')
+                        data = json.loads(content_string)
+
+                        # Check if it's a SearchParameter resource
+                        if isinstance(data, dict) and data.get('resourceType') == 'SearchParameter':
+                            # Check if the SearchParameter applies to the requested base resource type
+                            sp_bases = data.get('base', []) # 'base' is a list of applicable resource types
+                            if base_resource_type in sp_bases:
+                                # Extract relevant information
+                                param_info = {
+                                    'id': data.get('id'),
+                                    'url': data.get('url'),
+                                    'name': data.get('name'),
+                                    'description': data.get('description'),
+                                    'code': data.get('code'), # The actual parameter name used in searches
+                                    'type': data.get('type'), # e.g., token, reference, date
+                                    'expression': data.get('expression'), # FHIRPath expression
+                                    'base': sp_bases,
+                                    # NOTE: Conformance (mandatory/optional) usually comes from CapabilityStatement,
+                                    # which is not processed here. Add placeholders or leave out for now.
+                                    'conformance': 'N/A', # Placeholder
+                                    'is_mandatory': False  # Placeholder
+                                }
+                                search_params.append(param_info)
+                                logger.debug(f"Found relevant SearchParameter: {param_info.get('name')} (ID: {param_info.get('id')}) for base {base_resource_type}")
+
+                # --- Error handling for individual file processing ---
+                except json.JSONDecodeError as e:
+                    logger.debug(f"Could not parse JSON for SearchParameter in {member.name}, skipping: {e}")
+                except UnicodeDecodeError as e:
+                    logger.warning(f"Could not decode UTF-8 for SearchParameter in {member.name}, skipping: {e}")
+                except tarfile.TarError as e:
+                    logger.warning(f"Tar error reading member {member.name} for SearchParameter, skipping: {e}")
+                except Exception as e:
+                    logger.warning(f"Could not read/parse potential SearchParameter {member.name}, skipping: {e}", exc_info=False)
+                finally:
+                    if fileobj:
+                        fileobj.close()
+
+    # --- Error handling for opening/reading the tgz file ---
+    except tarfile.ReadError as e:
+        logger.error(f"Tar ReadError extracting SearchParameters from {tgz_path}: {e}")
+    except tarfile.TarError as e:
+        logger.error(f"TarError extracting SearchParameters from {tgz_path}: {e}")
+    except FileNotFoundError:
+        logger.error(f"Package file not found during SearchParameter extraction: {tgz_path}")
+    except Exception as e:
+        logger.error(f"Unexpected error extracting SearchParameters from {tgz_path}: {e}", exc_info=True)
+
+    logger.info(f"Found {len(search_params)} SearchParameters relevant to '{base_resource_type}' in {os.path.basename(tgz_path)}")
+    return search_params
+# --- END OF NEW FUNCTION ---
+
 # --- Standalone Test ---
 if __name__ == '__main__':
     logger.info("Running services.py directly for testing.")
