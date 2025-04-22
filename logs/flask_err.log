@@ -287,3 +287,25 @@ INFO:werkzeug:172.18.0.1 - - [22/Apr/2025 00:12:44] "GET /about HTTP/1.1" 200 -
 INFO:werkzeug:172.18.0.1 - - [22/Apr/2025 00:12:44] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
 INFO:werkzeug:172.18.0.1 - - [22/Apr/2025 00:13:32] "GET / HTTP/1.1" 200 -
 INFO:werkzeug:172.18.0.1 - - [22/Apr/2025 00:13:32] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+INFO:__main__:Application running in mode: lite
+DEBUG:__main__:Instance path configuration: /app/instance
+DEBUG:__main__:Database URI: sqlite:////app/instance/fhir_ig.db
+DEBUG:__main__:Packages path: /app/instance/fhir_packages
+DEBUG:__main__:Flask instance folder path: /app/instance
+DEBUG:__main__:Directories created/verified: Instance: /app/instance, Packages: /app/instance/fhir_packages
+DEBUG:__main__:Attempting to create database tables for URI: sqlite:////app/instance/fhir_ig.db
+INFO:__main__:Database tables created successfully (if they didn't exist).
+DEBUG:__main__:Instance path configuration: /app/instance
+DEBUG:__main__:Database URI: sqlite:////app/instance/fhir_ig.db
+DEBUG:__main__:Packages path: /app/instance/fhir_packages
+DEBUG:__main__:Flask instance folder path: /app/instance
+DEBUG:__main__:Directories created/verified: Instance: /app/instance, Packages: /app/instance/fhir_packages
+DEBUG:__main__:Attempting to create database tables for URI: sqlite:////app/instance/fhir_ig.db
+INFO:__main__:Database tables created successfully (if they didn't exist).
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.18.0.2:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:172.18.0.1 - - [22/Apr/2025 00:28:51] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [22/Apr/2025 00:28:52] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
