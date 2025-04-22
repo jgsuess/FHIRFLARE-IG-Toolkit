@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="px-4 py-5 my-5 text-center">
+    <img class="d-block mx-auto mb-4" src="{{ url_for('static', filename='FHIRFLARE.png') }}" alt="FHIRFLARE IG Toolkit" width="192" height="192">
+    <h1 class="display-5 fw-bold text-body-emphasis">FHIR API Explorer</h1>
+    <div class="col-lg-6 mx-auto">
+        <p class="lead mb-4">
+            Interact with FHIR servers using GET, POST, PUT, or DELETE requests. Toggle between local HAPI or a custom server to explore resources or perform searches.
+        </p>
+        <!-----------------------------------------------------------------remove the buttons-----------------------------------------------------
+        <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+            <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg px-4 gap-3">Back to Home</a>
+            <a href="{{ url_for('validate_sample') }}" class="btn btn-outline-secondary btn-lg px-4">Validate FHIR Sample</a>
+            <a href="{{ url_for('fhir_ui_operations') }}" class="btn btn-outline-secondary btn-lg px-4">FHIR UI Operations</a>
+        </div>
+        -------------------------------------------------------------------------------------------------------------------------------------------->
+    </div>
+</div>
+
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header"><i class="bi bi-cloud-arrow-down me-2"></i>Send FHIR Request</div>
+        <div class="card-body">
+            <form id="fhirRequestForm" onsubmit="return false;">
+                {{ form.hidden_tag() }}
+                <div class="mb-3">
+                    <label class="form-label">FHIR Server</label>
+                    <div class="input-group">
+                        <button type="button" class="btn btn-outline-primary" id="toggleServer">
+                            <span id="toggleLabel">Use Local HAPI</span>
+                        </button>
+                        <input type="text" class="form-control" id="fhirServerUrl" name="fhir_server_url" placeholder="e.g., https://hapi.fhir.org/baseR4" style="display: none;" aria-describedby="fhirServerHelp">
+                    </div>
+                    <small id="fhirServerHelp" class="form-text text-muted">Toggle to use local HAPI (http://localhost:8080/fhir) or enter a custom FHIR server URL.</small>
+                </div>
+                <div class="mb-3">
+                    <label for="fhirPath" class="form-label">FHIR Path</label>
+                    <input type="text" class="form-control" id="fhirPath" name="fhir_path" placeholder="e.g., Patient/wang-li" required aria-describedby="fhirPathHelp">
+                    <small id="fhirPathHelp" class="form-text text-muted">Enter a resource path (e.g., Patient, Observation/example) or '_search' for search queries.</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Request Type</label>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <input type="radio" class="btn-check" name="method" id="get" value="GET" checked>
+                        <label class="btn btn-outline-success" for="get"><span class="badge bg-success">GET</span></label>
+
+                        <input type="radio" class="btn-check" name="method" id="post" value="POST">
+                        <label class="btn btn-outline-primary" for="post"><span class="badge bg-primary">POST</span></label>
+
+                        <input type="radio" class="btn-check" name="method" id="put" value="PUT">
+                        <label class="btn btn-outline-warning" for="put"><span class="badge bg-warning text-dark">PUT</span></label>
+
+                        <input type="radio" class="btn-check" name="method" id="delete" value="DELETE">
+                        <label class="btn btn-outline-danger" for="delete"><span class="badge bg-danger">DELETE</span></label>
+                    </div>
+                </div>
+                <div class="mb-3" id="requestBodyGroup" style="display: none;">
+                    <div class="d-flex align-items-center mb-2">
+                        <label for="requestBody" class="form-label me-2 mb-0">Request Body</label>
+                        <button type="button" class="btn btn-outline-secondary btn-sm btn-copy" id="copyRequestBody" title="Copy to Clipboard"><i class="bi bi-clipboard"></i></button>
+                    </div>
+                    <textarea class="form-control" id="requestBody" name="request_body" rows="6" placeholder="For POST: JSON resource (e.g., {'resourceType': 'Patient', ...}) or search params (e.g., name=John&birthdate=gt2000)"></textarea>
+                    <div id="jsonError" class="text-danger mt-1" style="display: none;"></div>
+                </div>
+                <button type="button" class="btn btn-primary" id="sendRequest">Send Request</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card mt-4" id="responseCard" style="display: none;">
+        <div class="card-header">Response</div>
+        <div class="card-body">
+            <h5>Status: <span id="responseStatus" class="badge"></span></h5>
+            <div class="d-flex align-items-center mb-2">
+                <h6 class="me-2 mb-0">Headers</h6>
+                <button type="button" class="btn btn-outline-secondary btn-sm btn-copy" id="copyResponseHeaders" title="Copy to Clipboard"><i class="bi bi-clipboard"></i></button>
+            </div>
+            <pre id="responseHeaders" class="border p-2 bg-light mb-3" style="max-height: 200px; overflow-y: auto;"></pre>
+            <div class="d-flex align-items-center mb-2">
+                <h6 class="me-2 mb-0">Body</h6>
+                <button type="button" class="btn btn-outline-secondary btn-sm btn-copy" id="copyResponseBody" title="Copy to Clipboard"><i class="bi bi-clipboard"></i></button>
+            </div>
+            <pre id="responseBody" class="border p-2 bg-light" style="max-height: 400px; overflow-y: auto;"></pre>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOMContentLoaded event fired."); // Log when the listener starts
+
+    // --- Get DOM Elements & Check Existence ---
+    const form = document.getElementById('fhirRequestForm');
+    const sendButton = document.getElementById('sendRequest');
+    const fhirPath = document.getElementById('fhirPath');
+    const requestBody = document.getElementById('requestBody');
+    const requestBodyGroup = document.getElementById('requestBodyGroup');
+    const jsonError = document.getElementById('jsonError');
+    const responseCard = document.getElementById('responseCard');
+    const responseStatus = document.getElementById('responseStatus');
+    const responseHeaders = document.getElementById('responseHeaders');
+    const responseBody = document.getElementById('responseBody');
+    const methodRadios = document.getElementsByName('method');
+    const toggleServerButton = document.getElementById('toggleServer');
+    const toggleLabel = document.getElementById('toggleLabel');
+    const fhirServerUrl = document.getElementById('fhirServerUrl');
+    const copyRequestBodyButton = document.getElementById('copyRequestBody');
+    const copyResponseHeadersButton = document.getElementById('copyResponseHeaders');
+    const copyResponseBodyButton = document.getElementById('copyResponseBody');
+
+    // --- Element Existence Check ---
+    let elementsReady = true;
+    if (!form) { console.error("Element not found: #fhirRequestForm"); elementsReady = false; }
+    if (!sendButton) { console.error("Element not found: #sendRequest"); elementsReady = false; }
+    if (!fhirPath) { console.error("Element not found: #fhirPath"); elementsReady = false; }
+    if (!requestBody) { console.warn("Element not found: #requestBody"); } // Warn only, might be ok if not POST/PUT
+    if (!requestBodyGroup) { console.warn("Element not found: #requestBodyGroup"); } // Warn only
+    if (!jsonError) { console.warn("Element not found: #jsonError"); } // Warn only
+    if (!responseCard) { console.error("Element not found: #responseCard"); elementsReady = false; }
+    if (!responseStatus) { console.error("Element not found: #responseStatus"); elementsReady = false; }
+    if (!responseHeaders) { console.error("Element not found: #responseHeaders"); elementsReady = false; }
+    if (!responseBody) { console.error("Element not found: #responseBody"); elementsReady = false; }
+    if (!toggleServerButton) { console.error("Element not found: #toggleServer"); elementsReady = false; }
+    if (!toggleLabel) { console.error("Element not found: #toggleLabel"); elementsReady = false; }
+    if (!fhirServerUrl) { console.error("Element not found: #fhirServerUrl"); elementsReady = false; }
+    // Add checks for copy buttons if needed
+
+    if (!elementsReady) {
+        console.error("One or more critical UI elements could not be found. Script execution halted.");
+        // Optionally display a user-facing error message here
+        // const errorDisplay = document.getElementById('some-error-area');
+        // if(errorDisplay) errorDisplay.textContent = "Error initializing UI components.";
+        return; // Stop script execution if critical elements are missing
+    }
+    console.log("All critical elements checked/found.");
+
+    // --- State Variable ---
+    let useLocalHapi = true; // Default state, will be adjusted by Lite mode check
+
+    // --- DEFINE FUNCTIONS (as before) ---
+
+    function updateServerToggleUI() {
+        // Add checks inside the function too, just in case
+        if (!toggleLabel || !fhirServerUrl) {
+             console.error("updateServerToggleUI: Toggle UI elements became unavailable!");
+             return;
+        }
+        toggleLabel.textContent = useLocalHapi ? 'Use Local HAPI' : 'Use Custom URL';
+        fhirServerUrl.style.display = useLocalHapi ? 'none' : 'block';
+        fhirServerUrl.classList.remove('is-invalid');
+    }
+
+    function toggleServer() {
+        if (appMode === 'lite') return; // Ignore clicks in Lite mode
+        useLocalHapi = !useLocalHapi;
+        updateServerToggleUI();
+        if (useLocalHapi && fhirServerUrl) {
+            fhirServerUrl.value = '';
+        }
+        console.log(`Server toggled: ${useLocalHapi ? 'Local HAPI' : 'Custom URL'}`);
+    }
+
+    function updateRequestBodyVisibility() {
+        const selectedMethod = document.querySelector('input[name="method"]:checked')?.value;
+        if (!requestBodyGroup || !selectedMethod) return;
+        requestBodyGroup.style.display = (selectedMethod === 'POST' || selectedMethod === 'PUT') ? 'block' : 'none';
+        if (selectedMethod !== 'POST' && selectedMethod !== 'PUT') {
+            if (requestBody) requestBody.value = '';
+            if (jsonError) jsonError.style.display = 'none';
+        }
+    }
+
+    function validateRequestBody(method, path) {
+        // Added check for requestBody existence
+        if (!requestBody || !jsonError) return method === 'GET' ? null : '';
+        if (!requestBody.value.trim()) {
+            requestBody.classList.remove('is-invalid');
+            jsonError.style.display = 'none';
+            return method === 'GET' ? null : '';
+        }
+        const isSearch = path && path.endsWith('_search');
+        if (method === 'POST' && isSearch) { return requestBody.value; }
+        try {
+            JSON.parse(requestBody.value);
+            requestBody.classList.remove('is-invalid');
+            jsonError.style.display = 'none';
+            return requestBody.value;
+        } catch (e) {
+            requestBody.classList.add('is-invalid');
+            jsonError.textContent = `Invalid JSON: ${e.message}`;
+            jsonError.style.display = 'block';
+            return null;
+        }
+    }
+
+    function cleanFhirPath(path) {
+        if (!path) return '';
+        const cleaned = path.replace(/^(r4\/|fhir\/)*/i, '').replace(/^\/+|\/+$/g, '');
+        return cleaned;
+    }
+
+    async function copyToClipboard(text, button) {
+        if (!text || !button) return;
+        try {
+            await navigator.clipboard.writeText(text);
+            const originalIcon = button.innerHTML;
+            button.innerHTML = '<i class="bi bi-check-lg"></i>';
+            setTimeout(() => { button.innerHTML = originalIcon; }, 2000);
+        } catch (err) { console.error('Copy failed:', err); alert('Failed to copy to clipboard'); }
+    }
+
+    // --- INITIAL SETUP & MODE CHECK ---
+    const appMode = '{{ app_mode | default("standalone") | lower }}';
+    console.log('App Mode:', appMode);
+
+    if (appMode === 'lite') {
+        console.log('Lite mode detected: Disabling local HAPI toggle and setting default.');
+        // Check toggleServerButton again before using
+        if (toggleServerButton) {
+            toggleServerButton.disabled = true;
+            toggleServerButton.title = "Local HAPI is not available in Lite mode";
+            toggleServerButton.classList.add('disabled');
+            useLocalHapi = false;
+            if (fhirServerUrl) {
+                 fhirServerUrl.placeholder = "Enter FHIR Base URL (Local HAPI unavailable)";
+            }
+        } else {
+             // This console log should have appeared earlier if button was missing
+             console.error("Lite mode: Could not find toggle server button (#toggleServer) to disable.");
+        }
+    } else {
+         console.log('Standalone mode detected: Enabling local HAPI toggle.');
+         if (toggleServerButton) {
+             toggleServerButton.disabled = false;
+             toggleServerButton.title = "";
+             toggleServerButton.classList.remove('disabled');
+         } else {
+              console.error("Standalone mode: Could not find toggle server button (#toggleServer) to enable.");
+         }
+    }
+
+    // --- SET INITIAL UI STATE ---
+    // Call these *after* the mode check and function definitions
+    updateServerToggleUI();
+    updateRequestBodyVisibility();
+
+    // --- ATTACH EVENT LISTENERS ---
+
+    // Server Toggle Button
+    if (toggleServerButton) { // Check again before adding listener
+        toggleServerButton.addEventListener('click', toggleServer);
+    } else {
+        console.error("Cannot attach listener: Toggle Server Button not found.");
+    }
+
+    // Copy Buttons (Add checks)
+    if (copyRequestBodyButton && requestBody) { copyRequestBodyButton.addEventListener('click', () => copyToClipboard(requestBody.value, copyRequestBodyButton)); }
+    if (copyResponseHeadersButton && responseHeaders) { copyResponseHeadersButton.addEventListener('click', () => copyToClipboard(responseHeaders.textContent, copyResponseHeadersButton)); }
+    if (copyResponseBodyButton && responseBody) { copyResponseBodyButton.addEventListener('click', () => copyToClipboard(responseBody.textContent, copyResponseBodyButton)); }
+
+    // Method Radio Buttons
+    if (methodRadios) {
+        methodRadios.forEach(radio => { radio.addEventListener('change', updateRequestBodyVisibility); });
+    }
+
+    // Request Body Input Validation
+    if (requestBody && fhirPath) {
+        requestBody.addEventListener('input', () => validateRequestBody( document.querySelector('input[name="method"]:checked')?.value, fhirPath.value ));
+    }
+
+    // Send Request Button
+    if (sendButton && fhirPath && form) { // Added form check for CSRF
+        sendButton.addEventListener('click', async function() {
+            // (Keep the existing fetch/send logic here)
+            // ...
+            // Ensure you check for element existence inside this handler too if needed, e.g.:
+             if (!fhirPath.value.trim()) { /* ... */ }
+             const method = document.querySelector('input[name="method"]:checked')?.value;
+             if (!method) { /* ... */ }
+             // ...etc...
+
+             // Example: CSRF token retrieval inside handler
+             const csrfTokenInput = form.querySelector('input[name="csrf_token"]');
+             const csrfToken = csrfTokenInput ? csrfTokenInput.value : null;
+             if (useLocalHapi && (method === 'POST' || method === 'PUT') && csrfToken) {
+                  headers['X-CSRFToken'] = csrfToken;
+             } else if (useLocalHapi && (method === 'POST' || method === 'PUT')) {
+                  console.warn("CSRF token input not found for local request.");
+                  // Potentially alert the user or block the request
+             }
+             // ... rest of send logic ...
+        });
+    } else {
+        console.error("Cannot attach listener: Send Request Button, FHIR Path input, or Form element not found.");
+    }
+
+}); // End DOMContentLoaded Listener
+</script>
+{% endblock %}

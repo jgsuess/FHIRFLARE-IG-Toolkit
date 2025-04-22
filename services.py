@@ -4,10 +4,16 @@ import tarfile
 import json
 import re
 import logging
+import shutil
+import sqlite3
 from flask import current_app, Blueprint, request, jsonify
+from fhirpathpy import evaluate
 from collections import defaultdict
 from pathlib import Path
 import datetime
+import subprocess
+import tempfile
+import xml.etree.ElementTree as ET
 
 # Define Blueprint
 services_bp = Blueprint('services', __name__)
@@ -56,6 +62,7 @@ FHIR_R4_BASE_TYPES = {
     "SubstanceSourceMaterial", "SubstanceSpecification", "SupplyDelivery", "SupplyRequest", "Task",
     "TerminologyCapabilities", "TestReport", "TestScript", "ValueSet", "VerificationResult", "VisionPrescription"
 }
+
 # --- Helper Functions ---
 
 def _get_download_dir():
@@ -134,6 +141,62 @@ def parse_package_filename(filename):
     version = ""
     return name, version
 
+def remove_narrative(resource):
+    """Remove narrative text element from a FHIR resource."""
+    if isinstance(resource, dict):
+        if 'text' in resource:
+            logger.debug(f"Removing narrative text from resource: {resource.get('resourceType', 'unknown')}")
+            del resource['text']
+        if resource.get('resourceType') == 'Bundle' and 'entry' in resource:
+            resource['entry'] = [dict(entry, resource=remove_narrative(entry.get('resource'))) if entry.get('resource') else entry for entry in resource['entry']]
+    return resource
+
+def get_cached_structure(package_name, package_version, resource_type, view):
+    """Retrieve cached StructureDefinition from SQLite."""
+    try:
+        conn = sqlite3.connect(os.path.join(current_app.instance_path, 'fhir_ig.db'))
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT structure_data FROM structure_cache
+            WHERE package_name = ? AND package_version = ? AND resource_type = ? AND view = ?
+        """, (package_name, package_version, resource_type, view))
+        result = cursor.fetchone()
+        conn.close()
+        if result:
+            logger.debug(f"Cache hit for {package_name}#{package_version}:{resource_type}:{view}")
+            return json.loads(result[0])
+        logger.debug(f"No cache entry for {package_name}#{package_version}:{resource_type}:{view}")
+        return None
+    except Exception as e:
+        logger.error(f"Error accessing structure cache: {e}", exc_info=True)
+        return None
+
+def cache_structure(package_name, package_version, resource_type, view, structure_data):
+    """Cache StructureDefinition in SQLite."""
+    try:
+        conn = sqlite3.connect(os.path.join(current_app.instance_path, 'fhir_ig.db'))
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS structure_cache (
+                package_name TEXT,
+                package_version TEXT,
+                resource_type TEXT,
+                view TEXT,
+                structure_data TEXT,
+                PRIMARY KEY (package_name, package_version, resource_type, view)
+            )
+        """)
+        cursor.execute("""
+            INSERT OR REPLACE INTO structure_cache
+            (package_name, package_version, resource_type, view, structure_data)
+            VALUES (?, ?, ?, ?, ?)
+        """, (package_name, package_version, resource_type, view, json.dumps(structure_data)))
+        conn.commit()
+        conn.close()
+        logger.debug(f"Cached structure for {package_name}#{package_version}:{resource_type}:{view}")
+    except Exception as e:
+        logger.error(f"Error caching structure: {e}", exc_info=True)
+
 def find_and_extract_sd(tgz_path, resource_identifier, profile_url=None):
     """Helper to find and extract StructureDefinition json from a tgz path, prioritizing profile match."""
     sd_data = None
@@ -144,45 +207,84 @@ def find_and_extract_sd(tgz_path, resource_identifier, profile_url=None):
     try:
         with tarfile.open(tgz_path, "r:gz") as tar:
             logger.debug(f"Searching for SD matching '{resource_identifier}' with profile '{profile_url}' in {os.path.basename(tgz_path)}")
+            # Store potential matches to evaluate the best one at the end
+            potential_matches = [] # Store tuples of (precision_score, data, member_name)
+
             for member in tar:
                 if not (member.isfile() and member.name.startswith('package/') and member.name.lower().endswith('.json')):
                     continue
+                # Skip common metadata files
                 if os.path.basename(member.name).lower() in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']:
                     continue
+
                 fileobj = None
                 try:
                     fileobj = tar.extractfile(member)
                     if fileobj:
                         content_bytes = fileobj.read()
+                        # Handle potential BOM (Byte Order Mark)
                         content_string = content_bytes.decode('utf-8-sig')
                         data = json.loads(content_string)
+
                         if isinstance(data, dict) and data.get('resourceType') == 'StructureDefinition':
                             sd_id = data.get('id')
                             sd_name = data.get('name')
                             sd_type = data.get('type')
                             sd_url = data.get('url')
-                            # Log SD details for debugging
-                            logger.debug(f"Found SD: id={sd_id}, name={sd_name}, type={sd_type}, url={sd_url}, path={member.name}")
-                            # Prioritize match with profile_url if provided
+                            sd_filename_base = os.path.splitext(os.path.basename(member.name))[0]
+                            sd_filename_lower = sd_filename_base.lower()
+                            resource_identifier_lower = resource_identifier.lower() if resource_identifier else None
+
+                            # logger.debug(f"Checking SD: id={sd_id}, name={sd_name}, type={sd_type}, url={sd_url}, file={sd_filename_lower} against identifier='{resource_identifier}'")
+
+                            match_score = 0 # Higher score means more precise match
+
+                            # Highest precision: Exact match on profile_url
                             if profile_url and sd_url == profile_url:
-                                sd_data = data
+                                match_score = 5
+                                logger.debug(f"Exact match found based on profile_url: {profile_url}")
+                                # If we find the exact profile URL, this is the best possible match.
+                                sd_data = remove_narrative(data)
                                 found_path = member.name
-                                logger.info(f"Found SD matching profile '{profile_url}' at path: {found_path}")
-                                break
-                            # Broader matching for resource_identifier
-                            elif resource_identifier and (
-                                (sd_id and resource_identifier.lower() == sd_id.lower()) or
-                                (sd_name and resource_identifier.lower() == sd_name.lower()) or
-                                (sd_type and resource_identifier.lower() == sd_type.lower()) or
-                                # Add fallback for partial filename match
-                                (resource_identifier.lower() in os.path.splitext(os.path.basename(member.name))[0].lower()) or
-                                # Handle AU Core naming conventions
-                                (sd_url and resource_identifier.lower() in sd_url.lower())
-                            ):
-                                sd_data = data
-                                found_path = member.name
-                                logger.info(f"Found matching SD for '{resource_identifier}' at path: {found_path}")
-                                # Continue searching for a profile match
+                                logger.info(f"Found definitive SD matching profile '{profile_url}' at path: {found_path}. Stopping search.")
+                                break # Stop searching immediately
+
+                            # Next highest precision: Exact match on id or name
+                            elif resource_identifier_lower:
+                                if sd_id and resource_identifier_lower == sd_id.lower():
+                                    match_score = 4
+                                    logger.debug(f"Match found based on exact sd_id: {sd_id}")
+                                elif sd_name and resource_identifier_lower == sd_name.lower():
+                                     match_score = 4
+                                     logger.debug(f"Match found based on exact sd_name: {sd_name}")
+                                # Next: Match filename pattern "StructureDefinition-{identifier}.json"
+                                elif sd_filename_lower == f"structuredefinition-{resource_identifier_lower}":
+                                     match_score = 3
+                                     logger.debug(f"Match found based on exact filename pattern: {member.name}")
+                                 # Next: Match on type ONLY if the identifier looks like a base type (no hyphens/dots)
+                                elif sd_type and resource_identifier_lower == sd_type.lower() and not re.search(r'[-.]', resource_identifier):
+                                      match_score = 2
+                                      logger.debug(f"Match found based on sd_type (simple identifier): {sd_type}")
+                                 # Lower precision: Check if identifier is IN the filename
+                                elif resource_identifier_lower in sd_filename_lower:
+                                      match_score = 1
+                                      logger.debug(f"Potential match based on identifier in filename: {member.name}")
+                                 # Lowest precision: Check if identifier is IN the URL
+                                elif sd_url and resource_identifier_lower in sd_url.lower():
+                                      match_score = 1
+                                      logger.debug(f"Potential match based on identifier in url: {sd_url}")
+
+                            if match_score > 0:
+                                potential_matches.append((match_score, remove_narrative(data), member.name))
+
+                                # If it's a very high precision match, we can potentially break early
+                                if match_score >= 3: # Exact ID, Name, or Filename pattern
+                                     logger.info(f"Found high-confidence match for '{resource_identifier}' ({member.name}), stopping search.")
+                                     # Set sd_data here and break
+                                     sd_data = remove_narrative(data)
+                                     found_path = member.name
+                                     break
+
                 except json.JSONDecodeError as e:
                     logger.debug(f"Could not parse JSON in {member.name}, skipping: {e}")
                 except UnicodeDecodeError as e:
@@ -194,20 +296,32 @@ def find_and_extract_sd(tgz_path, resource_identifier, profile_url=None):
                 finally:
                     if fileobj:
                         fileobj.close()
+
+            # If the loop finished without finding an exact profile_url or high-confidence match (score >= 3)
+            if not sd_data and potential_matches:
+                # Sort potential matches by score (highest first)
+                potential_matches.sort(key=lambda x: x[0], reverse=True)
+                best_match = potential_matches[0]
+                sd_data = best_match[1]
+                found_path = best_match[2]
+                logger.info(f"Selected best match for '{resource_identifier}' from potential matches (Score: {best_match[0]}): {found_path}")
+
             if sd_data is None:
                 logger.info(f"SD matching identifier '{resource_identifier}' or profile '{profile_url}' not found within archive {os.path.basename(tgz_path)}")
+
     except tarfile.ReadError as e:
         logger.error(f"Tar ReadError reading {tgz_path}: {e}")
         return None, None
     except tarfile.TarError as e:
         logger.error(f"TarError reading {tgz_path} in find_and_extract_sd: {e}")
-        raise
+        raise # Re-raise critical tar errors
     except FileNotFoundError:
         logger.error(f"FileNotFoundError reading {tgz_path} in find_and_extract_sd.")
-        raise
+        raise # Re-raise critical file errors
     except Exception as e:
         logger.error(f"Unexpected error in find_and_extract_sd for {tgz_path}: {e}", exc_info=True)
-        raise
+        raise # Re-raise unexpected errors
+
     return sd_data, found_path
 
 # --- Metadata Saving/Loading ---
@@ -263,7 +377,6 @@ def get_package_metadata(name, version):
     else:
         logger.debug(f"Metadata file not found: {metadata_path}")
         return None
-# --- Package Processing ---
 
 def process_package_file(tgz_path):
     """Extracts types, profile status, MS elements, examples, and profile relationships from a downloaded .tgz package."""
@@ -272,6 +385,7 @@ def process_package_file(tgz_path):
         return {'errors': [f"Package file not found: {tgz_path}"], 'resource_types_info': []}
 
     pkg_basename = os.path.basename(tgz_path)
+    name, version = parse_package_filename(pkg_basename)
     logger.info(f"Processing package file details: {pkg_basename}")
 
     results = {
@@ -320,6 +434,9 @@ def process_package_file(tgz_path):
                     if not isinstance(data, dict) or data.get('resourceType') != 'StructureDefinition':
                         continue
 
+                    # Remove narrative text element
+                    data = remove_narrative(data)
+
                     profile_id = data.get('id') or data.get('name')
                     sd_type = data.get('type')
                     sd_base = data.get('baseDefinition')
@@ -341,6 +458,34 @@ def process_package_file(tgz_path):
                     entry['is_profile'] = is_profile_sd
                     entry['sd_processed'] = True
                     referenced_types.add(sd_type)
+
+                    # Cache StructureDefinition for all views
+                    views = ['differential', 'snapshot', 'must-support', 'key-elements']
+                    for view in views:
+                        view_elements = data.get('differential', {}).get('element', []) if view == 'differential' else data.get('snapshot', {}).get('element', [])
+                        if view == 'must-support':
+                            view_elements = [e for e in view_elements if e.get('mustSupport')]
+                        elif view == 'key-elements':
+                            key_elements = set()
+                            differential_elements = data.get('differential', {}).get('element', [])
+                            for e in view_elements:
+                                is_in_differential = any(de['id'] == e['id'] for de in differential_elements)
+                                if e.get('mustSupport') or is_in_differential or e.get('min', 0) > 0 or e.get('max') != '*' or e.get('slicing') or e.get('constraint'):
+                                    key_elements.add(e['id'])
+                                    parent_path = e['path']
+                                    while '.' in parent_path:
+                                        parent_path = parent_path.rsplit('.', 1)[0]
+                                        parent_element = next((el for el in view_elements if el['path'] == parent_path), None)
+                                        if parent_element:
+                                            key_elements.add(parent_element['id'])
+                            view_elements = [e for e in view_elements if e['id'] in key_elements]
+                        cache_data = {
+                            'structure_definition': data,
+                            'must_support_paths': [],
+                            'fallback_used': False,
+                            'source_package': f"{name}#{version}"
+                        }
+                        cache_structure(name, version, sd_type, view, cache_data)
 
                     complies_with = []
                     imposed = []
@@ -372,7 +517,7 @@ def process_package_file(tgz_path):
 
                         if must_support is True:
                             if element_id and element_path:
-                                ms_path = element_id if slice_name else element_path
+                                ms_path = f"{element_path}[sliceName='{slice_name}']" if slice_name else element_id
                                 ms_paths_in_this_sd.add(ms_path)
                                 has_ms_in_this_sd = True
                                 logger.info(f"Found MS element in {entry_key}: path={element_path}, id={element_id}, sliceName={slice_name}, ms_path={ms_path}")
@@ -431,6 +576,9 @@ def process_package_file(tgz_path):
                         if not isinstance(data, dict): continue
                         resource_type = data.get('resourceType')
                         if not resource_type: continue
+
+                        # Remove narrative text element
+                        data = remove_narrative(data)
 
                         profile_meta = data.get('meta', {}).get('profile', [])
                         found_profile_match = False
@@ -570,7 +718,8 @@ def process_package_file(tgz_path):
     return results
 
 # --- Validation Functions ---
-def navigate_fhir_path(resource, path, extension_url=None):
+
+def _legacy_navigate_fhir_path(resource, path, extension_url=None):
     """Navigates a FHIR resource using a FHIRPath-like expression, handling nested structures."""
     logger.debug(f"Navigating FHIR path: {path}")
     if not resource or not path:
@@ -646,7 +795,24 @@ def navigate_fhir_path(resource, path, extension_url=None):
     logger.debug(f"Path {path} resolved to: {result}")
     return result
 
-def validate_resource_against_profile(package_name, version, resource, include_dependencies=True):
+def navigate_fhir_path(resource, path, extension_url=None):
+    """Navigates a FHIR resource using FHIRPath expressions."""
+    logger.debug(f"Navigating FHIR path: {path}, extension_url={extension_url}")
+    if not resource or not path:
+        return None
+    try:
+        # Adjust path for extension filtering
+        if extension_url and 'extension' in path:
+            path = f"{path}[url='{extension_url}']"
+        result = evaluate(resource, path)
+        # Return first result if list, None if empty
+        return result[0] if result else None
+    except Exception as e:
+        logger.error(f"FHIRPath evaluation failed for {path}: {e}")
+        # Fallback to legacy navigation for compatibility
+        return _legacy_navigate_fhir_path(resource, path, extension_url)
+
+def _legacy_validate_resource_against_profile(package_name, version, resource, include_dependencies=True):
     """Validates a FHIR resource against a StructureDefinition in the specified package."""
     logger.debug(f"Validating resource {resource.get('resourceType')} against {package_name}#{version}, include_dependencies={include_dependencies}")
     result = {
@@ -750,7 +916,7 @@ def validate_resource_against_profile(package_name, version, resource, include_d
         definition = element.get('definition', 'No definition provided in StructureDefinition.')
 
         # Check required elements
-        if min_val > 0 and not '.' in path[1 + path.find('.'):]:
+        if min_val > 0 and not '.' in path[1 + path.find('.'):] if path.find('.') != -1 else True:
             value = navigate_fhir_path(resource, path)
             if value is None or (isinstance(value, list) and not any(value)):
                 error_msg = f"{resource.get('resourceType')}/{resource.get('id', 'unknown')}: Required element {path} missing"
@@ -763,7 +929,7 @@ def validate_resource_against_profile(package_name, version, resource, include_d
                 logger.info(f"Validation error: Required element {path} missing")
 
         # Check must-support elements
-        if must_support and not '.' in path[1 + path.find('.'):]:
+        if must_support and not '.' in path[1 + path.find('.'):] if path.find('.') != -1 else True:
             if '[x]' in path:
                 base_path = path.replace('[x]', '')
                 found = False
@@ -825,6 +991,145 @@ def validate_resource_against_profile(package_name, version, resource, include_d
         'warning_count': len(warnings)
     }
     logger.debug(f"Validation result: valid={result['valid']}, errors={len(result['errors'])}, warnings={len(result['warnings'])}")
+    return result
+
+def validate_resource_against_profile(package_name, version, resource, include_dependencies=True):
+    result = {
+        'valid': True,
+        'errors': [],
+        'warnings': [],
+        'details': [],
+        'resource_type': resource.get('resourceType'),
+        'resource_id': resource.get('id', 'unknown'),
+        'profile': resource.get('meta', {}).get('profile', [None])[0]
+    }
+
+    # Attempt HAPI validation if a profile is specified
+    if result['profile']:
+        try:
+            hapi_url = f"http://localhost:8080/fhir/{resource['resourceType']}/$validate?profile={result['profile']}"
+            response = requests.post(
+                hapi_url,
+                json=resource,
+                headers={'Content-Type': 'application/fhir+json', 'Accept': 'application/fhir+json'},
+                timeout=10
+            )
+            response.raise_for_status()
+            outcome = response.json()
+            if outcome.get('resourceType') == 'OperationOutcome':
+                for issue in outcome.get('issue', []):
+                    severity = issue.get('severity')
+                    diagnostics = issue.get('diagnostics', issue.get('details', {}).get('text', 'No details provided'))
+                    detail = {
+                        'issue': diagnostics,
+                        'severity': severity,
+                        'description': issue.get('details', {}).get('text', diagnostics)
+                    }
+                    if severity in ['error', 'fatal']:
+                        result['valid'] = False
+                        result['errors'].append(diagnostics)
+                    elif severity == 'warning':
+                        result['warnings'].append(diagnostics)
+                    result['details'].append(detail)
+                result['summary'] = {
+                    'error_count': len(result['errors']),
+                    'warning_count': len(result['warnings'])
+                }
+                logger.debug(f"HAPI validation for {result['resource_type']}/{result['resource_id']}: valid={result['valid']}, errors={len(result['errors'])}, warnings={len(result['warnings'])}")
+                return result
+            else:
+                logger.warning(f"HAPI returned non-OperationOutcome: {outcome.get('resourceType')}")
+        except requests.RequestException as e:
+            logger.error(f"HAPI validation failed for {result['resource_type']}/{result['resource_id']}: {e}")
+            result['details'].append({
+                'issue': f"HAPI validation failed: {str(e)}",
+                'severity': 'warning',
+                'description': 'Falling back to local validation due to HAPI server error.'
+            })
+
+    # Fallback to local validation
+    download_dir = _get_download_dir()
+    if not download_dir:
+        result['valid'] = False
+        result['errors'].append("Could not access download directory")
+        result['details'].append({
+            'issue': "Could not access download directory",
+            'severity': 'error',
+            'description': "The server could not locate the directory where FHIR packages are stored."
+        })
+        return result
+
+    tgz_path = os.path.join(download_dir, construct_tgz_filename(package_name, version))
+    sd_data, sd_path = find_and_extract_sd(tgz_path, resource.get('resourceType'), result['profile'])
+    if not sd_data:
+        result['valid'] = False
+        result['errors'].append(f"No StructureDefinition found for {resource.get('resourceType')}")
+        result['details'].append({
+            'issue': f"No StructureDefinition found for {resource.get('resourceType')}",
+            'severity': 'error',
+            'description': f"The package {package_name}#{version} does not contain a matching StructureDefinition."
+        })
+        return result
+
+    elements = sd_data.get('snapshot', {}).get('element', [])
+    for element in elements:
+        path = element.get('path')
+        min_val = element.get('min', 0)
+        must_support = element.get('mustSupport', False)
+        slicing = element.get('slicing')
+        slice_name = element.get('sliceName')
+
+        # Check required elements
+        if min_val > 0:
+            value = navigate_fhir_path(resource, path)
+            if value is None or (isinstance(value, list) and not any(value)):
+                result['valid'] = False
+                result['errors'].append(f"Required element {path} missing")
+                result['details'].append({
+                    'issue': f"Required element {path} missing",
+                    'severity': 'error',
+                    'description': f"Element {path} has min={min_val} in profile {result['profile'] or 'unknown'}"
+                })
+
+        # Check must-support elements
+        if must_support:
+            value = navigate_fhir_path(resource, slice_name if slice_name else path)
+            if value is None or (isinstance(value, list) and not any(value)):
+                result['warnings'].append(f"Must Support element {path} missing or empty")
+                result['details'].append({
+                    'issue': f"Must Support element {path} missing or empty",
+                    'severity': 'warning',
+                    'description': f"Element {path} is marked as Must Support in profile {result['profile'] or 'unknown'}"
+                })
+
+        # Validate slicing
+        if slicing and not slice_name:  # Parent slicing element
+            discriminator = slicing.get('discriminator', [])
+            for d in discriminator:
+                d_type = d.get('type')
+                d_path = d.get('path')
+                if d_type == 'value':
+                    sliced_elements = navigate_fhir_path(resource, path)
+                    if isinstance(sliced_elements, list):
+                        seen_values = set()
+                        for elem in sliced_elements:
+                            d_value = navigate_fhir_path(elem, d_path)
+                            if d_value in seen_values:
+                                result['valid'] = False
+                                result['errors'].append(f"Duplicate discriminator value {d_value} for {path}.{d_path}")
+                            seen_values.add(d_value)
+                elif d_type == 'type':
+                    sliced_elements = navigate_fhir_path(resource, path)
+                    if isinstance(sliced_elements, list):
+                        for elem in sliced_elements:
+                            if not navigate_fhir_path(elem, d_path):
+                                result['valid'] = False
+                                result['errors'].append(f"Missing discriminator type {d_path} for {path}")
+
+    result['summary'] = {
+        'error_count': len(result['errors']),
+        'warning_count': len(result['warnings'])
+    }
     return result
 
 def validate_bundle_against_profile(package_name, version, bundle, include_dependencies=True):
@@ -950,7 +1255,7 @@ def get_structure_definition(package_name, version, resource_type):
         element_id = element.get('id', '')
         slice_name = element.get('sliceName')
         if element.get('mustSupport', False):
-            ms_path = element_id if slice_name else path
+            ms_path = f"{path}[sliceName='{slice_name}']" if slice_name else element_id
             must_support_paths.append(ms_path)
         if 'slicing' in element:
             slice_info = {
@@ -1384,6 +1689,250 @@ def validate_sample():
             'warnings': [],
             'results': {}
         }), 500
+
+def run_gofsh(input_path, output_dir, output_style, log_level, fhir_version=None, fishing_trip=False, dependencies=None, indent_rules=False, meta_profile='only-one', alias_file=None, no_alias=False):
+    """Run GoFSH with advanced options and return FSH output and optional comparison report."""
+    # Use a temporary output directory for initial GoFSH run
+    temp_output_dir = tempfile.mkdtemp()
+    os.chmod(temp_output_dir, 0o777)
+    
+    cmd = ["gofsh", input_path, "-o", temp_output_dir, "-s", output_style, "-l", log_level]
+    if fhir_version:
+        cmd.extend(["-u", fhir_version])
+    if dependencies:
+        for dep in dependencies:
+            cmd.extend(["--dependency", dep.strip()])
+    if indent_rules:
+        cmd.append("--indent")
+    if no_alias:
+        cmd.append("--no-alias")
+    if alias_file:
+        cmd.extend(["--alias-file", alias_file])
+    if meta_profile != 'only-one':
+        cmd.extend(["--meta-profile", meta_profile])
+    
+    # Set environment to disable TTY interactions
+    env = os.environ.copy()
+    env["NODE_NO_READLINE"] = "1"
+    env["NODE_NO_INTERACTIVE"] = "1"
+    env["TERM"] = "dumb"
+    env["CI"] = "true"
+    env["FORCE_COLOR"] = "0"
+    env["NODE_ENV"] = "production"
+    
+    # Create a wrapper script in /tmp
+    wrapper_script = "/tmp/gofsh_wrapper.sh"
+    output_file = "/tmp/gofsh_output.log"
+    try:
+        with open(wrapper_script, 'w') as f:
+            f.write("#!/bin/bash\n")
+            # Redirect /dev/tty writes to /dev/null
+            f.write("exec 3>/dev/null\n")
+            f.write(" ".join([f'"{arg}"' for arg in cmd]) + f" </dev/null >{output_file} 2>&1\n")
+        os.chmod(wrapper_script, 0o755)
+        
+        # Log the wrapper script contents for debugging
+        with open(wrapper_script, 'r') as f:
+            logger.debug(f"Wrapper script contents:\n{f.read()}")
+    except Exception as e:
+        logger.error(f"Failed to create wrapper script {wrapper_script}: {str(e)}", exc_info=True)
+        return None, None, f"Failed to create wrapper script: {str(e)}"
+    
+    try:
+        # Log directory contents before execution
+        logger.debug(f"Temp output directory contents before GoFSH: {os.listdir(temp_output_dir)}")
+        
+        result = subprocess.run(
+            [wrapper_script],
+            check=True,
+            env=env
+        )
+        # Read output from the log file
+        with open(output_file, 'r', encoding='utf-8') as f:
+            output = f.read()
+        logger.debug(f"GoFSH output:\n{output}")
+        
+        # Prepare final output directory
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
+        os.chmod(output_dir, 0o777)
+        
+        # Copy .fsh files, sushi-config.yaml, and input JSON to final output directory
+        copied_files = []
+        for root, _, files in os.walk(temp_output_dir):
+            for file in files:
+                src_path = os.path.join(root, file)
+                if file.endswith(".fsh") or file == "sushi-config.yaml":
+                    relative_path = os.path.relpath(src_path, temp_output_dir)
+                    dst_path = os.path.join(output_dir, relative_path)
+                    os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+                    shutil.copy2(src_path, dst_path)
+                    copied_files.append(relative_path)
+        
+        # Copy input JSON to final directory
+        input_filename = os.path.basename(input_path)
+        dst_input_path = os.path.join(output_dir, "input", input_filename)
+        os.makedirs(os.path.dirname(dst_input_path), exist_ok=True)
+        shutil.copy2(input_path, dst_input_path)
+        copied_files.append(os.path.join("input", input_filename))
+        
+        # Create a minimal sushi-config.yaml if missing
+        sushi_config_path = os.path.join(output_dir, "sushi-config.yaml")
+        if not os.path.exists(sushi_config_path):
+            minimal_config = {
+                "id": "fhirflare.temp",
+                "canonical": "http://fhirflare.org",
+                "name": "FHIRFLARETempIG",
+                "version": "0.1.0",
+                "fhirVersion": fhir_version or "4.0.1",
+                "FSHOnly": True,
+                "dependencies": dependencies or []
+            }
+            with open(sushi_config_path, 'w') as f:
+                json.dump(minimal_config, f, indent=2)
+            copied_files.append("sushi-config.yaml")
+        
+        # Run GoFSH with --fshing-trip in a fresh temporary directory
+        comparison_report = None
+        if fishing_trip:
+            fishing_temp_dir = tempfile.mkdtemp()
+            os.chmod(fishing_temp_dir, 0o777)
+            gofsh_fishing_cmd = ["gofsh", input_path, "-o", fishing_temp_dir, "-s", output_style, "-l", log_level, "--fshing-trip"]
+            if fhir_version:
+                gofsh_fishing_cmd.extend(["-u", fhir_version])
+            if dependencies:
+                for dep in dependencies:
+                    gofsh_fishing_cmd.extend(["--dependency", dep.strip()])
+            if indent_rules:
+                gofsh_fishing_cmd.append("--indent")
+            if no_alias:
+                gofsh_fishing_cmd.append("--no-alias")
+            if alias_file:
+                gofsh_fishing_cmd.extend(["--alias-file", alias_file])
+            if meta_profile != 'only-one':
+                gofsh_fishing_cmd.extend(["--meta-profile", meta_profile])
+            
+            try:
+                with open(wrapper_script, 'w') as f:
+                    f.write("#!/bin/bash\n")
+                    f.write("exec 3>/dev/null\n")
+                    f.write("exec >/dev/null 2>&1\n")  # Suppress all output to /dev/tty
+                    f.write(" ".join([f'"{arg}"' for arg in gofsh_fishing_cmd]) + f" </dev/null >{output_file} 2>&1\n")
+                os.chmod(wrapper_script, 0o755)
+                
+                logger.debug(f"GoFSH fishing-trip wrapper script contents:\n{open(wrapper_script, 'r').read()}")
+                
+                result = subprocess.run(
+                    [wrapper_script],
+                    check=True,
+                    env=env
+                )
+                with open(output_file, 'r', encoding='utf-8') as f:
+                    fishing_output = f.read()
+                logger.debug(f"GoFSH fishing-trip output:\n{fishing_output}")
+                
+                # Copy fshing-trip-comparison.html to final directory
+                for root, _, files in os.walk(fishing_temp_dir):
+                    for file in files:
+                        if file.endswith(".html") and "fshing-trip-comparison" in file.lower():
+                            src_path = os.path.join(root, file)
+                            dst_path = os.path.join(output_dir, file)
+                            shutil.copy2(src_path, dst_path)
+                            copied_files.append(file)
+                            with open(dst_path, 'r', encoding='utf-8') as f:
+                                comparison_report = f.read()
+            except subprocess.CalledProcessError as e:
+                error_output = ""
+                if os.path.exists(output_file):
+                    with open(output_file, 'r', encoding='utf-8') as f:
+                        error_output = f.read()
+                logger.error(f"GoFSH fishing-trip failed: {error_output}")
+                return None, None, f"GoFSH fishing-trip failed: {error_output}"
+            finally:
+                if os.path.exists(fishing_temp_dir):
+                    shutil.rmtree(fishing_temp_dir, ignore_errors=True)
+        
+        # Read FSH files from final output directory
+        fsh_content = []
+        for root, _, files in os.walk(output_dir):
+            for file in files:
+                if file.endswith(".fsh"):
+                    with open(os.path.join(root, file), 'r', encoding='utf-8') as f:
+                        fsh_content.append(f.read())
+        fsh_output = "\n\n".join(fsh_content)
+        
+        # Log copied files
+        logger.debug(f"Copied files to final output directory: {copied_files}")
+        
+        logger.info(f"GoFSH executed successfully for {input_path}")
+        return fsh_output, comparison_report, None
+    except subprocess.CalledProcessError as e:
+        error_output = ""
+        if os.path.exists(output_file):
+            with open(output_file, 'r', encoding='utf-8') as f:
+                error_output = f.read()
+        logger.error(f"GoFSH failed: {error_output}")
+        return None, None, f"GoFSH failed: {error_output}"
+    except Exception as e:
+        logger.error(f"Error running GoFSH: {str(e)}", exc_info=True)
+        return None, None, f"Error running GoFSH: {str(e)}"
+    finally:
+        # Clean up temporary files
+        if os.path.exists(wrapper_script):
+            os.remove(wrapper_script)
+        if os.path.exists(output_file):
+            os.remove(output_file)
+        if os.path.exists(temp_output_dir):
+            shutil.rmtree(temp_output_dir, ignore_errors=True)
+
+def process_fhir_input(input_mode, fhir_file, fhir_text, alias_file=None):
+    """Process user input (file or text) and save to temporary files."""
+    temp_dir = tempfile.mkdtemp()
+    input_file = None
+    alias_path = None
+    
+    try:
+        if input_mode == 'file' and fhir_file:
+            content = fhir_file.read().decode('utf-8')
+            file_type = 'json' if content.strip().startswith('{') else 'xml'
+            input_file = os.path.join(temp_dir, f"input.{file_type}")
+            with open(input_file, 'w') as f:
+                f.write(content)
+        elif input_mode == 'text' and fhir_text:
+            content = fhir_text.strip()
+            file_type = 'json' if content.strip().startswith('{') else 'xml'
+            input_file = os.path.join(temp_dir, f"input.{file_type}")
+            with open(input_file, 'w') as f:
+                f.write(content)
+        else:
+            return None, None, None, "No input provided"
+        
+        # Basic validation
+        if file_type == 'json':
+            try:
+                json.loads(content)
+            except json.JSONDecodeError:
+                return None, None, None, "Invalid JSON format"
+        elif file_type == 'xml':
+            try:
+                ET.fromstring(content)
+            except ET.ParseError:
+                return None, None, None, "Invalid XML format"
+        
+        # Process alias file if provided
+        if alias_file:
+            alias_content = alias_file.read().decode('utf-8')
+            alias_path = os.path.join(temp_dir, "aliases.fsh")
+            with open(alias_path, 'w') as f:
+                f.write(alias_content)
+        
+        logger.debug(f"Processed input: {(input_file, alias_path)}")
+        return input_file, temp_dir, alias_path, None
+    except Exception as e:
+        logger.error(f"Error processing input: {str(e)}", exc_info=True)
+        return None, None, None, f"Error processing input: {str(e)}"
+
 # --- Standalone Test ---
 if __name__ == '__main__':
     logger.info("Running services.py directly for testing.")

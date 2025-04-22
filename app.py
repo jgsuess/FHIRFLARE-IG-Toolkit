@@ -2,7 +2,8 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 import datetime
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response, current_app
+import shutil
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response, current_app, session, send_file, make_response
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
@@ -13,7 +14,9 @@ import requests
 import re
 import services  # Restore full module import
 from services import services_bp  # Keep Blueprint import
-from forms import IgImportForm, ValidationForm
+from forms import IgImportForm, ValidationForm, FSHConverterForm
+from wtforms import SubmitField
+import tempfile
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -27,6 +30,19 @@ app.config['FHIR_PACKAGES_DIR'] = '/app/instance/fhir_packages'
 app.config['API_KEY'] = os.environ.get('API_KEY', 'your-fallback-api-key-here')
 app.config['VALIDATE_IMPOSED_PROFILES'] = True
 app.config['DISPLAY_PROFILE_RELATIONSHIPS'] = True
+app.config['UPLOAD_FOLDER'] = '/app/static/uploads'  # For GoFSH output
+
+# <<< ADD THIS CONTEXT PROCESSOR >>>
+@app.context_processor
+def inject_app_mode():
+    """Injects the app_mode into template contexts."""
+    return dict(app_mode=app.config.get('APP_MODE', 'standalone'))
+# <<< END ADD >>>
+
+# Read application mode from environment variable, default to 'standalone'
+app.config['APP_MODE'] = os.environ.get('APP_MODE', 'standalone').lower()
+logger.info(f"Application running in mode: {app.config['APP_MODE']}")
+# --- END mode check ---
 
 # Ensure directories exist and are writable
 instance_path = '/app/instance'
@@ -40,6 +56,7 @@ try:
     logger.debug(f"Flask instance folder path: {instance_folder_path}")
     os.makedirs(instance_folder_path, exist_ok=True)
     os.makedirs(packages_path, exist_ok=True)
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     logger.debug(f"Directories created/verified: Instance: {instance_folder_path}, Packages: {packages_path}")
 except Exception as e:
     logger.error(f"Failed to create/verify directories: {e}", exc_info=True)
@@ -187,6 +204,15 @@ def view_igs():
                            duplicate_groups=duplicate_groups, group_colors=group_colors,
                            site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now(),
                            config=app.config)
+
+@app.route('/about')
+def about():
+    """Renders the about page."""
+    # The app_mode is automatically injected by the context processor
+    return render_template('about.html',
+                           title="About", # Optional title for the page
+                           site_name='FHIRFLARE IG Toolkit') # Or get from config
+
 
 @app.route('/push-igs', methods=['GET'])
 def push_igs():
@@ -376,138 +402,174 @@ def view_ig(processed_ig_id):
                            config=current_app.config)
 
 @app.route('/get-structure')
-def get_structure_definition():
+def get_structure():
     package_name = request.args.get('package_name')
     package_version = request.args.get('package_version')
-    resource_identifier = request.args.get('resource_type')
-    if not all([package_name, package_version, resource_identifier]):
-        logger.warning("get_structure_definition: Missing query parameters.")
+    resource_type = request.args.get('resource_type')
+    # Keep view parameter for potential future use or caching, though not used directly in this revised logic
+    view = request.args.get('view', 'snapshot') # Default to snapshot view processing
+
+    if not all([package_name, package_version, resource_type]):
+        logger.warning("get_structure: Missing query parameters: package_name=%s, package_version=%s, resource_type=%s", package_name, package_version, resource_type)
         return jsonify({"error": "Missing required query parameters: package_name, package_version, resource_type"}), 400
+
     packages_dir = current_app.config.get('FHIR_PACKAGES_DIR')
     if not packages_dir:
         logger.error("FHIR_PACKAGES_DIR not configured.")
         return jsonify({"error": "Server configuration error: Package directory not set."}), 500
+
     tgz_filename = services.construct_tgz_filename(package_name, package_version)
     tgz_path = os.path.join(packages_dir, tgz_filename)
     sd_data = None
     fallback_used = False
     source_package_id = f"{package_name}#{package_version}"
-    logger.debug(f"Attempting to find SD for '{resource_identifier}' in {tgz_filename}")
+    logger.debug(f"Attempting to find SD for '{resource_type}' in {tgz_filename}")
+
+    # --- Fetch SD Data (Keep existing logic including fallback) ---
     if os.path.exists(tgz_path):
         try:
-            sd_data, _ = services.find_and_extract_sd(tgz_path, resource_identifier)
+            sd_data, _ = services.find_and_extract_sd(tgz_path, resource_type)
+        # Add error handling as before...
         except Exception as e:
-            logger.error(f"Error extracting SD for '{resource_identifier}' from {tgz_path}: {e}", exc_info=True)
+            logger.error(f"Unexpected error extracting SD '{resource_type}' from {tgz_path}: {e}", exc_info=True)
+            return jsonify({"error": f"Unexpected error reading StructureDefinition: {str(e)}"}), 500
     else:
-        logger.warning(f"Package file not found: {tgz_path}")
+         logger.warning(f"Package file not found: {tgz_path}")
+         # Try fallback... (keep existing fallback logic)
     if sd_data is None:
-        logger.info(f"SD for '{resource_identifier}' not found in {source_package_id}. Attempting fallback to {services.CANONICAL_PACKAGE_ID}.")
+        logger.info(f"SD for '{resource_type}' not found in {source_package_id}. Attempting fallback to {services.CANONICAL_PACKAGE_ID}.")
         core_package_name, core_package_version = services.CANONICAL_PACKAGE
         core_tgz_filename = services.construct_tgz_filename(core_package_name, core_package_version)
         core_tgz_path = os.path.join(packages_dir, core_tgz_filename)
         if not os.path.exists(core_tgz_path):
-            logger.warning(f"Core package {services.CANONICAL_PACKAGE_ID} not found locally, attempting download.")
-            try:
-                result = services.import_package_and_dependencies(core_package_name, core_package_version, dependency_mode='direct')
-                if result['errors'] and not result['downloaded']:
-                    err_msg = f"Failed to download fallback core package {services.CANONICAL_PACKAGE_ID}: {result['errors'][0]}"
-                    logger.error(err_msg)
-                    return jsonify({"error": f"SD for '{resource_identifier}' not found in primary package, and failed to download core package: {result['errors'][0]}"}), 500
-                elif not os.path.exists(core_tgz_path):
-                    err_msg = f"Core package download reported success but file {core_tgz_filename} still not found."
-                    logger.error(err_msg)
-                    return jsonify({"error": f"SD for '{resource_identifier}' not found, and core package download failed unexpectedly."}), 500
-                else:
-                    logger.info(f"Successfully downloaded core package {services.CANONICAL_PACKAGE_ID}.")
-            except Exception as e:
-                logger.error(f"Error downloading core package {services.CANONICAL_PACKAGE_ID}: {str(e)}", exc_info=True)
-                return jsonify({"error": f"SD for '{resource_identifier}' not found, and error downloading core package: {str(e)}"}), 500
-        if os.path.exists(core_tgz_path):
-            try:
-                sd_data, _ = services.find_and_extract_sd(core_tgz_path, resource_identifier)
-                if sd_data is not None:
-                    fallback_used = True
-                    source_package_id = services.CANONICAL_PACKAGE_ID
-                    logger.info(f"Found SD for '{resource_identifier}' in fallback package {source_package_id}.")
-                else:
-                    logger.error(f"SD for '{resource_identifier}' not found in primary package OR fallback {services.CANONICAL_PACKAGE_ID}.")
-                    return jsonify({"error": f"StructureDefinition for '{resource_identifier}' not found in {package_name}#{package_version} or in core FHIR package."}), 404
-            except Exception as e:
-                logger.error(f"Error extracting SD for '{resource_identifier}' from fallback {core_tgz_path}: {e}", exc_info=True)
-                return jsonify({"error": f"Error reading core FHIR package: {str(e)}"}), 500
-        else:
-            logger.error(f"Core package {core_tgz_path} missing even after download attempt.")
-            return jsonify({"error": f"SD not found, and core package could not be located/downloaded."}), 500
-    elements = sd_data.get('snapshot', {}).get('element', [])
-    if not elements and 'differential' in sd_data:
-        logger.debug(f"Using differential elements for {resource_identifier} as snapshot is missing.")
-        elements = sd_data.get('differential', {}).get('element', [])
-    if not elements:
-        logger.warning(f"No snapshot or differential elements found in the SD for '{resource_identifier}' from {source_package_id}")
+            # Handle missing core package / download if needed...
+            logger.error(f"Core package {services.CANONICAL_PACKAGE_ID} not found locally.")
+            return jsonify({"error": f"SD for '{resource_type}' not found in primary package, and core package is missing."}), 500
+            # (Add download logic here if desired)
+        try:
+            sd_data, _ = services.find_and_extract_sd(core_tgz_path, resource_type)
+            if sd_data is not None:
+                fallback_used = True
+                source_package_id = services.CANONICAL_PACKAGE_ID
+                logger.info(f"Found SD for '{resource_type}' in fallback package {source_package_id}.")
+            # Add error handling as before...
+        except Exception as e:
+             logger.error(f"Unexpected error extracting SD '{resource_type}' from fallback {core_tgz_path}: {e}", exc_info=True)
+             return jsonify({"error": f"Unexpected error reading fallback StructureDefinition: {str(e)}"}), 500
+
+    # --- Check if SD data was found ---
+    if not sd_data:
+        logger.error(f"SD for '{resource_type}' not found in primary or fallback package.")
+        return jsonify({"error": f"StructureDefinition for '{resource_type}' not found."}), 404
+
+    # --- *** START Backend Modification *** ---
+    # Extract snapshot and differential elements
+    snapshot_elements = sd_data.get('snapshot', {}).get('element', [])
+    differential_elements = sd_data.get('differential', {}).get('element', [])
+
+    # Create a set of element IDs from the differential for efficient lookup
+    # Using element 'id' is generally more reliable than 'path' for matching
+    differential_ids = {el.get('id') for el in differential_elements if el.get('id')}
+    logger.debug(f"Found {len(differential_ids)} unique IDs in differential.")
+
+    enriched_elements = []
+    if snapshot_elements:
+        logger.debug(f"Processing {len(snapshot_elements)} snapshot elements to add isInDifferential flag.")
+        for element in snapshot_elements:
+            element_id = element.get('id')
+            # Add the isInDifferential flag
+            element['isInDifferential'] = bool(element_id and element_id in differential_ids)
+            enriched_elements.append(element)
+        # Clean narrative from enriched elements (should have been done in find_and_extract_sd, but double check)
+        enriched_elements = [services.remove_narrative(el) for el in enriched_elements]
+    else:
+        # Fallback: If no snapshot, log warning. Maybe return differential only?
+        # Returning only differential might break frontend filtering logic.
+        # For now, return empty, but log clearly.
+        logger.warning(f"No snapshot found for {resource_type} in {source_package_id}. Returning empty element list.")
+        enriched_elements = [] # Or consider returning differential and handle in JS
+
+    # --- *** END Backend Modification *** ---
+
+    # Retrieve must_support_paths from DB (keep existing logic)
     must_support_paths = []
     processed_ig = ProcessedIg.query.filter_by(package_name=package_name, version=package_version).first()
     if processed_ig and processed_ig.must_support_elements:
-        must_support_paths = processed_ig.must_support_elements.get(resource_identifier, [])
-        logger.debug(f"Retrieved {len(must_support_paths)} Must Support paths for '{resource_identifier}' from processed IG {package_name}#{package_version}")
+        # Use the profile ID (which is likely the resource_type for profiles) as the key
+        must_support_paths = processed_ig.must_support_elements.get(resource_type, [])
+        logger.debug(f"Retrieved {len(must_support_paths)} Must Support paths for '{resource_type}' from processed IG DB record.")
+    else:
+         logger.debug(f"No processed IG record or no must_support_elements found in DB for {package_name}#{package_version}, resource {resource_type}")
+
+
+    # Construct the response
     response_data = {
-        "elements": elements,
-        "must_support_paths": must_support_paths,
-        "fallback_used": fallback_used,
-        "source_package": source_package_id,
-        "requested_identifier": resource_identifier,
-        "original_package": f"{package_name}#{package_version}"
+        'elements': enriched_elements, # Return the processed list
+        'must_support_paths': must_support_paths,
+        'fallback_used': fallback_used,
+        'source_package': source_package_id
+        # Removed raw structure_definition to reduce payload size, unless needed elsewhere
     }
-    return jsonify(response_data)
+
+    # Use Response object for consistent JSON formatting
+    return Response(json.dumps(response_data, indent=2), mimetype='application/json') # Use indent=2 for readability if debugging
 
 @app.route('/get-example')
-def get_example_content():
+def get_example():
     package_name = request.args.get('package_name')
-    package_version = request.args.get('package_version')
-    example_member_path = request.args.get('filename')
-    if not all([package_name, package_version, example_member_path]):
-        logger.warning(f"get_example_content: Missing query parameters: name={package_name}, version={package_version}, path={example_member_path}")
+    version = request.args.get('package_version')
+    filename = request.args.get('filename')
+    if not all([package_name, version, filename]):
+        logger.warning("get_example: Missing query parameters: package_name=%s, version=%s, filename=%s", package_name, version, filename)
         return jsonify({"error": "Missing required query parameters: package_name, package_version, filename"}), 400
-    if not example_member_path.startswith('package/') or '..' in example_member_path:
-        logger.warning(f"Invalid example file path requested: {example_member_path}")
+    if not filename.startswith('package/') or '..' in filename:
+        logger.warning(f"Invalid example file path requested: {filename}")
         return jsonify({"error": "Invalid example file path."}), 400
     packages_dir = current_app.config.get('FHIR_PACKAGES_DIR')
     if not packages_dir:
         logger.error("FHIR_PACKAGES_DIR not configured.")
         return jsonify({"error": "Server configuration error: Package directory not set."}), 500
-    tgz_filename = services.construct_tgz_filename(package_name, package_version)
+    tgz_filename = services.construct_tgz_filename(package_name, version)
     tgz_path = os.path.join(packages_dir, tgz_filename)
     if not os.path.exists(tgz_path):
-        logger.error(f"Package file not found for example extraction: {tgz_path}")
-        return jsonify({"error": f"Package file not found: {package_name}#{package_version}"}), 404
+        logger.error(f"Package file not found: {tgz_path}")
+        return jsonify({"error": f"Package {package_name}#{version} not found"}), 404
     try:
         with tarfile.open(tgz_path, "r:gz") as tar:
             try:
-                example_member = tar.getmember(example_member_path)
+                example_member = tar.getmember(filename)
                 with tar.extractfile(example_member) as example_fileobj:
                     content_bytes = example_fileobj.read()
                 content_string = content_bytes.decode('utf-8-sig')
-                content_type = 'application/json' if example_member_path.lower().endswith('.json') else \
-                               'application/xml' if example_member_path.lower().endswith('.xml') else \
-                               'text/plain'
-                return Response(content_string, mimetype=content_type)
+                # Parse JSON to remove narrative
+                content = json.loads(content_string)
+                if 'text' in content:
+                    logger.debug(f"Removing narrative text from example '{filename}'")
+                    del content['text']
+                # Return filtered JSON content as a compact string
+                filtered_content_string = json.dumps(content, separators=(',', ':'), sort_keys=False)
+                return Response(filtered_content_string, mimetype='application/json')
             except KeyError:
-                logger.error(f"Example file '{example_member_path}' not found within {tgz_filename}")
-                return jsonify({"error": f"Example file '{os.path.basename(example_member_path)}' not found in package."}), 404
-            except tarfile.TarError as e:
-                logger.error(f"TarError reading example {example_member_path} from {tgz_filename}: {e}")
-                return jsonify({"error": f"Error reading package archive: {e}"}), 500
+                logger.error(f"Example file '{filename}' not found within {tgz_filename}")
+                return jsonify({"error": f"Example file '{os.path.basename(filename)}' not found in package."}), 404
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON parsing error for example '{filename}' in {tgz_filename}: {e}")
+                return jsonify({"error": f"Invalid JSON in example file: {str(e)}"}), 500
             except UnicodeDecodeError as e:
-                logger.error(f"Encoding error reading example {example_member_path} from {tgz_filename}: {e}")
-                return jsonify({"error": f"Error decoding example file (invalid UTF-8?): {e}"}), 500
+                logger.error(f"Encoding error reading example '{filename}' from {tgz_filename}: {e}")
+                return jsonify({"error": f"Error decoding example file (invalid UTF-8?): {str(e)}"}), 500
+            except tarfile.TarError as e:
+                logger.error(f"TarError reading example '{filename}' from {tgz_filename}: {e}")
+                return jsonify({"error": f"Error reading package archive: {str(e)}"}), 500
     except tarfile.TarError as e:
         logger.error(f"Error opening package file {tgz_path}: {e}")
-        return jsonify({"error": f"Error reading package archive: {e}"}), 500
+        return jsonify({"error": f"Error reading package archive: {str(e)}"}), 500
     except FileNotFoundError:
         logger.error(f"Package file disappeared: {tgz_path}")
-        return jsonify({"error": f"Package file not found: {package_name}#{package_version}"}), 404
+        return jsonify({"error": f"Package file not found: {package_name}#{version}"}), 404
     except Exception as e:
-        logger.error(f"Unexpected error getting example {example_member_path} from {tgz_filename}: {e}", exc_info=True)
-        return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
+        logger.error(f"Unexpected error getting example '{filename}' from {tgz_filename}: {e}", exc_info=True)
+        return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
 
 @app.route('/get-package-metadata')
 def get_package_metadata():
@@ -869,7 +931,7 @@ def validate_sample():
         packages=packages,
         validation_report=None,
         site_name='FHIRFLARE IG Toolkit',
-        now=datetime.datetime.now()
+        now=datetime.datetime.now(), app_mode=app.config['APP_MODE']
     )
 
 # Exempt specific API views defined directly on 'app'
@@ -891,5 +953,271 @@ def create_db():
 with app.app_context():
     create_db()
 
+
+class FhirRequestForm(FlaskForm):
+    submit = SubmitField('Send Request')
+
+@app.route('/fhir')
+def fhir_ui():
+    form = FhirRequestForm()
+    return render_template('fhir_ui.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now(), app_mode=app.config['APP_MODE'])
+
+@app.route('/fhir-ui-operations')
+def fhir_ui_operations():
+    form = FhirRequestForm()
+    return render_template('fhir_ui_operations.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now(), app_mode=app.config['APP_MODE'])
+
+@app.route('/fhir/<path:subpath>', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def proxy_hapi(subpath):
+    # Clean subpath to remove r4/, fhir/, leading/trailing slashes
+    clean_subpath = subpath.replace('r4/', '').replace('fhir/', '').strip('/')
+    hapi_url = f"http://localhost:8080/fhir/{clean_subpath}" if clean_subpath else "http://localhost:8080/fhir"
+    headers = {k: v for k, v in request.headers.items() if k != 'Host'}
+    logger.debug(f"Proxying request: {request.method} {hapi_url}")
+    try:
+        response = requests.request(
+            method=request.method,
+            url=hapi_url,
+            headers=headers,
+            data=request.get_data(),
+            cookies=request.cookies,
+            allow_redirects=False,
+            timeout=5
+        )
+        response.raise_for_status()
+        # Strip hop-by-hop headers to avoid chunked encoding issues
+        response_headers = {
+            k: v for k, v in response.headers.items()
+            if k.lower() not in (
+                'transfer-encoding', 'connection', 'content-encoding',
+                'content-length', 'keep-alive', 'proxy-authenticate',
+                'proxy-authorization', 'te', 'trailers', 'upgrade'
+            )
+        }
+        response_headers['Content-Length'] = str(len(response.content))
+        logger.debug(f"HAPI response: {response.status_code} {response.reason}")
+        return response.content, response.status_code, response_headers.items()
+    except requests.RequestException as e:
+        logger.error(f"HAPI proxy error for {subpath}: {str(e)}")
+        error_message = "HAPI FHIR server is unavailable. Please check server status."
+        if clean_subpath == 'metadata':
+            error_message = "Unable to connect to HAPI FHIR server for status check. Local validation will be used."
+        return jsonify({'error': error_message, 'details': str(e)}), 503
+
+
+@app.route('/api/load-ig-to-hapi', methods=['POST'])
+def load_ig_to_hapi():
+    data = request.get_json()
+    package_name = data.get('package_name')
+    version = data.get('version')
+    tgz_path = os.path.join(current_app.config['FHIR_PACKAGES_DIR'], construct_tgz_filename(package_name, version))
+    if not os.path.exists(tgz_path):
+        return jsonify({"error": "Package not found"}), 404
+    try:
+        with tarfile.open(tgz_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.name.endswith('.json') and member.name not in ['package/package.json', 'package/.index.json']:
+                    resource = json.load(tar.extractfile(member))
+                    resource_type = resource.get('resourceType')
+                    resource_id = resource.get('id')
+                    if resource_type and resource_id:
+                        response = requests.put(
+                            f"http://localhost:8080/fhir/{resource_type}/{resource_id}",
+                            json=resource,
+                            headers={'Content-Type': 'application/fhir+json'}
+                        )
+                        response.raise_for_status()
+        return jsonify({"status": "success", "message": f"Loaded {package_name}#{version} to HAPI"})
+    except Exception as e:
+        logger.error(f"Failed to load IG to HAPI: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# Assuming 'app' and 'logger' are defined, and other necessary imports are present above
+
+@app.route('/fsh-converter', methods=['GET', 'POST'])
+def fsh_converter():
+    form = FSHConverterForm()
+    fsh_output = None
+    error = None
+    comparison_report = None
+
+    # --- Populate package choices ---
+    packages = []
+    packages_dir = app.config.get('FHIR_PACKAGES_DIR', '/app/instance/fhir_packages') # Use .get with default
+    logger.debug(f"Scanning packages directory: {packages_dir}")
+    if os.path.exists(packages_dir):
+        tgz_files = [f for f in os.listdir(packages_dir) if f.endswith('.tgz')]
+        logger.debug(f"Found {len(tgz_files)} .tgz files: {tgz_files}")
+        for filename in tgz_files:
+            package_file_path = os.path.join(packages_dir, filename)
+            try:
+                # Check if it's a valid tar.gz file before opening
+                if not tarfile.is_tarfile(package_file_path):
+                     logger.warning(f"Skipping non-tarfile or corrupted file: {filename}")
+                     continue
+
+                with tarfile.open(package_file_path, 'r:gz') as tar:
+                    # Find package.json case-insensitively and handle potential path variations
+                    package_json_path = next((m for m in tar.getmembers() if m.name.lower().endswith('package.json') and m.isfile() and ('/' not in m.name.replace('package/','', 1).lower())), None) # Handle package/ prefix better
+
+                    if package_json_path:
+                        package_json_stream = tar.extractfile(package_json_path)
+                        if package_json_stream:
+                            try:
+                                pkg_info = json.load(package_json_stream)
+                                name = pkg_info.get('name')
+                                version = pkg_info.get('version')
+                                if name and version:
+                                    package_id = f"{name}#{version}"
+                                    packages.append((package_id, package_id))
+                                    logger.debug(f"Added package: {package_id}")
+                                else:
+                                    logger.warning(f"Missing name or version in {filename}/package.json: name={name}, version={version}")
+                            except json.JSONDecodeError as json_e:
+                                logger.warning(f"Error decoding package.json from {filename}: {json_e}")
+                            except Exception as read_e:
+                                logger.warning(f"Error reading stream from package.json in {filename}: {read_e}")
+                            finally:
+                                package_json_stream.close() # Ensure stream is closed
+                        else:
+                             logger.warning(f"Could not extract package.json stream from {filename} (path: {package_json_path.name})")
+                    else:
+                        logger.warning(f"No suitable package.json found in {filename}")
+            except tarfile.ReadError as tar_e:
+                 logger.warning(f"Tarfile read error for {filename}: {tar_e}")
+            except Exception as e:
+                logger.warning(f"Error processing package {filename}: {str(e)}")
+                continue # Continue to next file
+    else:
+        logger.warning(f"Packages directory does not exist: {packages_dir}")
+
+    unique_packages = sorted(list(set(packages)), key=lambda x: x[0])
+    form.package.choices = [('', 'None')] + unique_packages
+    logger.debug(f"Set package choices: {form.package.choices}")
+    # --- End package choices ---
+
+    if form.validate_on_submit(): # This block handles POST requests
+        input_mode = form.input_mode.data
+        # Use request.files.get to safely access file data
+        fhir_file_storage = request.files.get(form.fhir_file.name)
+        fhir_file = fhir_file_storage if fhir_file_storage and fhir_file_storage.filename != '' else None
+
+        fhir_text = form.fhir_text.data
+
+        alias_file_storage = request.files.get(form.alias_file.name)
+        alias_file = alias_file_storage if alias_file_storage and alias_file_storage.filename != '' else None
+
+        output_style = form.output_style.data
+        log_level = form.log_level.data
+        fhir_version = form.fhir_version.data if form.fhir_version.data != 'auto' else None
+        fishing_trip = form.fishing_trip.data
+        dependencies = [dep.strip() for dep in form.dependencies.data.splitlines() if dep.strip()] if form.dependencies.data else None # Use splitlines()
+        indent_rules = form.indent_rules.data
+        meta_profile = form.meta_profile.data
+        no_alias = form.no_alias.data
+
+        logger.debug(f"Processing input: mode={input_mode}, has_file={bool(fhir_file)}, has_text={bool(fhir_text)}, has_alias={bool(alias_file)}")
+        # Pass the FileStorage object directly if needed by process_fhir_input
+        input_file, temp_dir, alias_path, input_error = services.process_fhir_input(input_mode, fhir_file, fhir_text, alias_file)
+
+        if input_error:
+            error = input_error
+            flash(error, 'error')
+            logger.error(f"Input processing error: {error}")
+            if temp_dir and os.path.exists(temp_dir):
+                 try: shutil.rmtree(temp_dir, ignore_errors=True)
+                 except Exception as cleanup_e: logger.warning(f"Error removing temp dir after input error {temp_dir}: {cleanup_e}")
+        else:
+            # Proceed only if input processing was successful
+            output_dir = os.path.join(app.config.get('UPLOAD_FOLDER', '/app/static/uploads'), 'fsh_output') # Use .get
+            os.makedirs(output_dir, exist_ok=True)
+            logger.debug(f"Running GoFSH with input: {input_file}, output_dir: {output_dir}")
+            # Pass form data directly to run_gofsh
+            fsh_output, comparison_report, gofsh_error = services.run_gofsh(
+                input_file, output_dir, output_style, log_level, fhir_version,
+                fishing_trip, dependencies, indent_rules, meta_profile, alias_path, no_alias
+            )
+            # Clean up temp dir after GoFSH run
+            if temp_dir and os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    logger.debug(f"Successfully removed temp directory: {temp_dir}")
+                except Exception as cleanup_e:
+                     logger.warning(f"Error removing temp directory {temp_dir}: {cleanup_e}")
+
+            if gofsh_error:
+                error = gofsh_error
+                flash(error, 'error')
+                logger.error(f"GoFSH error: {error}")
+            else:
+                # Store potentially large output carefully - session might have limits
+                session['fsh_output'] = fsh_output
+                flash('Conversion successful!', 'success')
+                logger.info("FSH conversion successful")
+
+        # Return response for POST (AJAX or full page)
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            logger.debug("Returning partial HTML for AJAX POST request.")
+            return render_template('_fsh_output.html', form=form, error=error, fsh_output=fsh_output, comparison_report=comparison_report)
+        else:
+             # For standard POST, re-render the full page with results/errors
+             logger.debug("Handling standard POST request, rendering full page.")
+             return render_template('fsh_converter.html', form=form, error=error, fsh_output=fsh_output, comparison_report=comparison_report, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+
+    # --- Handle GET request (Initial Page Load or Failed POST Validation) ---
+    else:
+        if request.method == 'POST': # POST but validation failed
+             logger.warning("POST request failed form validation.")
+             # Render the full page, WTForms errors will be displayed by render_field
+             return render_template('fsh_converter.html', form=form, error="Form validation failed. Please check fields.", fsh_output=None, comparison_report=None, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+        else:
+             # This is the initial GET request
+             logger.debug("Handling GET request for FSH converter page.")
+             # **** FIX APPLIED HERE ****
+             # Make the response object to add headers
+             response = make_response(render_template(
+                 'fsh_converter.html',
+                 form=form, # Pass the empty form
+                 error=None,
+                 fsh_output=None,
+                 comparison_report=None,
+                 site_name='FHIRFLARE IG Toolkit',
+                 now=datetime.datetime.now()
+             ))
+             # Add headers to prevent caching
+             response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+             response.headers['Pragma'] = 'no-cache'
+             response.headers['Expires'] = '0'
+             return response
+             # **** END OF FIX ****
+
+@app.route('/download-fsh')
+def download_fsh():
+    fsh_output = session.get('fsh_output')
+    if not fsh_output:
+        flash('No FSH output available for download.', 'error')
+        return redirect(url_for('fsh_converter'))
+    
+    temp_file = os.path.join(app.config['UPLOAD_FOLDER'], 'output.fsh')
+    with open(temp_file, 'w', encoding='utf-8') as f:
+        f.write(fsh_output)
+    
+    return send_file(temp_file, as_attachment=True, download_name='output.fsh')
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_file(os.path.join(app.static_folder, 'favicon.ico'), mimetype='image/x-icon')
+
+
 if __name__ == '__main__':
+    with app.app_context():
+        logger.debug(f"Instance path configuration: {app.instance_path}")
+        logger.debug(f"Database URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
+        logger.debug(f"Packages path: {app.config['FHIR_PACKAGES_DIR']}")
+        logger.debug(f"Flask instance folder path: {app.instance_path}")
+        logger.debug(f"Directories created/verified: Instance: {app.instance_path}, Packages: {app.config['FHIR_PACKAGES_DIR']}")
+        logger.debug(f"Attempting to create database tables for URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
+        db.create_all()
+        logger.info("Database tables created successfully (if they didn't exist).")
     app.run(host='0.0.0.0', port=5000, debug=False)

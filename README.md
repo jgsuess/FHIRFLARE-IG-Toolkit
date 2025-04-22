@@ -2,307 +2,611 @@
 
 ## Overview
 
-The FHIRFLARE IG Toolkit is a Flask-based web application designed to simplify the management, processing, validation, and deployment of FHIR Implementation Guides (IGs). It allows users to import IG packages, process them to extract resource types and profiles, validate FHIR resources or bundles against IGs, and push IGs to a FHIR server. The application features a user-friendly interface with a live console for real-time feedback during operations like pushing IGs or validating resources.
+The FHIRFLARE IG Toolkit is a Flask-based web application designed to streamline the management, processing, validation, and deployment of FHIR Implementation Guides (IGs). It offers a user-friendly interface for importing IG packages, extracting metadata, validating FHIR resources or bundles, pushing IGs to FHIR servers, and converting FHIR resources to FHIR Shorthand (FSH) using GoFSH with advanced features. The toolkit includes a live console for real-time feedback and a waiting spinner for FSH conversion, making it an essential tool for FHIR developers and implementers.
+
+The application can run in two modes:
+
+* **Standalone:** Includes a Dockerized Flask frontend, SQLite database, and an embedded HAPI FHIR server for local validation and interaction.
+* **Lite:** Includes only the Dockerized Flask frontend and SQLite database, excluding the local HAPI FHIR server. Requires connection to external FHIR servers for certain features.
+
+## Installation Modes (Lite vs. Standalone)
+
+This toolkit offers two primary installation modes to suit different needs:
+
+* **Standalone Version:**
+    * Includes the full FHIRFLARE Toolkit application **and** an embedded HAPI FHIR server running locally within the Docker environment.
+    * Allows for local FHIR resource validation using HAPI FHIR's capabilities.
+    * Enables the "Use Local HAPI" option in the FHIR API Explorer and FHIR UI Operations pages, proxying requests to the internal HAPI server (`http://localhost:8080/fhir`).
+    * Requires Git and Maven during the initial build process (via the `.bat` script or manual steps) to prepare the HAPI FHIR server.
+    * Ideal for users who want a self-contained environment for development and testing or who don't have readily available external FHIR servers.
+
+* **Lite Version:**
+    * Includes the FHIRFLARE Toolkit application **without** the embedded HAPI FHIR server.
+    * Requires users to provide URLs for external FHIR servers when using features like the FHIR API Explorer and FHIR UI Operations pages. The "Use Local HAPI" option will be disabled in the UI.
+    * Resource validation relies solely on local checks against downloaded StructureDefinitions, which may be less comprehensive than HAPI FHIR's validation (e.g., for terminology bindings or complex invariants).
+    * **Does not require Git or Maven** for setup if using the `.bat` script or running the pre-built Docker image.
+    * Ideal for users who primarily want to use the IG management, processing, and FSH conversion features, or who will always connect to existing external FHIR servers.
 
 ## Features
 
-- **Import IGs**: Download FHIR IG packages and their dependencies from a package registry, supporting flexible version formats (e.g., `1.2.3`, `1.1.0-preview`, `1.1.2-ballot`, `current`).
-- **Manage IGs**: View, process, unload, or delete downloaded IGs, with duplicate detection and resolution.
-- **Process IGs**: Extract resource types, profiles, must-support elements, examples, and profile relationships (`compliesWithProfile` and `imposeProfile`) from IGs.
-- **Validate FHIR Resources/Bundles**: Validate single FHIR resources or bundles against selected IGs, with detailed error and warning reports (alpha feature, work in progress).
-- **Push IGs**: Upload IG resources to a FHIR server with real-time console output, including validation against imposed profiles.
-- **Profile Relationships**: Support for `structuredefinition-compliesWithProfile` and `structuredefinition-imposeProfile` extensions, with validation and UI display.
-- **API Support**: RESTful API endpoints for importing, pushing, and validating IGs, including profile relationship metadata.
-- **Live Console**: Displays real-time logs during push and validation operations.
-- **Configurable Behavior**: Options to enable/disable imposed profile validation and UI display of profile relationships.
+* **Import IGs:** Download FHIR IG packages and dependencies from a package registry, supporting flexible version formats (e.g., `1.2.3`, `1.1.0-preview`, `1.1.2-ballot`, `current`).
+* **Manage IGs:** View, process, unload, or delete downloaded IGs, with duplicate detection and resolution.
+* **Process IGs:** Extract resource types, profiles, must-support elements, examples, and profile relationships (`structuredefinition-compliesWithProfile` and `structuredefinition-imposeProfile`).
+* **Validate FHIR Resources/Bundles:** Validate single FHIR resources or bundles against selected IGs, with detailed error and warning reports (alpha feature, work in progress). *Note: Lite version uses local SD checks only.*
+* **Push IGs:** Upload IG resources to a target FHIR server with real-time console output and optional validation against imposed profiles.
+* **Profile Relationships:** Display and validate `compliesWithProfile` and `imposeProfile` extensions in the UI.
+* **FSH Converter:** Convert FHIR JSON/XML resources to FHIR Shorthand (FSH) using GoFSH, with advanced options (Package context, Output styles, Log levels, FHIR versions, Fishing Trip, Dependencies, Indentation, Meta Profile handling, Alias File, No Alias). Includes a waiting spinner.
+* **FHIR Interaction UIs:** Explore FHIR server capabilities and interact with resources using the "FHIR API Explorer" and "FHIR UI Operations" pages. *Note: Lite version requires custom server URLs.*
+* **API Support:** RESTful API endpoints for importing, pushing, and retrieving IG metadata.
+* **Live Console:** Real-time logs for push, validation, and FSH conversion operations.
+* **Configurable Behavior:** Enable/disable imposed profile validation and UI display of profile relationships.
+* **Theming:** Supports light and dark modes.
 
 ## Technology Stack
 
-The FHIRFLARE IG Toolkit is built using the following technologies:
-
-- **Python 3.9+**: Core programming language for the backend.
-- **Flask 2.0+**: Lightweight web framework for building the application.
-- **Flask-SQLAlchemy**: ORM for managing the SQLite database.
-- **Flask-WTF**: Handles form creation, validation, and CSRF protection.
-- **Jinja2**: Templating engine for rendering HTML pages.
-- **Bootstrap 5**: Frontend framework for responsive UI design.
-- **JavaScript (ES6)**: Client-side scripting for interactive features like the live console and JSON validation preview.
-- **SQLite**: Lightweight database for storing processed IG metadata.
-- **Docker**: Containerization for consistent deployment.
-- **Requests**: Python library for making HTTP requests to FHIR servers.
-- **Tarfile**: Python library for handling `.tgz` package files.
-- **Logging**: Python's built-in logging for debugging and monitoring.
+* Python 3.12+, Flask 2.3.3, Flask-SQLAlchemy 3.0.5, Flask-WTF 1.2.1
+* Jinja2, Bootstrap 5.3.3, JavaScript (ES6), Lottie-Web 5.12.2
+* SQLite
+* Docker, Docker Compose, Supervisor
+* Node.js 18+ (for GoFSH/SUSHI), GoFSH, SUSHI
+* HAPI FHIR (Standalone version only)
+* Requests 2.31.0, Tarfile, Logging
 
 ## Prerequisites
 
-- **Python 3.9+**: Ensure Python is installed on your system.
-- **Docker**: Required for containerized deployment.
-- **pip**: Python package manager for installing dependencies.
+* **Docker:** Required for containerized deployment (both versions).
+* **Git & Maven:** Required **only** for building the **Standalone** version from source using the `.bat` script or manual steps. Not required for the Lite version build or for running pre-built Docker Hub images.
+* **Windows:** Required if using the `.bat` scripts.
 
 ## Setup Instructions
 
-1. **Clone the Repository**:
-   ```bash
-   git clone <repository-url>
-   cd fhirflare-ig-toolkit
-   ```
+### Running Pre-built Images (General Users)
 
-2. **Install Dependencies**:
-   Create a virtual environment and install the required packages:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+This is the easiest way to get started without needing Git or Maven. Choose the version you need:
 
-3. **Set Environment Variables**:
-   Set the `FLASK_SECRET_KEY` and `API_KEY` for security and CSRF protection:
-   ```bash
-   export FLASK_SECRET_KEY='your-secure-secret-key'
-   export API_KEY='your-api-key'
-   ```
+**Lite Version (No local HAPI FHIR):**
 
-4. **Initialize the Database**:
-   Ensure the `instance` directory is writable for SQLite:
-   ```bash
-   mkdir -p instance
-   chmod -R 777 instance
-   ```
+# Pull the latest Lite image
+docker pull ghcr.io/sudo-jhare/fhirflare-ig-toolkit-lite:latest
 
-5. **Run the Application Locally**:
-   Start the Flask development server:
-   ```bash
-   export FLASK_APP=app.py
-   flask run
-   ```
-   The application will be available at `http://localhost:5000`.
+# Run the Lite version (maps port 5000 for the UI)
+# You'll need to create local directories for persistent data first:
+# mkdir instance logs static static/uploads instance/hapi-h2-data
+docker run -d \
+  -p 5000:5000 \
+  -v ./instance:/app/instance \
+  -v ./static/uploads:/app/static/uploads \
+  -v ./instance/hapi-h2-data:/app/h2-data \
+  -v ./logs:/app/logs \
+  --name fhirflare-lite \
+  ghcr.io/sudo-jhare/fhirflare-ig-toolkit-lite:latest
 
-6. **Run with Docker**:
-   Build and run the application using Docker, mounting the `instance` directory for persistence:
-   ```bash
-   docker build -t flare-fhir-ig-toolkit .
-   docker run -p 5000:5000 -e FLASK_SECRET_KEY='your-secure-secret-key' -e API_KEY='your-api-key' -v $(pwd)/instance:/app/instance flare-fhir-ig-toolkit
-   ```
-   Access the application at `http://localhost:5000`.
 
-## Usage
 
-1. **Import an IG**:
-   - Navigate to the "Import IG" tab.
-   - Enter a package name (e.g., `hl7.fhir.au.core`) and version (e.g., `1.1.0-preview`, `1.1.2-ballot`, or `current`).
-   - Choose a dependency mode (e.g., Recursive, Tree Shaking).
-   - Click "Import" to download the package and its dependencies.
+# Pull the latest Standalone image
+docker pull ghcr.io/sudo-jhare/fhirflare-ig-toolkit-standalone:latest
 
-2. **Manage IGs**:
-   - Go to the "Manage FHIR Packages" tab to view downloaded and processed IGs.
-   - Process IGs to extract metadata, unload processed IGs from the database, or delete packages from the filesystem.
-   - Duplicates are highlighted for resolution (e.g., multiple versions of the same package).
+# Run the Standalone version (maps ports 5000 and 8080)
+# You'll need to create local directories for persistent data first:
+# mkdir instance logs static static/uploads instance/hapi-h2-data
+docker run -d \
+  -p 5000:5000 \
+  -p 8080:8080 \
+  -v ./instance:/app/instance \
+  -v ./static/uploads:/app/static/uploads \
+  -v ./instance/hapi-h2-data:/app/h2-data \
+  -v ./logs:/app/logs \
+  --name fhirflare-standalone \
+  ghcr.io/sudo-jhare/fhirflare-ig-toolkit-standalone:latest
 
-3. **View Processed IGs**:
-   - After processing an IG, view its details, including resource types, profiles, must-support elements, examples, and profile relationships (`compliesWithProfile` and `imposeProfile`).
-   - Profile relationships are displayed if enabled via `DISPLAY_PROFILE_RELATIONSHIPS`.
 
-4. **Validate FHIR Resources/Bundles**:
-   - Navigate to the "Validate FHIR Sample" tab.
-   - Select or enter a package (e.g., `hl7.fhir.au.core#1.1.0-preview`).
-   - Choose validation mode (Single Resource or Bundle).
-   - Paste FHIR JSON (e.g., a Patient or AllergyIntolerance resource).
-   - Submit to validate, viewing errors and warnings in the report.
-   - Note: Validation is in alpha; report issues to GitHub (remove PHI).
+Run Build and Run for first time.bat:
+cd "<project folder>"
+git clone https://github.com/hapifhir/hapi-fhir-jpaserver-starter.git hapi-fhir-jpaserver
+copy .\hapi-fhir-Setup\target\classes\application.yaml .\hapi-fhir-jpaserver\target\classes\application.yaml
+mvn clean package -DskipTests=true -Pboot
+docker-compose build --no-cache
+docker-compose up -d
 
-5. **Push IGs to a FHIR Server**:
-   - Navigate to the "Push IGs" tab.
-   - Select a package, enter a FHIR server URL (e.g., `http://hapi.fhir.org/baseR4`), and choose whether to include dependencies.
-   - Click "Push to FHIR Server" to upload resources, with validation against imposed profiles (if enabled via `VALIDATE_IMPOSED_PROFILES`) and progress shown in the live console.
+This clones the HAPI FHIR server, copies configuration, builds the project, and starts the containers.
 
-6. **API Usage**:
-   - **Import IG**: `POST /api/import-ig`
-     ```bash
-     curl -X POST http://localhost:5000/api/import-ig \
-     -H "Content-Type: application/json" \
-     -d '{"package_name": "hl7.fhir.au.core", "version": "1.1.0-preview", "api_key": "your-api-key"}'
-     ```
-     Response includes `complies_with_profiles`, `imposed_profiles`, and duplicates.
-   - **Push IG**: `POST /api/push-ig`
-     ```bash
-     curl -X POST http://localhost:5000/api/push-ig \
-     -H "Content-Type: application/json" \
-     -H "Accept: application/x-ndjson" \
-     -d '{"package_name": "hl7.fhir.au.core", "version": "1.1.0-preview", "fhir_server_url": "http://hapi.fhir.org/baseR4", "include_dependencies": true, "api_key": "your-api-key"}'
-     ```
-     Resources are validated against imposed profiles before pushing.
-   - **Validate Resource/Bundle**: Not yet exposed via API; use the UI at `/validate-sample`.
 
-## Configuration Options
+Subsequent Runs:
 
-- **`VALIDATE_IMPOSED_PROFILES`**: Set to `True` (default) to validate resources against imposed profiles during push operations. Set to `False` to skip:
-  ```python
-  app.config['VALIDATE_IMPOSED_PROFILES'] = False
-  ```
-- **`DISPLAY_PROFILE_RELATIONSHIPS`**: Set to `True` (default) to show `compliesWithProfile` and `imposeProfile` in the UI. Set to `False` to hide:
-  ```python
-  app.config['DISPLAY_PROFILE_RELATIONSHIPS'] = False
-  ```
-- **`FHIR_PACKAGES_DIR`**: Directory for storing `.tgz` packages and metadata (default: `/app/instance/fhir_packages`).
-- **`SECRET_KEY`**: Required for CSRF protection and session security:
-  ```python
-  app.config['SECRET_KEY'] = 'your-secure-secret-key'
-  ```
+Run Run.bat:
+cd "<project folder>"
+docker-compose up -d
 
-## Testing
+This starts the Flask app (port 5000) and HAPI FHIR server (port 8080).
 
-The project includes a test suite to ensure reliability, covering UI, API, database, file operations, and security features.
 
-### Test Prerequisites
+Access the Application:
 
-- **pytest**: For running tests.
-- **unittest-mock**: For mocking dependencies.
+Flask UI: http://localhost:5000
+HAPI FHIR server: http://localhost:8080
 
-Install test dependencies:
-```bash
+Manual Setup (Linux/MacOS/Windows)
+Preparation:
+cd <project folder>
+git clone https://github.com/hapifhir/hapi-fhir-jpaserver-starter.git hapi-fhir-jpaserver
+cp ./hapi-fhir-Setup/target/classes/application.yaml ./hapi-fhir-jpaserver/target/classes/application.yaml
+
+Build:
+mvn clean package -DskipTests=true -Pboot
+docker-compose build --no-cache
+
+Run:
+docker-compose up -d
+
+Access the Application:
+
+Flask UI: http://localhost:5000
+HAPI FHIR server: http://localhost:8080
+
+Local Development (Without Docker)
+Clone the Repository:
+git clone https://github.com/Sudo-JHare/FHIRFLARE-IG-Toolkit.git
+cd FHIRFLARE-IG-Toolkit
+
+Install Dependencies:
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+Install Node.js, GoFSH, and SUSHI (for FSH Converter):
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo bash -
+sudo apt-get install -y nodejs
+npm install -g gofsh fsh-sushi
+
+Set Environment Variables:
+export FLASK_SECRET_KEY='your-secure-secret-key'
+export API_KEY='your-api-key'
+
+Initialize Directories:
+mkdir -p instance static/uploads logs
+chmod -R 777 instance static/uploads logs
+
+Run the Application:
+export FLASK_APP=app.py
+flask run
+
+Access at http://localhost:5000.
+Usage
+Import an IG
+
+Navigate to Import IG (/import-ig).
+Enter a package name (e.g., hl7.fhir.au.core) and version (e.g., 1.1.0-preview).
+Choose a dependency mode:
+Recursive: Import all dependencies.
+Patch Canonical: Import only canonical FHIR packages.
+Tree Shaking: Import only used dependencies.
+
+
+Click Import to download the package and dependencies.
+
+Manage IGs
+
+Go to Manage FHIR Packages (/view-igs) to view downloaded and processed IGs.
+Actions:
+Process: Extract metadata (resource types, profiles, must-support elements, examples).
+Unload: Remove processed IG data from the database.
+Delete: Remove package files from the filesystem.
+
+
+Duplicates are highlighted for resolution.
+
+View Processed IGs
+
+After processing, view IG details (/view-ig/<id>), including:
+Resource types and profiles.
+Must-support elements and examples.
+Profile relationships (compliesWithProfile, imposeProfile) if enabled (DISPLAY_PROFILE_RELATIONSHIPS).
+
+
+
+Validate FHIR Resources/Bundles
+
+Navigate to Validate FHIR Sample (/validate-sample).
+Select a package (e.g., hl7.fhir.au.core#1.1.0-preview).
+Choose Single Resource or Bundle mode.
+Paste or upload FHIR JSON/XML (e.g., a Patient resource).
+Submit to view validation errors/warnings.
+Note: Alpha feature; report issues to GitHub (remove PHI).
+
+Push IGs to a FHIR Server
+
+Go to Push IGs (/push-igs).
+Select a package, enter a FHIR server URL (e.g., http://localhost:8080/fhir), and choose whether to include dependencies.
+Click Push to FHIR Server to upload resources, with validation against imposed profiles (if enabled via VALIDATE_IMPOSED_PROFILES).
+Monitor progress in the live console.
+
+Convert FHIR to FSH
+
+Navigate to FSH Converter (/fsh-converter).
+Optionally select a package for context (e.g., hl7.fhir.au.core#1.1.0-preview).
+Choose input mode:
+Upload File: Upload a FHIR JSON/XML file.
+Paste Text: Paste FHIR JSON/XML content.
+
+
+Configure options:
+Output Style: file-per-definition, group-by-fsh-type, group-by-profile, single-file.
+Log Level: error, warn, info, debug.
+FHIR Version: R4, R4B, R5, or auto-detect.
+Fishing Trip: Enable round-trip validation with SUSHI, generating a comparison report.
+Dependencies: Specify additional packages (e.g., hl7.fhir.us.core@6.1.0, one per line).
+Indent Rules: Enable context path indentation for readable FSH.
+Meta Profile: Choose only-one, first, or none for meta.profile handling.
+Alias File: Upload an FSH file with aliases (e.g., $MyAlias = http://example.org).
+No Alias: Disable automatic alias generation.
+
+
+Click Convert to FSH to generate and display FSH output, with a waiting spinner (light/dark theme) during processing.
+If Fishing Trip is enabled, view the comparison report via the "Click here for SUSHI Validation" badge button.
+Download the result as a .fsh file.
+
+Example Input:
+{
+    "resourceType": "Patient",
+    "id": "banks-mia-leanne",
+    "meta": {
+        "profile": ["http://hl7.org.au/fhir/core/StructureDefinition/au-core-patient"]
+    },
+    "name": [
+        {
+            "family": "Banks",
+            "given": ["Mia", "Leanne"]
+        }
+    ]
+}
+
+Example Output:
+Profile: AUCorePatient
+Parent: Patient
+* name 1..*
+* name.family 1..1
+* name.given 1..*
+
+Explore FHIR Operations
+
+Navigate to FHIR UI Operations (/fhir-ui-operations).
+Toggle between local HAPI (/fhir) or a custom FHIR server.
+Click Fetch Metadata to load the server’s CapabilityStatement.
+Select a resource type (e.g., Patient, Observation) or System to view operations:
+System operations: GET /metadata, POST /, GET /_history, GET/POST /$diff, POST /$reindex, POST /$expunge, etc.
+Resource operations: GET Patient/:id, POST Observation/_search, etc.
+
+
+Use Try it out to input parameters or request bodies, then Execute to view results in JSON, XML, or narrative formats.
+
+API Usage
+Import IG
+curl -X POST http://localhost:5000/api/import-ig \
+-H "Content-Type: application/json" \
+-d '{"package_name": "hl7.fhir.au.core", "version": "1.1.0-preview", "api_key": "your-api-key"}'
+
+Returns complies_with_profiles, imposed_profiles, and duplicate info.
+Push IG
+curl -X POST http://localhost:5000/api/push-ig \
+-H "Content-Type: application/json" \
+-H "Accept: application/x-ndjson" \
+-d '{"package_name": "hl7.fhir.au.core", "version": "1.1.0-preview", "fhir_server_url": "http://localhost:8080/fhir", "include_dependencies": true, "api_key": "your-api-key"}'
+
+Validates resources against imposed profiles (if enabled).
+Validate Resource/Bundle
+Not yet exposed via API; use the UI at /validate-sample.
+Configuration Options
+
+VALIDATE_IMPOSED_PROFILES:
+
+Default: True
+
+Validates resources against imposed profiles during push.
+
+Set to False to skip:
+app.config['VALIDATE_IMPOSED_PROFILES'] = False
+
+
+
+
+DISPLAY_PROFILE_RELATIONSHIPS:
+
+Default: True
+
+Shows compliesWithProfile and imposeProfile in the UI.
+
+Set to False to hide:
+app.config['DISPLAY_PROFILE_RELATIONSHIPS'] = False
+
+
+
+
+FHIR_PACKAGES_DIR:
+
+Default: /app/instance/fhir_packages
+Stores .tgz packages and metadata.
+
+
+UPLOAD_FOLDER:
+
+Default: /app/static/uploads
+Stores GoFSH output files and FSH comparison reports.
+
+
+SECRET_KEY:
+
+Required for CSRF protection and sessions:
+app.config['SECRET_KEY'] = 'your-secure-secret-key'
+
+
+
+
+API_KEY:
+
+Required for API authentication:
+app.config['API_KEY'] = 'your-api-key'
+
+
+
+
+
+Testing
+The project includes a test suite covering UI, API, database, file operations, and security.
+Test Prerequisites
+
+pytest: For running tests.
+pytest-mock: For mocking dependencies.
+
+Install:
 pip install pytest pytest-mock
-```
 
-### Running Tests
+Running Tests
+cd <project folder>
+pytest tests/test_app.py -v
 
-1. **Navigate to Project Root**:
-   ```bash
-   cd /path/to/fhirflare-ig-toolkit
-   ```
+Test Coverage
 
-2. **Run Tests**:
-   ```bash
-   pytest tests/test_app.py -v
-   ```
-   - `-v` provides verbose output.
-   - Tests are in `tests/test_app.py`, covering 27 cases.
+UI Pages: Homepage, Import IG, Manage IGs, Push IGs, Validate Sample, View Processed IG, FSH Converter.
+API Endpoints: POST /api/import-ig, POST /api/push-ig, GET /get-structure, GET /get-example.
+Database: IG processing, unloading, viewing.
+File Operations: Package processing, deletion, FSH output.
+Security: CSRF protection, flash messages, secret key.
+FSH Converter: Form submission, file/text input, GoFSH execution, Fishing Trip comparison.
 
-### Test Coverage
-
-Tests include:
-- **UI Pages**:
-  - Homepage, Import IG, Manage IGs, Push IGs, Validate Sample, View Processed IG.
-  - Form rendering, submissions, and error handling (e.g., invalid JSON, CSRF).
-- **API Endpoints**:
-  - `POST /api/import-ig`: Success, invalid key, duplicates, profile relationships.
-  - `POST /api/push-ig`: Success, validation, errors.
-  - `GET /get-structure`, `GET /get-example`: Success and failure cases.
-- **Database**:
-  - Processing, unloading, and viewing IGs.
-- **File Operations**:
-  - Package processing, deletion.
-- **Security**:
-  - CSRF protection, flash messages, secret key.
-
-### Example Test Output
-
-```
+Example Test Output
 ================================================================ test session starts =================================================================
-platform linux -- Python 3.9.22, pytest-8.3.5, pluggy-1.5.0
+platform linux -- Python 3.12, pytest-8.3.5, pluggy-1.5.0
 rootdir: /app/tests
 collected 27 items
 
 test_app.py::TestFHIRFlareIGToolkit::test_homepage PASSED                         [  3%]
 test_app.py::TestFHIRFlareIGToolkit::test_import_ig_page PASSED                   [  7%]
+test_app.py::TestFHIRFlareIGToolkit::test_fsh_converter_page PASSED               [ 11%]
 ...
-test_app.py::TestFHIRFlareIGToolkit::test_validate_sample_page PASSED             [ 85%]
 test_app.py::TestFHIRFlareIGToolkit::test_validate_sample_success PASSED          [ 88%]
-...
 ============================================================= 27 passed in 1.23s ==============================================================
-```
 
-### Troubleshooting Tests
+Troubleshooting Tests
 
-- **ModuleNotFoundError**: Ensure `app.py`, `services.py`, and `forms.py` are in `/app/`. Run tests from the project root.
-- **TemplateNotFound**: Verify templates (`validate_sample.html`, etc.) are in `/app/templates/`.
-- **Database Errors**: Ensure `instance/fhir_ig.db` is writable (`chmod 777 instance`).
-- **Mock Failures**: Check `tests/test_app.py` for correct mocking of `services.py` functions.
+ModuleNotFoundError: Ensure app.py, services.py, forms.py are in /app/.
+TemplateNotFound: Verify templates are in /app/templates/.
+Database Errors: Ensure instance/fhir_ig.db is writable (chmod 777 instance).
+Mock Failures: Check tests/test_app.py for correct mocking.
 
-## Development Notes
+Development Notes
+Background
+The toolkit addresses the need for a comprehensive FHIR IG management tool, with recent enhancements for resource validation, FSH conversion with advanced GoFSH features, and flexible versioning, making it a versatile platform for FHIR developers.
+Technical Decisions
 
-### Background
+Flask: Lightweight and flexible for web development.
+SQLite: Simple for development; consider PostgreSQL for production.
+Bootstrap 5.3.3: Responsive UI with custom styling for duplicates, FSH output, and waiting spinner.
+Lottie-Web: Renders themed animations for FSH conversion waiting spinner.
+GoFSH/SUSHI: Integrated via Node.js for advanced FSH conversion and round-trip validation.
+Docker: Ensures consistent deployment with Flask and HAPI FHIR.
+Flexible Versioning: Supports non-standard IG versions (e.g., -preview, -ballot).
+Live Console: Real-time feedback for complex operations.
+Validation: Alpha feature with ongoing FHIRPath improvements.
 
-The toolkit addresses the need for a user-friendly FHIR IG management tool, with recent enhancements for resource validation and flexible version handling (e.g., `1.1.0-preview`).
+Recent Updates
 
-### Technical Decisions
+Waiting Spinner for FSH Converter (April 2025):
+Added a themed (light/dark) Lottie animation spinner during FSH execution to indicate processing.
+Path: templates/fsh_converter.html, static/animations/loading-dark.json, static/animations/loading-light.json, static/js/lottie-web.min.js.
 
-- **Flask**: Lightweight and flexible for web development.
-- **SQLite**: Simple for development; consider PostgreSQL for production.
-- **Bootstrap 5**: Responsive UI with custom CSS for duplicate highlighting.
-- **Flask-WTF**: Robust form validation and CSRF protection.
-- **Docker**: Ensures consistent deployment.
-- **Flexible Versioning**: Supports non-standard version formats for FHIR IGs (e.g., `-preview`, `-ballot`).
-- **Validation**: Alpha feature for validating FHIR resources/bundles, with ongoing improvements to FHIRPath handling.
 
-### Recent Updates
+Advanced FSH Converter (April 2025):
+Added support for GoFSH advanced options: --fshing-trip (round-trip validation with SUSHI), --dependency (additional packages), --indent (indented rules), --meta-profile (only-one, first, none), --alias-file (custom aliases), --no-alias (disable alias generation).
+Displays Fishing Trip comparison reports via a badge button.
+Path: templates/fsh_converter.html, app.py, services.py, forms.py.
 
-- **Version Format Support**: Added support for flexible IG version formats (e.g., `1.1.0-preview`, `1.1.2-ballot`, `current`) in `forms.py`.
-- **CSRF Protection**: Fixed missing CSRF tokens in `cp_downloaded_igs.html` and `cp_push_igs.html`, ensuring secure form submissions.
-- **Form Handling**: Updated `validate_sample.html` and `app.py` to use `version` instead of `package_version`, aligning with `ValidationForm`.
-- **Validation Feature**: Added alpha support for validating FHIR resources/bundles against IGs, with error/warning reports (UI only).
 
-### Known Issues and Workarounds
+FSH Converter (April 2025):
+Added /fsh-converter page for FHIR to FSH conversion using GoFSH.
+Path: templates/fsh_converter.html, app.py, services.py, forms.py.
 
-- **CSRF Errors**: Ensure `SECRET_KEY` is set and forms include `{{ form.csrf_token }}`. Check logs for `flask_wtf.csrf` errors.
-- **Version Validation**: Previously restricted to `x.y.z`; now supports suffixes like `-preview`. Report any import issues.
-- **Validation Accuracy**: Resource validation is alpha; FHIRPath logic may miss complex constraints. Report anomalies to GitHub (remove PHI).
-- **Package Parsing**: Non-standard `.tgz` filenames may parse incorrectly. Fallback treats them as name-only packages.
-- **Permissions**: Ensure `instance` directory is writable (`chmod -R 777 instance`) to avoid database or file errors.
 
-### Future Improvements
+Favicon Fix (April 2025):
+Resolved 404 for /favicon.ico on /fsh-converter by ensuring static/favicon.ico is served.
+Added fallback /favicon.ico route in app.py.
 
-- [ ] **Sorting Versions**: Sort package versions in `/view-igs` (e.g., ascending).
-- [ ] **Duplicate Resolution**: Add options to keep latest version or merge resources.
-- [ ] **Production Database**: Support PostgreSQL for scalability.
-- [ ] **Validation Enhancements**: Improve FHIRPath handling for complex constraints; add API endpoint for validation.
-- [ ] **Error Reporting**: Enhance UI feedback for validation errors with specific element paths.
 
-**Completed Items**:
-- ~~Testing: Comprehensive test suite for UI, API, and database.~~
-- ~~Inbound API: `POST /api/import-ig` with dependency and profile support.~~
-- ~~Outbound API: `POST /api/push-ig` with validation and feedback.~~
-- ~~Flexible Versioning: Support for `-preview`, `-ballot`, etc.~~
-- ~~CSRF Fixes: Secured forms in `cp_downloaded_igs.html`, `cp_push_igs.html`.~~
-- ~~Resource Validation: UI for validating resources/bundles (alpha).~~
+Menu Item (April 2025):
+Added “FSH Converter” to the navbar in base.html.
 
-### Far-Distant Improvements
 
-- **Cache Service**: Use Redis to cache IG metadata for faster queries.
-- **Database Optimization**: Add composite index on `ProcessedIg.package_name` and `ProcessedIg.version` for efficient lookups.
+UPLOAD_FOLDER Fix (April 2025):
+Fixed 500 error on /fsh-converter by setting app.config['UPLOAD_FOLDER'] = '/app/static/uploads'.
 
-## Directory Structure
 
-- `app.py`: Main Flask application.
-- `services.py`: Logic for IG import, processing, validation, and pushing.
-- `forms.py`: Form definitions for import and validation.
-- `templates/`: HTML templates (`validate_sample.html`, `cp_downloaded_igs.html`, etc.).
-- `instance/`: SQLite database (`fhir_ig.db`) and packages (`fhir_packages/`).
-- `tests/test_app.py`: Test suite with 27 cases.
-- `requirements.txt`: Python dependencies.
-- `Dockerfile`: Docker configuration.
+Validation (April 2025):
+Alpha support for validating resources/bundles in /validate-sample.
+Path: templates/validate_sample.html, app.py, services.py.
 
-## Contributing
 
-Contributions are welcome! To contribute:
-1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature/your-feature`).
-3. Commit changes (`git commit -m "Add your feature"`).
-4. Push to your branch (`git push origin feature/your-feature`).
-5. Open a Pull Request.
+CSRF Protection: Fixed missing CSRF tokens in cp_downloaded_igs.html, cp_push_igs.html.
+Version Support: Added flexible version formats (e.g., 1.1.0-preview) in forms.py.
 
-Ensure code follows style guidelines and includes tests.
+Known Issues and Workarounds
 
-## Troubleshooting
+Favicon 404: Clear browser cache or verify /app/static/favicon.ico:
+docker exec -it <container_name> curl http://localhost:5000/static/favicon.ico
 
-- **CSRF Errors**: Verify `SECRET_KEY` is set and forms include `{{ form.csrf_token }}`. Check browser DevTools for POST data.
-- **Import Fails**: Confirm package name/version (e.g., `hl7.fhir.au.core#1.1.0-preview`) and internet connectivity.
-- **Validation Errors**: Alpha feature; report issues to GitHub with JSON samples (remove PHI).
-- **Database Issues**: Ensure `instance/fhir_ig.db` is writable (`chmod 777 instance`).
-- **Docker Volume**: Mount `instance` directory to persist data:
-  ```bash
-  docker run -v $(pwd)/instance:/app/instance ...
-  ```
 
-## License
+CSRF Errors: Set FLASK_SECRET_KEY and ensure {{ form.hidden_tag() }} in forms.
 
-Licensed under the Apache 2.0 License. See `LICENSE` for details.
+Import Fails: Check package name/version and connectivity.
+
+Validation Accuracy: Alpha feature; FHIRPath may miss complex constraints. Report issues to GitHub (remove PHI).
+
+Package Parsing: Non-standard .tgz filenames may parse incorrectly. Fallback uses name-only parsing.
+
+Permissions: Ensure instance/ and static/uploads/ are writable:
+chmod -R 777 instance static/uploads logs
+
+
+GoFSH/SUSHI Errors: Check ./logs/flask_err.log for ERROR:services:GoFSH failed. Ensure valid FHIR inputs and SUSHI installation:
+docker exec -it <container_name> sushi --version
+
+
+
+Future Improvements
+
+Validation: Enhance FHIRPath for complex constraints; add API endpoint.
+Sorting: Sort IG versions in /view-igs (e.g., ascending).
+Duplicate Resolution: Options to keep latest version or merge resources.
+Production Database: Support PostgreSQL.
+Error Reporting: Detailed validation error paths in the UI.
+FSH Enhancements: Add API endpoint for FSH conversion; support inline instance construction.
+FHIR Operations: Add complex parameter support (e.g., /$diff with left/right).
+Spinner Enhancements: Customize spinner animation speed or size.
+
+Completed Items
+
+Testing suite with 27 cases.
+API endpoints for POST /api/import-ig and POST /api/push-ig.
+Flexible versioning (-preview, -ballot).
+CSRF fixes for forms.
+Resource validation UI (alpha).
+FSH Converter with advanced GoFSH features and waiting spinner.
+
+Far-Distant Improvements
+
+Cache Service: Use Redis for IG metadata caching.
+Database Optimization: Composite index on ProcessedIg.package_name and ProcessedIg.version.
+
+Directory Structure
+FHIRFLARE-IG-Toolkit/
+├── app.py                              # Main Flask application
+├── Build and Run for first time.bat    # Windows script for first-time Docker setup
+├── docker-compose.yml                  # Docker Compose configuration
+├── Dockerfile                          # Docker configuration
+├── forms.py                            # Form definitions
+├── LICENSE.md                          # Apache 2.0 License
+├── README.md                           # Project documentation
+├── requirements.txt                    # Python dependencies
+├── Run.bat                             # Windows script for running Docker
+├── services.py                         # Logic for IG import, processing, validation, pushing, and FSH conversion
+├── supervisord.conf                    # Supervisor configuration
+├── hapi-fhir-Setup/
+│   ├── README.md                       # HAPI FHIR setup instructions
+│   └── target/
+│       └── classes/
+│           └── application.yaml        # HAPI FHIR configuration
+├── instance/
+│   ├── fhir_ig.db                      # SQLite database
+│   ├── fhir_ig.db.old                  # Database backup
+│   └── fhir_packages/                  # Stored IG packages and metadata
+│       ├── hl7.fhir.au.base-5.1.0-preview.metadata.json
+│       ├── hl7.fhir.au.base-5.1.0-preview.tgz
+│       ├── hl7.fhir.au.core-1.1.0-preview.metadata.json
+│       ├── hl7.fhir.au.core-1.1.0-preview.tgz
+│       ├── hl7.fhir.r4.core-4.0.1.metadata.json
+│       ├── hl7.fhir.r4.core-4.0.1.tgz
+│       ├── hl7.fhir.uv.extensions.r4-5.2.0.metadata.json
+│       ├── hl7.fhir.uv.extensions.r4-5.2.0.tgz
+│       ├── hl7.fhir.uv.ipa-1.0.0.metadata.json
+│       ├── hl7.fhir.uv.ipa-1.0.0.tgz
+│       ├── hl7.fhir.uv.smart-app-launch-2.0.0.metadata.json
+│       ├── hl7.fhir.uv.smart-app-launch-2.0.0.tgz
+│       ├── hl7.fhir.uv.smart-app-launch-2.1.0.metadata.json
+│       ├── hl7.fhir.uv.smart-app-launch-2.1.0.tgz
+│       ├── hl7.terminology.r4-5.0.0.metadata.json
+│       ├── hl7.terminology.r4-5.0.0.tgz
+│       ├── hl7.terminology.r4-6.2.0.metadata.json
+│       └── hl7.terminology.r4-6.2.0.tgz
+├── logs/
+│   ├── flask.log                       # Flask application logs
+│   ├── flask_err.log                   # Flask error logs
+│   ├── supervisord.log                 # Supervisor logs
+│   ├── supervisord.pid                 # Supervisor PID file
+│   ├── tomcat.log                      # Tomcat logs for HAPI FHIR
+│   └── tomcat_err.log                  # Tomcat error logs
+├── static/
+│   ├── animations/
+│   │   ├── loading-dark.json           # Dark theme spinner animation
+│   │   └── loading-light.json          # Light theme spinner animation
+│   ├── favicon.ico                     # Application favicon
+│   ├── FHIRFLARE.png                   # Application logo
+│   ├── js/
+│   │   └── lottie-web.min.js           # Lottie library for spinner
+│   └── uploads/
+│       ├── output.fsh                  # Generated FSH output
+│       └── fsh_output/
+│           ├── sushi-config.yaml       # SUSHI configuration
+│           └── input/
+│               └── fsh/
+│                   ├── aliases.fsh     # FSH aliases
+│                   ├── index.txt       # FSH index
+│                   └── instances/
+│                       └── banks-mia-leanne.fsh  # Example FSH instance
+├── templates/
+│   ├── base.html                       # Base template
+│   ├── cp_downloaded_igs.html          # UI for managing IGs
+│   ├── cp_push_igs.html                # UI for pushing IGs
+│   ├── cp_view_processed_ig.html       # UI for viewing processed IGs
+│   ├── fhir_ui.html                    # UI for FHIR API explorer
+│   ├── fhir_ui_operations.html         # UI for FHIR server operations
+│   ├── fsh_converter.html              # UI for FSH conversion
+│   ├── import_ig.html                  # UI for importing IGs
+│   ├── index.html                      # Homepage
+│   ├── validate_sample.html            # UI for validating resources/bundles
+│   └── _form_helpers.html              # Form helper macros
+├── tests/
+│   └── test_app.py                     # Test suite with 27 cases
+└── hapi-fhir-jpaserver/                # HAPI FHIR server resources
+
+Contributing
+
+Fork the repository.
+Create a feature branch (git checkout -b feature/your-feature).
+Commit changes (git commit -m "Add your feature").
+Push to your branch (git push origin feature/your-feature).
+Open a Pull Request.
+
+Ensure code follows PEP 8 and includes tests in tests/test_app.py.
+Troubleshooting
+
+Favicon 404: Clear browser cache or verify /app/static/favicon.ico:
+docker exec -it <container_name> curl http://localhost:5000/static/favicon.ico
+
+
+CSRF Errors: Set FLASK_SECRET_KEY and ensure {{ form.hidden_tag() }} in forms.
+
+Import Fails: Check package name/version and connectivity.
+
+Validation Accuracy: Alpha feature; report issues to GitHub (remove PHI).
+
+Package Parsing: Non-standard .tgz filenamesgrass may parse incorrectly. Fallback uses name-only parsing.
+
+Permissions: Ensure instance/ and static/uploads/ are writable:
+chmod -R 777 instance static/uploads logs
+
+
+GoFSH/SUSHI Errors: Check ./logs/flask_err.log for ERROR:services:GoFSH failed. Ensure valid FHIR inputs and SUSHI installation:
+docker exec -it <container_name> sushi --version
+
+
+
+License
+Licensed under the Apache 2.0 License. See LICENSE.md for details.
