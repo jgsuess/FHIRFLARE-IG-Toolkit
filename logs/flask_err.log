@@ -1,3 +1,4 @@
+INFO:__main__:Application running in mode: lite
 DEBUG:__main__:Instance path configuration: /app/instance
 DEBUG:__main__:Database URI: sqlite:////app/instance/fhir_ig.db
 DEBUG:__main__:Packages path: /app/instance/fhir_packages
@@ -17,40 +18,7 @@ INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a
  * Running on http://127.0.0.1:5000
  * Running on http://172.18.0.2:5000
 INFO:werkzeug:[33mPress CTRL+C to quit[0m
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:38:13] "GET / HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:38:14] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
-DEBUG:__main__:Scanning packages directory: /app/instance/fhir_packages
-DEBUG:__main__:Found 9 .tgz files: ['hl7.fhir.au.base-5.1.0-preview.tgz', 'hl7.fhir.au.core-1.1.0-preview.tgz', 'hl7.fhir.r4.core-4.0.1.tgz', 'hl7.fhir.uv.extensions.r4-5.2.0.tgz', 'hl7.fhir.uv.ipa-1.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz', 'hl7.terminology.r4-5.0.0.tgz', 'hl7.terminology.r4-6.2.0.tgz']
-DEBUG:__main__:Added package: hl7.fhir.au.base#5.1.0-preview
-DEBUG:__main__:Added package: hl7.fhir.au.core#1.1.0-preview
-DEBUG:__main__:Added package: hl7.fhir.r4.core#4.0.1
-DEBUG:__main__:Added package: hl7.fhir.uv.extensions.r4#5.2.0
-DEBUG:__main__:Added package: hl7.fhir.uv.ipa#1.0.0
-DEBUG:__main__:Added package: hl7.fhir.uv.smart-app-launch#2.0.0
-DEBUG:__main__:Added package: hl7.fhir.uv.smart-app-launch#2.1.0
-DEBUG:__main__:Added package: hl7.terminology.r4#5.0.0
-DEBUG:__main__:Added package: hl7.terminology.r4#6.2.0
-DEBUG:__main__:Set package choices: [('', 'None'), ('hl7.fhir.au.base#5.1.0-preview', 'hl7.fhir.au.base#5.1.0-preview'), ('hl7.fhir.au.core#1.1.0-preview', 'hl7.fhir.au.core#1.1.0-preview'), ('hl7.fhir.r4.core#4.0.1', 'hl7.fhir.r4.core#4.0.1'), ('hl7.fhir.uv.extensions.r4#5.2.0', 'hl7.fhir.uv.extensions.r4#5.2.0'), ('hl7.fhir.uv.ipa#1.0.0', 'hl7.fhir.uv.ipa#1.0.0'), ('hl7.fhir.uv.smart-app-launch#2.0.0', 'hl7.fhir.uv.smart-app-launch#2.0.0'), ('hl7.fhir.uv.smart-app-launch#2.1.0', 'hl7.fhir.uv.smart-app-launch#2.1.0'), ('hl7.terminology.r4#5.0.0', 'hl7.terminology.r4#5.0.0'), ('hl7.terminology.r4#6.2.0', 'hl7.terminology.r4#6.2.0')]
-DEBUG:__main__:Handling GET request for FSH converter page.
-ERROR:app:Exception on /fsh-converter [GET]
-Traceback (most recent call last):
-  File "/app/venv/lib/python3.12/site-packages/flask/app.py", line 2190, in wsgi_app
-    response = self.full_dispatch_request()
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/app/venv/lib/python3.12/site-packages/flask/app.py", line 1486, in full_dispatch_request
-    rv = self.handle_user_exception(e)
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/app/venv/lib/python3.12/site-packages/flask/app.py", line 1484, in full_dispatch_request
-    rv = self.dispatch_request()
-         ^^^^^^^^^^^^^^^^^^^^^^^
-  File "/app/venv/lib/python3.12/site-packages/flask/app.py", line 1469, in dispatch_request
-    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/app/app.py", line 1061, in fsh_converter
-    response = make_response(render_template( # <<< CORRECTED: Using make_response
-               ^^^^^^^^^^^^^
-NameError: name 'make_response' is not defined
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:38:21] "[35m[1mGET /fsh-converter HTTP/1.1[0m" 500 -
+INFO:__main__:Application running in mode: lite
 DEBUG:__main__:Instance path configuration: /app/instance
 DEBUG:__main__:Database URI: sqlite:////app/instance/fhir_ig.db
 DEBUG:__main__:Packages path: /app/instance/fhir_packages
@@ -70,8 +38,35 @@ INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a
  * Running on http://127.0.0.1:5000
  * Running on http://172.18.0.2:5000
 INFO:werkzeug:[33mPress CTRL+C to quit[0m
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:45:38] "GET / HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:45:38] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:36:15] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:36:15] "GET /static/FHIRFLARE.png HTTP/1.1" 200 -
+DEBUG:__main__:Scanning packages directory: /app/instance/fhir_packages
+DEBUG:services:Parsed 'hl7.fhir.au.base-5.1.0-preview.tgz' -> name='hl7.fhir.au.base-5.1.0', version='preview'
+DEBUG:services:Parsed 'hl7.fhir.au.core-1.1.0-preview.tgz' -> name='hl7.fhir.au.core-1.1.0', version='preview'
+DEBUG:services:Parsed 'hl7.fhir.r4.core-4.0.1.tgz' -> name='hl7.fhir.r4.core', version='4.0.1'
+DEBUG:services:Parsed 'hl7.fhir.uv.extensions.r4-5.2.0.tgz' -> name='hl7.fhir.uv.extensions.r4', version='5.2.0'
+DEBUG:services:Parsed 'hl7.fhir.uv.ipa-1.0.0.tgz' -> name='hl7.fhir.uv.ipa', version='1.0.0'
+DEBUG:services:Parsed 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz' -> name='hl7.fhir.uv.smart-app-launch', version='2.0.0'
+DEBUG:services:Parsed 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz' -> name='hl7.fhir.uv.smart-app-launch', version='2.1.0'
+DEBUG:services:Parsed 'hl7.terminology.r4-5.0.0.tgz' -> name='hl7.terminology.r4', version='5.0.0'
+DEBUG:services:Parsed 'hl7.terminology.r4-6.2.0.tgz' -> name='hl7.terminology.r4', version='6.2.0'
+DEBUG:__main__:Found packages: [{'name': 'hl7.fhir.au.base', 'version': '5.1.0-preview', 'filename': 'hl7.fhir.au.base-5.1.0-preview.tgz'}, {'name': 'hl7.fhir.au.core', 'version': '1.1.0-preview', 'filename': 'hl7.fhir.au.core-1.1.0-preview.tgz'}, {'name': 'hl7.fhir.r4.core', 'version': '4.0.1', 'filename': 'hl7.fhir.r4.core-4.0.1.tgz'}, {'name': 'hl7.fhir.uv.extensions.r4', 'version': '5.2.0', 'filename': 'hl7.fhir.uv.extensions.r4-5.2.0.tgz'}, {'name': 'hl7.fhir.uv.ipa', 'version': '1.0.0', 'filename': 'hl7.fhir.uv.ipa-1.0.0.tgz'}, {'name': 'hl7.fhir.uv.smart-app-launch', 'version': '2.0.0', 'filename': 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz'}, {'name': 'hl7.fhir.uv.smart-app-launch', 'version': '2.1.0', 'filename': 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz'}, {'name': 'hl7.terminology.r4', 'version': '5.0.0', 'filename': 'hl7.terminology.r4-5.0.0.tgz'}, {'name': 'hl7.terminology.r4', 'version': '6.2.0', 'filename': 'hl7.terminology.r4-6.2.0.tgz'}]
+DEBUG:__main__:Errors during package listing: []
+DEBUG:__main__:Duplicate groups: {'hl7.fhir.uv.smart-app-launch': ['2.0.0', '2.1.0'], 'hl7.terminology.r4': ['5.0.0', '6.2.0']}
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:36:33] "GET /view-igs HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:36:33] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+DEBUG:__main__:Viewing IG hl7.fhir.au.core-1.1.0#preview: 25 profiles, 17 base resources, 1 optional elements
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:36:35] "GET /view-ig/1 HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:36:35] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+DEBUG:__main__:Attempting to find SD for 'au-core-patient' in hl7.fhir.au.core-1.1.0-preview.tgz
+DEBUG:services:Searching for SD matching 'au-core-patient' with profile 'None' in hl7.fhir.au.core-1.1.0-preview.tgz
+DEBUG:services:Match found based on exact sd_id: au-core-patient
+DEBUG:services:Removing narrative text from resource: StructureDefinition
+INFO:services:Found high-confidence match for 'au-core-patient' (package/StructureDefinition-au-core-patient.json), stopping search.
+DEBUG:__main__:Found 20 unique IDs in differential.
+DEBUG:__main__:Processing 78 snapshot elements to add isInDifferential flag.
+DEBUG:__main__:Retrieved 19 Must Support paths for 'au-core-patient' from processed IG DB record.
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:36:42] "GET /get-structure?package_name=hl7.fhir.au.core-1.1.0&package_version=preview&resource_type=au-core-patient&view=snapshot HTTP/1.1" 200 -
 DEBUG:__main__:Scanning packages directory: /app/instance/fhir_packages
 DEBUG:__main__:Found 9 .tgz files: ['hl7.fhir.au.base-5.1.0-preview.tgz', 'hl7.fhir.au.core-1.1.0-preview.tgz', 'hl7.fhir.r4.core-4.0.1.tgz', 'hl7.fhir.uv.extensions.r4-5.2.0.tgz', 'hl7.fhir.uv.ipa-1.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz', 'hl7.terminology.r4-5.0.0.tgz', 'hl7.terminology.r4-6.2.0.tgz']
 DEBUG:__main__:Added package: hl7.fhir.au.base#5.1.0-preview
@@ -85,159 +80,10 @@ DEBUG:__main__:Added package: hl7.terminology.r4#5.0.0
 DEBUG:__main__:Added package: hl7.terminology.r4#6.2.0
 DEBUG:__main__:Set package choices: [('', 'None'), ('hl7.fhir.au.base#5.1.0-preview', 'hl7.fhir.au.base#5.1.0-preview'), ('hl7.fhir.au.core#1.1.0-preview', 'hl7.fhir.au.core#1.1.0-preview'), ('hl7.fhir.r4.core#4.0.1', 'hl7.fhir.r4.core#4.0.1'), ('hl7.fhir.uv.extensions.r4#5.2.0', 'hl7.fhir.uv.extensions.r4#5.2.0'), ('hl7.fhir.uv.ipa#1.0.0', 'hl7.fhir.uv.ipa#1.0.0'), ('hl7.fhir.uv.smart-app-launch#2.0.0', 'hl7.fhir.uv.smart-app-launch#2.0.0'), ('hl7.fhir.uv.smart-app-launch#2.1.0', 'hl7.fhir.uv.smart-app-launch#2.1.0'), ('hl7.terminology.r4#5.0.0', 'hl7.terminology.r4#5.0.0'), ('hl7.terminology.r4#6.2.0', 'hl7.terminology.r4#6.2.0')]
 DEBUG:__main__:Handling GET request for FSH converter page.
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:45:46] "GET /fsh-converter HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:45:46] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:45:46] "[36mGET /static/js/lottie.min.js HTTP/1.1[0m" 304 -
-DEBUG:__main__:Instance path configuration: /app/instance
-DEBUG:__main__:Database URI: sqlite:////app/instance/fhir_ig.db
-DEBUG:__main__:Packages path: /app/instance/fhir_packages
-DEBUG:__main__:Flask instance folder path: /app/instance
-DEBUG:__main__:Directories created/verified: Instance: /app/instance, Packages: /app/instance/fhir_packages
-DEBUG:__main__:Attempting to create database tables for URI: sqlite:////app/instance/fhir_ig.db
-INFO:__main__:Database tables created successfully (if they didn't exist).
-DEBUG:__main__:Instance path configuration: /app/instance
-DEBUG:__main__:Database URI: sqlite:////app/instance/fhir_ig.db
-DEBUG:__main__:Packages path: /app/instance/fhir_packages
-DEBUG:__main__:Flask instance folder path: /app/instance
-DEBUG:__main__:Directories created/verified: Instance: /app/instance, Packages: /app/instance/fhir_packages
-DEBUG:__main__:Attempting to create database tables for URI: sqlite:////app/instance/fhir_ig.db
-INFO:__main__:Database tables created successfully (if they didn't exist).
-INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
- * Running on all addresses (0.0.0.0)
- * Running on http://127.0.0.1:5000
- * Running on http://172.18.0.2:5000
-INFO:werkzeug:[33mPress CTRL+C to quit[0m
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:50:05] "GET / HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:50:06] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
-DEBUG:__main__:Scanning packages directory: /app/instance/fhir_packages
-DEBUG:__main__:Found 9 .tgz files: ['hl7.fhir.au.base-5.1.0-preview.tgz', 'hl7.fhir.au.core-1.1.0-preview.tgz', 'hl7.fhir.r4.core-4.0.1.tgz', 'hl7.fhir.uv.extensions.r4-5.2.0.tgz', 'hl7.fhir.uv.ipa-1.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz', 'hl7.terminology.r4-5.0.0.tgz', 'hl7.terminology.r4-6.2.0.tgz']
-DEBUG:__main__:Added package: hl7.fhir.au.base#5.1.0-preview
-DEBUG:__main__:Added package: hl7.fhir.au.core#1.1.0-preview
-DEBUG:__main__:Added package: hl7.fhir.r4.core#4.0.1
-DEBUG:__main__:Added package: hl7.fhir.uv.extensions.r4#5.2.0
-DEBUG:__main__:Added package: hl7.fhir.uv.ipa#1.0.0
-DEBUG:__main__:Added package: hl7.fhir.uv.smart-app-launch#2.0.0
-DEBUG:__main__:Added package: hl7.fhir.uv.smart-app-launch#2.1.0
-DEBUG:__main__:Added package: hl7.terminology.r4#5.0.0
-DEBUG:__main__:Added package: hl7.terminology.r4#6.2.0
-DEBUG:__main__:Set package choices: [('', 'None'), ('hl7.fhir.au.base#5.1.0-preview', 'hl7.fhir.au.base#5.1.0-preview'), ('hl7.fhir.au.core#1.1.0-preview', 'hl7.fhir.au.core#1.1.0-preview'), ('hl7.fhir.r4.core#4.0.1', 'hl7.fhir.r4.core#4.0.1'), ('hl7.fhir.uv.extensions.r4#5.2.0', 'hl7.fhir.uv.extensions.r4#5.2.0'), ('hl7.fhir.uv.ipa#1.0.0', 'hl7.fhir.uv.ipa#1.0.0'), ('hl7.fhir.uv.smart-app-launch#2.0.0', 'hl7.fhir.uv.smart-app-launch#2.0.0'), ('hl7.fhir.uv.smart-app-launch#2.1.0', 'hl7.fhir.uv.smart-app-launch#2.1.0'), ('hl7.terminology.r4#5.0.0', 'hl7.terminology.r4#5.0.0'), ('hl7.terminology.r4#6.2.0', 'hl7.terminology.r4#6.2.0')]
-DEBUG:__main__:Handling GET request for FSH converter page.
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:50:13] "GET /fsh-converter HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:50:13] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:50:13] "[36mGET /static/js/lottie.min.js HTTP/1.1[0m" 304 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:50:13] "[36mGET /static/animations/loading-dark.json HTTP/1.1[0m" 304 -
-DEBUG:__main__:Instance path configuration: /app/instance
-DEBUG:__main__:Database URI: sqlite:////app/instance/fhir_ig.db
-DEBUG:__main__:Packages path: /app/instance/fhir_packages
-DEBUG:__main__:Flask instance folder path: /app/instance
-DEBUG:__main__:Directories created/verified: Instance: /app/instance, Packages: /app/instance/fhir_packages
-DEBUG:__main__:Attempting to create database tables for URI: sqlite:////app/instance/fhir_ig.db
-INFO:__main__:Database tables created successfully (if they didn't exist).
-DEBUG:__main__:Instance path configuration: /app/instance
-DEBUG:__main__:Database URI: sqlite:////app/instance/fhir_ig.db
-DEBUG:__main__:Packages path: /app/instance/fhir_packages
-DEBUG:__main__:Flask instance folder path: /app/instance
-DEBUG:__main__:Directories created/verified: Instance: /app/instance, Packages: /app/instance/fhir_packages
-DEBUG:__main__:Attempting to create database tables for URI: sqlite:////app/instance/fhir_ig.db
-INFO:__main__:Database tables created successfully (if they didn't exist).
-INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
- * Running on all addresses (0.0.0.0)
- * Running on http://127.0.0.1:5000
- * Running on http://172.18.0.2:5000
-INFO:werkzeug:[33mPress CTRL+C to quit[0m
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:53:18] "GET / HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:53:18] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:53:18] "[36mGET /static/favicon.ico HTTP/1.1[0m" 304 -
-DEBUG:__main__:Scanning packages directory: /app/instance/fhir_packages
-DEBUG:__main__:Found 9 .tgz files: ['hl7.fhir.au.base-5.1.0-preview.tgz', 'hl7.fhir.au.core-1.1.0-preview.tgz', 'hl7.fhir.r4.core-4.0.1.tgz', 'hl7.fhir.uv.extensions.r4-5.2.0.tgz', 'hl7.fhir.uv.ipa-1.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz', 'hl7.terminology.r4-5.0.0.tgz', 'hl7.terminology.r4-6.2.0.tgz']
-DEBUG:__main__:Added package: hl7.fhir.au.base#5.1.0-preview
-DEBUG:__main__:Added package: hl7.fhir.au.core#1.1.0-preview
-DEBUG:__main__:Added package: hl7.fhir.r4.core#4.0.1
-DEBUG:__main__:Added package: hl7.fhir.uv.extensions.r4#5.2.0
-DEBUG:__main__:Added package: hl7.fhir.uv.ipa#1.0.0
-DEBUG:__main__:Added package: hl7.fhir.uv.smart-app-launch#2.0.0
-DEBUG:__main__:Added package: hl7.fhir.uv.smart-app-launch#2.1.0
-DEBUG:__main__:Added package: hl7.terminology.r4#5.0.0
-DEBUG:__main__:Added package: hl7.terminology.r4#6.2.0
-DEBUG:__main__:Set package choices: [('', 'None'), ('hl7.fhir.au.base#5.1.0-preview', 'hl7.fhir.au.base#5.1.0-preview'), ('hl7.fhir.au.core#1.1.0-preview', 'hl7.fhir.au.core#1.1.0-preview'), ('hl7.fhir.r4.core#4.0.1', 'hl7.fhir.r4.core#4.0.1'), ('hl7.fhir.uv.extensions.r4#5.2.0', 'hl7.fhir.uv.extensions.r4#5.2.0'), ('hl7.fhir.uv.ipa#1.0.0', 'hl7.fhir.uv.ipa#1.0.0'), ('hl7.fhir.uv.smart-app-launch#2.0.0', 'hl7.fhir.uv.smart-app-launch#2.0.0'), ('hl7.fhir.uv.smart-app-launch#2.1.0', 'hl7.fhir.uv.smart-app-launch#2.1.0'), ('hl7.terminology.r4#5.0.0', 'hl7.terminology.r4#5.0.0'), ('hl7.terminology.r4#6.2.0', 'hl7.terminology.r4#6.2.0')]
-DEBUG:__main__:Handling GET request for FSH converter page.
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:53:24] "GET /fsh-converter HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:53:24] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:53:24] "[36mGET /static/js/lottie.min.js HTTP/1.1[0m" 304 -
-DEBUG:__main__:Instance path configuration: /app/instance
-DEBUG:__main__:Database URI: sqlite:////app/instance/fhir_ig.db
-DEBUG:__main__:Packages path: /app/instance/fhir_packages
-DEBUG:__main__:Flask instance folder path: /app/instance
-DEBUG:__main__:Directories created/verified: Instance: /app/instance, Packages: /app/instance/fhir_packages
-DEBUG:__main__:Attempting to create database tables for URI: sqlite:////app/instance/fhir_ig.db
-INFO:__main__:Database tables created successfully (if they didn't exist).
-DEBUG:__main__:Instance path configuration: /app/instance
-DEBUG:__main__:Database URI: sqlite:////app/instance/fhir_ig.db
-DEBUG:__main__:Packages path: /app/instance/fhir_packages
-DEBUG:__main__:Flask instance folder path: /app/instance
-DEBUG:__main__:Directories created/verified: Instance: /app/instance, Packages: /app/instance/fhir_packages
-DEBUG:__main__:Attempting to create database tables for URI: sqlite:////app/instance/fhir_ig.db
-INFO:__main__:Database tables created successfully (if they didn't exist).
-INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
- * Running on all addresses (0.0.0.0)
- * Running on http://127.0.0.1:5000
- * Running on http://172.18.0.2:5000
-INFO:werkzeug:[33mPress CTRL+C to quit[0m
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:57:25] "GET / HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:57:25] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
-DEBUG:__main__:Scanning packages directory: /app/instance/fhir_packages
-DEBUG:__main__:Found 9 .tgz files: ['hl7.fhir.au.base-5.1.0-preview.tgz', 'hl7.fhir.au.core-1.1.0-preview.tgz', 'hl7.fhir.r4.core-4.0.1.tgz', 'hl7.fhir.uv.extensions.r4-5.2.0.tgz', 'hl7.fhir.uv.ipa-1.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz', 'hl7.terminology.r4-5.0.0.tgz', 'hl7.terminology.r4-6.2.0.tgz']
-DEBUG:__main__:Added package: hl7.fhir.au.base#5.1.0-preview
-DEBUG:__main__:Added package: hl7.fhir.au.core#1.1.0-preview
-DEBUG:__main__:Added package: hl7.fhir.r4.core#4.0.1
-DEBUG:__main__:Added package: hl7.fhir.uv.extensions.r4#5.2.0
-DEBUG:__main__:Added package: hl7.fhir.uv.ipa#1.0.0
-DEBUG:__main__:Added package: hl7.fhir.uv.smart-app-launch#2.0.0
-DEBUG:__main__:Added package: hl7.fhir.uv.smart-app-launch#2.1.0
-DEBUG:__main__:Added package: hl7.terminology.r4#5.0.0
-DEBUG:__main__:Added package: hl7.terminology.r4#6.2.0
-DEBUG:__main__:Set package choices: [('', 'None'), ('hl7.fhir.au.base#5.1.0-preview', 'hl7.fhir.au.base#5.1.0-preview'), ('hl7.fhir.au.core#1.1.0-preview', 'hl7.fhir.au.core#1.1.0-preview'), ('hl7.fhir.r4.core#4.0.1', 'hl7.fhir.r4.core#4.0.1'), ('hl7.fhir.uv.extensions.r4#5.2.0', 'hl7.fhir.uv.extensions.r4#5.2.0'), ('hl7.fhir.uv.ipa#1.0.0', 'hl7.fhir.uv.ipa#1.0.0'), ('hl7.fhir.uv.smart-app-launch#2.0.0', 'hl7.fhir.uv.smart-app-launch#2.0.0'), ('hl7.fhir.uv.smart-app-launch#2.1.0', 'hl7.fhir.uv.smart-app-launch#2.1.0'), ('hl7.terminology.r4#5.0.0', 'hl7.terminology.r4#5.0.0'), ('hl7.terminology.r4#6.2.0', 'hl7.terminology.r4#6.2.0')]
-DEBUG:__main__:Handling GET request for FSH converter page.
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:57:30] "GET /fsh-converter HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:57:30] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 14:57:30] "[36mGET /static/js/lottie.min.js HTTP/1.1[0m" 304 -
-DEBUG:__main__:Instance path configuration: /app/instance
-DEBUG:__main__:Database URI: sqlite:////app/instance/fhir_ig.db
-DEBUG:__main__:Packages path: /app/instance/fhir_packages
-DEBUG:__main__:Flask instance folder path: /app/instance
-DEBUG:__main__:Directories created/verified: Instance: /app/instance, Packages: /app/instance/fhir_packages
-DEBUG:__main__:Attempting to create database tables for URI: sqlite:////app/instance/fhir_ig.db
-INFO:__main__:Database tables created successfully (if they didn't exist).
-DEBUG:__main__:Instance path configuration: /app/instance
-DEBUG:__main__:Database URI: sqlite:////app/instance/fhir_ig.db
-DEBUG:__main__:Packages path: /app/instance/fhir_packages
-DEBUG:__main__:Flask instance folder path: /app/instance
-DEBUG:__main__:Directories created/verified: Instance: /app/instance, Packages: /app/instance/fhir_packages
-DEBUG:__main__:Attempting to create database tables for URI: sqlite:////app/instance/fhir_ig.db
-INFO:__main__:Database tables created successfully (if they didn't exist).
-INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
- * Running on all addresses (0.0.0.0)
- * Running on http://127.0.0.1:5000
- * Running on http://172.18.0.2:5000
-INFO:werkzeug:[33mPress CTRL+C to quit[0m
-DEBUG:__main__:Scanning packages directory: /app/instance/fhir_packages
-DEBUG:__main__:Found 9 .tgz files: ['hl7.fhir.au.base-5.1.0-preview.tgz', 'hl7.fhir.au.core-1.1.0-preview.tgz', 'hl7.fhir.r4.core-4.0.1.tgz', 'hl7.fhir.uv.extensions.r4-5.2.0.tgz', 'hl7.fhir.uv.ipa-1.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz', 'hl7.terminology.r4-5.0.0.tgz', 'hl7.terminology.r4-6.2.0.tgz']
-DEBUG:__main__:Added package: hl7.fhir.au.base#5.1.0-preview
-DEBUG:__main__:Added package: hl7.fhir.au.core#1.1.0-preview
-DEBUG:__main__:Added package: hl7.fhir.r4.core#4.0.1
-DEBUG:__main__:Added package: hl7.fhir.uv.extensions.r4#5.2.0
-DEBUG:__main__:Added package: hl7.fhir.uv.ipa#1.0.0
-DEBUG:__main__:Added package: hl7.fhir.uv.smart-app-launch#2.0.0
-DEBUG:__main__:Added package: hl7.fhir.uv.smart-app-launch#2.1.0
-DEBUG:__main__:Added package: hl7.terminology.r4#5.0.0
-DEBUG:__main__:Added package: hl7.terminology.r4#6.2.0
-DEBUG:__main__:Set package choices: [('', 'None'), ('hl7.fhir.au.base#5.1.0-preview', 'hl7.fhir.au.base#5.1.0-preview'), ('hl7.fhir.au.core#1.1.0-preview', 'hl7.fhir.au.core#1.1.0-preview'), ('hl7.fhir.r4.core#4.0.1', 'hl7.fhir.r4.core#4.0.1'), ('hl7.fhir.uv.extensions.r4#5.2.0', 'hl7.fhir.uv.extensions.r4#5.2.0'), ('hl7.fhir.uv.ipa#1.0.0', 'hl7.fhir.uv.ipa#1.0.0'), ('hl7.fhir.uv.smart-app-launch#2.0.0', 'hl7.fhir.uv.smart-app-launch#2.0.0'), ('hl7.fhir.uv.smart-app-launch#2.1.0', 'hl7.fhir.uv.smart-app-launch#2.1.0'), ('hl7.terminology.r4#5.0.0', 'hl7.terminology.r4#5.0.0'), ('hl7.terminology.r4#6.2.0', 'hl7.terminology.r4#6.2.0')]
-DEBUG:__main__:Handling GET request for FSH converter page.
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 15:00:57] "GET /fsh-converter HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 15:00:57] "GET /static/FHIRFLARE.png HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 15:00:58] "GET /static/js/lottie.min.js HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 15:00:58] "GET /static/animations/loading-dark.json HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 15:00:58] "GET /static/favicon.ico HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:37:59] "GET /fsh-converter HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:37:59] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:37:59] "[36mGET /static/js/lottie.min.js HTTP/1.1[0m" 304 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:37:59] "[36mGET /static/animations/loading-light.json HTTP/1.1[0m" 304 -
 DEBUG:__main__:Scanning packages directory: /app/instance/fhir_packages
 DEBUG:__main__:Found 9 .tgz files: ['hl7.fhir.au.base-5.1.0-preview.tgz', 'hl7.fhir.au.core-1.1.0-preview.tgz', 'hl7.fhir.r4.core-4.0.1.tgz', 'hl7.fhir.uv.extensions.r4-5.2.0.tgz', 'hl7.fhir.uv.ipa-1.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz', 'hl7.terminology.r4-5.0.0.tgz', 'hl7.terminology.r4-6.2.0.tgz']
 DEBUG:__main__:Added package: hl7.fhir.au.base#5.1.0-preview
@@ -251,12 +97,12 @@ DEBUG:__main__:Added package: hl7.terminology.r4#5.0.0
 DEBUG:__main__:Added package: hl7.terminology.r4#6.2.0
 DEBUG:__main__:Set package choices: [('', 'None'), ('hl7.fhir.au.base#5.1.0-preview', 'hl7.fhir.au.base#5.1.0-preview'), ('hl7.fhir.au.core#1.1.0-preview', 'hl7.fhir.au.core#1.1.0-preview'), ('hl7.fhir.r4.core#4.0.1', 'hl7.fhir.r4.core#4.0.1'), ('hl7.fhir.uv.extensions.r4#5.2.0', 'hl7.fhir.uv.extensions.r4#5.2.0'), ('hl7.fhir.uv.ipa#1.0.0', 'hl7.fhir.uv.ipa#1.0.0'), ('hl7.fhir.uv.smart-app-launch#2.0.0', 'hl7.fhir.uv.smart-app-launch#2.0.0'), ('hl7.fhir.uv.smart-app-launch#2.1.0', 'hl7.fhir.uv.smart-app-launch#2.1.0'), ('hl7.terminology.r4#5.0.0', 'hl7.terminology.r4#5.0.0'), ('hl7.terminology.r4#6.2.0', 'hl7.terminology.r4#6.2.0')]
 DEBUG:__main__:Processing input: mode=text, has_file=False, has_text=True, has_alias=False
-DEBUG:services:Processed input: ('/tmp/tmp_21icnfn/input.json', None)
-DEBUG:__main__:Running GoFSH with input: /tmp/tmp_21icnfn/input.json, output_dir: /app/static/uploads/fsh_output
+DEBUG:services:Processed input: ('/tmp/tmpkn9pyg0k/input.json', None)
+DEBUG:__main__:Running GoFSH with input: /tmp/tmpkn9pyg0k/input.json, output_dir: /app/static/uploads/fsh_output
 DEBUG:services:Wrapper script contents:
 #!/bin/bash
 exec 3>/dev/null
-"gofsh" "/tmp/tmp_21icnfn/input.json" "-o" "/tmp/tmpn9r4c9rl" "-s" "file-per-definition" "-l" "error" </dev/null >/tmp/gofsh_output.log 2>&1
+"gofsh" "/tmp/tmpkn9pyg0k/input.json" "-o" "/tmp/tmp37ihga7h" "-s" "file-per-definition" "-l" "error" "-u" "4.3.0" "--dependency" "hl7.fhir.us.core@6.1.0" "--indent" </dev/null >/tmp/gofsh_output.log 2>&1
 
 DEBUG:services:Temp output directory contents before GoFSH: []
 DEBUG:services:GoFSH output:
@@ -280,18 +126,18 @@ DEBUG:services:GoFSH output:
 ║ ╭────────────────────┬───────────────────┬────────────────────╮ ║
 ║ │      Aliases       │                   │                    │ ║
 ║ ├────────────────────┼───────────────────┼────────────────────┤ ║
-║ │         3          │                   │                    │ ║
+║ │         1          │                   │                    │ ║
 ║ ╰────────────────────┴───────────────────┴────────────────────╯ ║
 ║                                                                 ║
 ╠═════════════════════════════════════════════════════════════════╣
-║ Not bad, but it cod be batter!          0 Errors     2 Warnings ║
+║ Not bad, but it cod be batter!          0 Errors      1 Warning ║
 ╚═════════════════════════════════════════════════════════════════╝
 
 DEBUG:services:GoFSH fishing-trip wrapper script contents:
 #!/bin/bash
 exec 3>/dev/null
 exec >/dev/null 2>&1
-"gofsh" "/tmp/tmp_21icnfn/input.json" "-o" "/tmp/tmpllyiv7dp" "-s" "file-per-definition" "-l" "error" "--fshing-trip" </dev/null >/tmp/gofsh_output.log 2>&1
+"gofsh" "/tmp/tmpkn9pyg0k/input.json" "-o" "/tmp/tmpb_q8uf73" "-s" "file-per-definition" "-l" "error" "--fshing-trip" "-u" "4.3.0" "--dependency" "hl7.fhir.us.core@6.1.0" "--indent" </dev/null >/tmp/gofsh_output.log 2>&1
 
 DEBUG:services:GoFSH fishing-trip output:
 
@@ -314,24 +160,24 @@ DEBUG:services:GoFSH fishing-trip output:
 ║ ╭────────────────────┬───────────────────┬────────────────────╮ ║
 ║ │      Aliases       │                   │                    │ ║
 ║ ├────────────────────┼───────────────────┼────────────────────┤ ║
-║ │         3          │                   │                    │ ║
+║ │         1          │                   │                    │ ║
 ║ ╰────────────────────┴───────────────────┴────────────────────╯ ║
 ║                                                                 ║
 ╠═════════════════════════════════════════════════════════════════╣
-║ Something smells fishy...               0 Errors     2 Warnings ║
+║ Warnings... Water those about?          0 Errors      1 Warning ║
 ╚═════════════════════════════════════════════════════════════════╝
 ╔═════════════════════════════════════════════════════════════════╗
 ║             Generating round trip results via SUSHI             ║
 ╚═════════════════════════════════════════════════════════════════╝
 info  Running SUSHI v3.15.0 (implements FHIR Shorthand specification v3.0.0)
 info  Arguments:
-info    /tmp/tmpllyiv7dp
-info  No output path specified. Output to /tmp/tmpllyiv7dp
-info  Using configuration file: /tmp/tmpllyiv7dp/sushi-config.yaml
+info    /tmp/tmpb_q8uf73
+info  No output path specified. Output to /tmp/tmpb_q8uf73
+info  Using configuration file: /tmp/tmpb_q8uf73/sushi-config.yaml
 warn  The FSHOnly property is set to true, so no output specific to IG creation will be generated. The following properties are unused and only relevant for IG creation: id, name. Consider removing these properties from sushi-config.yaml.
-  File: /tmp/tmpllyiv7dp/sushi-config.yaml
+  File: /tmp/tmpb_q8uf73/sushi-config.yaml
 info  Importing FSH text...
-info  Preprocessed 2 documents with 3 aliases.
+info  Preprocessed 2 documents with 1 aliases.
 info  Imported 0 definitions and 1 instances.
 info  Loaded virtual package sushi-r5forR4#1.0.0 with 7 resources
 info  Resolved hl7.fhir.uv.tools.r4#latest to concrete version 0.5.0
@@ -340,7 +186,8 @@ info  Resolved hl7.terminology.r4#latest to concrete version 6.2.0
 info  Loaded hl7.terminology.r4#6.2.0 with 4323 resources
 info  Resolved hl7.fhir.uv.extensions.r4#latest to concrete version 5.2.0
 info  Loaded hl7.fhir.uv.extensions.r4#5.2.0 with 759 resources
-info  Loaded hl7.fhir.r4.core#4.0.1 with 4581 resources
+info  Loaded hl7.fhir.us.core#6.1.0 with 210 resources
+info  Loaded hl7.fhir.r4b.core#4.3.0 with 3497 resources
 info  Loaded virtual package sushi-local#LOCAL with 0 resources
 info  Converting FSH to FHIR resources...
 info  Converted 1 FHIR instances.
@@ -361,165 +208,56 @@ info  Exporting FSH definitions only. No IG related content will be exported.
 |  -------------------------------------------------------------  |
 |                                                                 |
 ===================================================================
-| A bit pitchy, but tuna-ble.            0 Errors       1 Warning |
+| You might need some Vitamin Sea        0 Errors       1 Warning |
 ===================================================================
 
 
-DEBUG:services:Copied files to final output directory: ['sushi-config.yaml', 'input/fsh/aliases.fsh', 'input/fsh/instances/vkc.fsh', 'input/input.json', 'fshing-trip-comparison.html']
-INFO:services:GoFSH executed successfully for /tmp/tmp_21icnfn/input.json
-DEBUG:__main__:Successfully removed temp directory: /tmp/tmp_21icnfn
+DEBUG:services:Copied files to final output directory: ['sushi-config.yaml', 'input/fsh/aliases.fsh', 'input/fsh/instances/discharge-1.fsh', 'input/input.json', 'fshing-trip-comparison.html']
+INFO:services:GoFSH executed successfully for /tmp/tmpkn9pyg0k/input.json
+DEBUG:__main__:Successfully removed temp directory: /tmp/tmpkn9pyg0k
 INFO:__main__:FSH conversion successful
 DEBUG:__main__:Returning partial HTML for AJAX POST request.
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 15:02:41] "POST /fsh-converter HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 15:02:41] "[36mGET /static/animations/loading-dark.json HTTP/1.1[0m" 304 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:40:26] "POST /fsh-converter HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:40:26] "[36mGET /static/animations/loading-light.json HTTP/1.1[0m" 304 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:40:42] "GET /static/uploads/fsh_output/fshing-trip-comparison.html HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:40:59] "GET /fhir-ui-operations HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:41:00] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:43:27] "GET /fhir HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:43:27] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:43:31] "GET /fhir-ui-operations HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:43:31] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:43:39] "GET /fhir HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:43:39] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:43:48] "GET /validate-sample HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:43:48] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:44:08] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:44:08] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
 DEBUG:__main__:Scanning packages directory: /app/instance/fhir_packages
-DEBUG:__main__:Found 9 .tgz files: ['hl7.fhir.au.base-5.1.0-preview.tgz', 'hl7.fhir.au.core-1.1.0-preview.tgz', 'hl7.fhir.r4.core-4.0.1.tgz', 'hl7.fhir.uv.extensions.r4-5.2.0.tgz', 'hl7.fhir.uv.ipa-1.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz', 'hl7.terminology.r4-5.0.0.tgz', 'hl7.terminology.r4-6.2.0.tgz']
-DEBUG:__main__:Added package: hl7.fhir.au.base#5.1.0-preview
-DEBUG:__main__:Added package: hl7.fhir.au.core#1.1.0-preview
-DEBUG:__main__:Added package: hl7.fhir.r4.core#4.0.1
-DEBUG:__main__:Added package: hl7.fhir.uv.extensions.r4#5.2.0
-DEBUG:__main__:Added package: hl7.fhir.uv.ipa#1.0.0
-DEBUG:__main__:Added package: hl7.fhir.uv.smart-app-launch#2.0.0
-DEBUG:__main__:Added package: hl7.fhir.uv.smart-app-launch#2.1.0
-DEBUG:__main__:Added package: hl7.terminology.r4#5.0.0
-DEBUG:__main__:Added package: hl7.terminology.r4#6.2.0
-DEBUG:__main__:Set package choices: [('', 'None'), ('hl7.fhir.au.base#5.1.0-preview', 'hl7.fhir.au.base#5.1.0-preview'), ('hl7.fhir.au.core#1.1.0-preview', 'hl7.fhir.au.core#1.1.0-preview'), ('hl7.fhir.r4.core#4.0.1', 'hl7.fhir.r4.core#4.0.1'), ('hl7.fhir.uv.extensions.r4#5.2.0', 'hl7.fhir.uv.extensions.r4#5.2.0'), ('hl7.fhir.uv.ipa#1.0.0', 'hl7.fhir.uv.ipa#1.0.0'), ('hl7.fhir.uv.smart-app-launch#2.0.0', 'hl7.fhir.uv.smart-app-launch#2.0.0'), ('hl7.fhir.uv.smart-app-launch#2.1.0', 'hl7.fhir.uv.smart-app-launch#2.1.0'), ('hl7.terminology.r4#5.0.0', 'hl7.terminology.r4#5.0.0'), ('hl7.terminology.r4#6.2.0', 'hl7.terminology.r4#6.2.0')]
-DEBUG:__main__:Processing input: mode=text, has_file=False, has_text=True, has_alias=False
-DEBUG:services:Processed input: ('/tmp/tmp_k0pky49/input.json', None)
-DEBUG:__main__:Running GoFSH with input: /tmp/tmp_k0pky49/input.json, output_dir: /app/static/uploads/fsh_output
-DEBUG:services:Wrapper script contents:
-#!/bin/bash
-exec 3>/dev/null
-"gofsh" "/tmp/tmp_k0pky49/input.json" "-o" "/tmp/tmpvnwz2fsh" "-s" "file-per-definition" "-l" "error" </dev/null >/tmp/gofsh_output.log 2>&1
-
-DEBUG:services:Temp output directory contents before GoFSH: []
-DEBUG:__main__:Scanning packages directory: /app/instance/fhir_packages
-DEBUG:__main__:Found 9 .tgz files: ['hl7.fhir.au.base-5.1.0-preview.tgz', 'hl7.fhir.au.core-1.1.0-preview.tgz', 'hl7.fhir.r4.core-4.0.1.tgz', 'hl7.fhir.uv.extensions.r4-5.2.0.tgz', 'hl7.fhir.uv.ipa-1.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz', 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz', 'hl7.terminology.r4-5.0.0.tgz', 'hl7.terminology.r4-6.2.0.tgz']
-DEBUG:__main__:Added package: hl7.fhir.au.base#5.1.0-preview
-DEBUG:__main__:Added package: hl7.fhir.au.core#1.1.0-preview
-DEBUG:__main__:Added package: hl7.fhir.r4.core#4.0.1
-DEBUG:__main__:Added package: hl7.fhir.uv.extensions.r4#5.2.0
-DEBUG:__main__:Added package: hl7.fhir.uv.ipa#1.0.0
-DEBUG:__main__:Added package: hl7.fhir.uv.smart-app-launch#2.0.0
-DEBUG:__main__:Added package: hl7.fhir.uv.smart-app-launch#2.1.0
-DEBUG:__main__:Added package: hl7.terminology.r4#5.0.0
-DEBUG:services:GoFSH output:
-
-╔═════════════════════════ GoFSH RESULTS ═════════════════════════╗
-║ ╭────────────────────┬───────────────────┬────────────────────╮ ║
-║ │      Profiles      │    Extensions     │      Logicals      │ ║
-║ ├────────────────────┼───────────────────┼────────────────────┤ ║
-║ │         0          │         0         │         0          │ ║
-║ ╰────────────────────┴───────────────────┴────────────────────╯ ║
-║ ╭────────────────────┬───────────────────┬────────────────────╮ ║
-║ │     Resources      │     ValueSets     │     CodeSystems    │ ║
-║ ├────────────────────┼───────────────────┼────────────────────┤ ║
-║ │         0          │         0         │         0          │ ║
-║ ╰────────────────────┴───────────────────┴────────────────────╯ ║
-║ ╭────────────────────┬───────────────────┬────────────────────╮ ║
-║ │     Instances      │    Invariants     │      Mappings      │ ║
-║ ├────────────────────┼───────────────────┼────────────────────┤ ║
-║ │         1          │         0         │         0          │ ║
-║ ╰────────────────────┴───────────────────┴────────────────────╯ ║
-║ ╭────────────────────┬───────────────────┬────────────────────╮ ║
-║ │      Aliases       │                   │                    │ ║
-║ ├────────────────────┼───────────────────┼────────────────────┤ ║
-║ │         3          │                   │                    │ ║
-║ ╰────────────────────┴───────────────────┴────────────────────╯ ║
-║                                                                 ║
-╠═════════════════════════════════════════════════════════════════╣
-║ Not bad, but it cod be batter!          0 Errors     2 Warnings ║
-╚═════════════════════════════════════════════════════════════════╝
-
-DEBUG:__main__:Added package: hl7.terminology.r4#6.2.0
-DEBUG:__main__:Set package choices: [('', 'None'), ('hl7.fhir.au.base#5.1.0-preview', 'hl7.fhir.au.base#5.1.0-preview'), ('hl7.fhir.au.core#1.1.0-preview', 'hl7.fhir.au.core#1.1.0-preview'), ('hl7.fhir.r4.core#4.0.1', 'hl7.fhir.r4.core#4.0.1'), ('hl7.fhir.uv.extensions.r4#5.2.0', 'hl7.fhir.uv.extensions.r4#5.2.0'), ('hl7.fhir.uv.ipa#1.0.0', 'hl7.fhir.uv.ipa#1.0.0'), ('hl7.fhir.uv.smart-app-launch#2.0.0', 'hl7.fhir.uv.smart-app-launch#2.0.0'), ('hl7.fhir.uv.smart-app-launch#2.1.0', 'hl7.fhir.uv.smart-app-launch#2.1.0'), ('hl7.terminology.r4#5.0.0', 'hl7.terminology.r4#5.0.0'), ('hl7.terminology.r4#6.2.0', 'hl7.terminology.r4#6.2.0')]
-DEBUG:__main__:Handling GET request for FSH converter page.
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 15:03:11] "GET /fsh-converter HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 15:03:11] "GET /static/FHIRFLARE.png HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 15:03:11] "GET /static/js/lottie.min.js HTTP/1.1" 200 -
-DEBUG:services:GoFSH fishing-trip wrapper script contents:
-#!/bin/bash
-exec 3>/dev/null
-exec >/dev/null 2>&1
-"gofsh" "/tmp/tmp_k0pky49/input.json" "-o" "/tmp/tmp_hia6e3c" "-s" "file-per-definition" "-l" "error" "--fshing-trip" </dev/null >/tmp/gofsh_output.log 2>&1
-
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 15:03:11] "GET /static/animations/loading-light.json HTTP/1.1" 200 -
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 15:03:12] "GET /static/favicon.ico HTTP/1.1" 200 -
-DEBUG:services:GoFSH fishing-trip output:
-
-╔═════════════════════════ GoFSH RESULTS ═════════════════════════╗
-║ ╭────────────────────┬───────────────────┬────────────────────╮ ║
-║ │      Profiles      │    Extensions     │      Logicals      │ ║
-║ ├────────────────────┼───────────────────┼────────────────────┤ ║
-║ │         0          │         0         │         0          │ ║
-║ ╰────────────────────┴───────────────────┴────────────────────╯ ║
-║ ╭────────────────────┬───────────────────┬────────────────────╮ ║
-║ │     Resources      │     ValueSets     │     CodeSystems    │ ║
-║ ├────────────────────┼───────────────────┼────────────────────┤ ║
-║ │         0          │         0         │         0          │ ║
-║ ╰────────────────────┴───────────────────┴────────────────────╯ ║
-║ ╭────────────────────┬───────────────────┬────────────────────╮ ║
-║ │     Instances      │    Invariants     │      Mappings      │ ║
-║ ├────────────────────┼───────────────────┼────────────────────┤ ║
-║ │         1          │         0         │         0          │ ║
-║ ╰────────────────────┴───────────────────┴────────────────────╯ ║
-║ ╭────────────────────┬───────────────────┬────────────────────╮ ║
-║ │      Aliases       │                   │                    │ ║
-║ ├────────────────────┼───────────────────┼────────────────────┤ ║
-║ │         3          │                   │                    │ ║
-║ ╰────────────────────┴───────────────────┴────────────────────╯ ║
-║                                                                 ║
-╠═════════════════════════════════════════════════════════════════╣
-║ A bit pitchy, but may be tuna-ble.      0 Errors     2 Warnings ║
-╚═════════════════════════════════════════════════════════════════╝
-╔═════════════════════════════════════════════════════════════════╗
-║             Generating round trip results via SUSHI             ║
-╚═════════════════════════════════════════════════════════════════╝
-info  Running SUSHI v3.15.0 (implements FHIR Shorthand specification v3.0.0)
-info  Arguments:
-info    /tmp/tmp_hia6e3c
-info  No output path specified. Output to /tmp/tmp_hia6e3c
-info  Using configuration file: /tmp/tmp_hia6e3c/sushi-config.yaml
-warn  The FSHOnly property is set to true, so no output specific to IG creation will be generated. The following properties are unused and only relevant for IG creation: id, name. Consider removing these properties from sushi-config.yaml.
-  File: /tmp/tmp_hia6e3c/sushi-config.yaml
-info  Importing FSH text...
-info  Preprocessed 2 documents with 3 aliases.
-info  Imported 0 definitions and 1 instances.
-info  Loaded virtual package sushi-r5forR4#1.0.0 with 7 resources
-info  Resolved hl7.fhir.uv.tools.r4#latest to concrete version 0.5.0
-info  Loaded hl7.fhir.uv.tools.r4#0.5.0 with 88 resources
-info  Resolved hl7.terminology.r4#latest to concrete version 6.2.0
-info  Loaded hl7.terminology.r4#6.2.0 with 4323 resources
-info  Resolved hl7.fhir.uv.extensions.r4#latest to concrete version 5.2.0
-info  Loaded hl7.fhir.uv.extensions.r4#5.2.0 with 759 resources
-info  Loaded hl7.fhir.r4.core#4.0.1 with 4581 resources
-info  Loaded virtual package sushi-local#LOCAL with 0 resources
-info  Converting FSH to FHIR resources...
-info  Converted 1 FHIR instances.
-info  Exporting FHIR resources as JSON...
-info  Exported 1 FHIR resources as JSON.
-info  Exporting FSH definitions only. No IG related content will be exported.
-
-========================= SUSHI RESULTS ===========================
-|  -------------------------------------------------------------  |
-| |    Profiles   |  Extensions  |   Logicals   |   Resources   | |
-| |-------------------------------------------------------------| |
-| |       0       |      0       |      0       |       0       | |
-|  -------------------------------------------------------------  |
-|  -------------------------------------------------------------  |
-| |      ValueSets     |    CodeSystems    |     Instances      | |
-| |-------------------------------------------------------------| |
-| |         0          |         0         |         1          | |
-|  -------------------------------------------------------------  |
-|                                                                 |
-===================================================================
-| Don't get stuck in the doldrums.       0 Errors       1 Warning |
-===================================================================
-
-
-DEBUG:services:Copied files to final output directory: ['sushi-config.yaml', 'input/fsh/aliases.fsh', 'input/fsh/instances/vkc.fsh', 'input/input.json', 'fshing-trip-comparison.html']
-INFO:services:GoFSH executed successfully for /tmp/tmp_k0pky49/input.json
-DEBUG:__main__:Successfully removed temp directory: /tmp/tmp_k0pky49
-INFO:__main__:FSH conversion successful
-DEBUG:__main__:Returning partial HTML for AJAX POST request.
-INFO:werkzeug:172.18.0.1 - - [18/Apr/2025 15:03:28] "POST /fsh-converter HTTP/1.1" 200 -
+DEBUG:services:Parsed 'hl7.fhir.au.base-5.1.0-preview.tgz' -> name='hl7.fhir.au.base-5.1.0', version='preview'
+DEBUG:services:Parsed 'hl7.fhir.au.core-1.1.0-preview.tgz' -> name='hl7.fhir.au.core-1.1.0', version='preview'
+DEBUG:services:Parsed 'hl7.fhir.r4.core-4.0.1.tgz' -> name='hl7.fhir.r4.core', version='4.0.1'
+DEBUG:services:Parsed 'hl7.fhir.uv.extensions.r4-5.2.0.tgz' -> name='hl7.fhir.uv.extensions.r4', version='5.2.0'
+DEBUG:services:Parsed 'hl7.fhir.uv.ipa-1.0.0.tgz' -> name='hl7.fhir.uv.ipa', version='1.0.0'
+DEBUG:services:Parsed 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz' -> name='hl7.fhir.uv.smart-app-launch', version='2.0.0'
+DEBUG:services:Parsed 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz' -> name='hl7.fhir.uv.smart-app-launch', version='2.1.0'
+DEBUG:services:Parsed 'hl7.terminology.r4-5.0.0.tgz' -> name='hl7.terminology.r4', version='5.0.0'
+DEBUG:services:Parsed 'hl7.terminology.r4-6.2.0.tgz' -> name='hl7.terminology.r4', version='6.2.0'
+DEBUG:__main__:Found packages: [{'name': 'hl7.fhir.au.base', 'version': '5.1.0-preview', 'filename': 'hl7.fhir.au.base-5.1.0-preview.tgz'}, {'name': 'hl7.fhir.au.core', 'version': '1.1.0-preview', 'filename': 'hl7.fhir.au.core-1.1.0-preview.tgz'}, {'name': 'hl7.fhir.r4.core', 'version': '4.0.1', 'filename': 'hl7.fhir.r4.core-4.0.1.tgz'}, {'name': 'hl7.fhir.uv.extensions.r4', 'version': '5.2.0', 'filename': 'hl7.fhir.uv.extensions.r4-5.2.0.tgz'}, {'name': 'hl7.fhir.uv.ipa', 'version': '1.0.0', 'filename': 'hl7.fhir.uv.ipa-1.0.0.tgz'}, {'name': 'hl7.fhir.uv.smart-app-launch', 'version': '2.0.0', 'filename': 'hl7.fhir.uv.smart-app-launch-2.0.0.tgz'}, {'name': 'hl7.fhir.uv.smart-app-launch', 'version': '2.1.0', 'filename': 'hl7.fhir.uv.smart-app-launch-2.1.0.tgz'}, {'name': 'hl7.terminology.r4', 'version': '5.0.0', 'filename': 'hl7.terminology.r4-5.0.0.tgz'}, {'name': 'hl7.terminology.r4', 'version': '6.2.0', 'filename': 'hl7.terminology.r4-6.2.0.tgz'}]
+DEBUG:__main__:Errors during package listing: []
+DEBUG:__main__:Duplicate groups: {'hl7.fhir.uv.smart-app-launch': ['2.0.0', '2.1.0'], 'hl7.terminology.r4': ['5.0.0', '6.2.0']}
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:45:07] "GET /view-igs HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:45:07] "GET /static/FHIRFLARE.png HTTP/1.1" 200 -
+DEBUG:__main__:Viewing IG hl7.fhir.au.core-1.1.0#preview: 25 profiles, 17 base resources, 1 optional elements
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:45:13] "GET /view-ig/1 HTTP/1.1" 200 -
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:45:13] "[36mGET /static/FHIRFLARE.png HTTP/1.1[0m" 304 -
+DEBUG:__main__:Attempting to find SD for 'au-core-patient' in hl7.fhir.au.core-1.1.0-preview.tgz
+DEBUG:services:Searching for SD matching 'au-core-patient' with profile 'None' in hl7.fhir.au.core-1.1.0-preview.tgz
+DEBUG:services:Match found based on exact sd_id: au-core-patient
+DEBUG:services:Removing narrative text from resource: StructureDefinition
+INFO:services:Found high-confidence match for 'au-core-patient' (package/StructureDefinition-au-core-patient.json), stopping search.
+DEBUG:__main__:Found 20 unique IDs in differential.
+DEBUG:__main__:Processing 78 snapshot elements to add isInDifferential flag.
+DEBUG:__main__:Retrieved 19 Must Support paths for 'au-core-patient' from processed IG DB record.
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:45:17] "GET /get-structure?package_name=hl7.fhir.au.core-1.1.0&package_version=preview&resource_type=au-core-patient&view=snapshot HTTP/1.1" 200 -
+DEBUG:__main__:Removing narrative text from example 'package/example/Patient-banks-mia-leanne.json'
+INFO:werkzeug:172.18.0.1 - - [21/Apr/2025 23:45:32] "GET /get-example?package_name=hl7.fhir.au.core-1.1.0&package_version=preview&filename=package/example/Patient-banks-mia-leanne.json HTTP/1.1" 200 -

@@ -86,6 +86,9 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOMContentLoaded event fired."); // Log when the listener starts
+
+    // --- Get DOM Elements & Check Existence ---
     const form = document.getElementById('fhirRequestForm');
     const sendButton = document.getElementById('sendRequest');
     const fhirPath = document.getElementById('fhirPath');
@@ -103,29 +106,79 @@ document.addEventListener('DOMContentLoaded', function() {
     const copyRequestBodyButton = document.getElementById('copyRequestBody');
     const copyResponseHeadersButton = document.getElementById('copyResponseHeaders');
     const copyResponseBodyButton = document.getElementById('copyResponseBody');
-    let useLocalHapi = true;
 
-    // Show/hide request body
+    // --- Element Existence Check ---
+    let elementsReady = true;
+    if (!form) { console.error("Element not found: #fhirRequestForm"); elementsReady = false; }
+    if (!sendButton) { console.error("Element not found: #sendRequest"); elementsReady = false; }
+    if (!fhirPath) { console.error("Element not found: #fhirPath"); elementsReady = false; }
+    if (!requestBody) { console.warn("Element not found: #requestBody"); } // Warn only, might be ok if not POST/PUT
+    if (!requestBodyGroup) { console.warn("Element not found: #requestBodyGroup"); } // Warn only
+    if (!jsonError) { console.warn("Element not found: #jsonError"); } // Warn only
+    if (!responseCard) { console.error("Element not found: #responseCard"); elementsReady = false; }
+    if (!responseStatus) { console.error("Element not found: #responseStatus"); elementsReady = false; }
+    if (!responseHeaders) { console.error("Element not found: #responseHeaders"); elementsReady = false; }
+    if (!responseBody) { console.error("Element not found: #responseBody"); elementsReady = false; }
+    if (!toggleServerButton) { console.error("Element not found: #toggleServer"); elementsReady = false; }
+    if (!toggleLabel) { console.error("Element not found: #toggleLabel"); elementsReady = false; }
+    if (!fhirServerUrl) { console.error("Element not found: #fhirServerUrl"); elementsReady = false; }
+    // Add checks for copy buttons if needed
+
+    if (!elementsReady) {
+        console.error("One or more critical UI elements could not be found. Script execution halted.");
+        // Optionally display a user-facing error message here
+        // const errorDisplay = document.getElementById('some-error-area');
+        // if(errorDisplay) errorDisplay.textContent = "Error initializing UI components.";
+        return; // Stop script execution if critical elements are missing
+    }
+    console.log("All critical elements checked/found.");
+
+    // --- State Variable ---
+    let useLocalHapi = true; // Default state, will be adjusted by Lite mode check
+
+    // --- DEFINE FUNCTIONS (as before) ---
+
+    function updateServerToggleUI() {
+        // Add checks inside the function too, just in case
+        if (!toggleLabel || !fhirServerUrl) {
+             console.error("updateServerToggleUI: Toggle UI elements became unavailable!");
+             return;
+        }
+        toggleLabel.textContent = useLocalHapi ? 'Use Local HAPI' : 'Use Custom URL';
+        fhirServerUrl.style.display = useLocalHapi ? 'none' : 'block';
+        fhirServerUrl.classList.remove('is-invalid');
+    }
+
+    function toggleServer() {
+        if (appMode === 'lite') return; // Ignore clicks in Lite mode
+        useLocalHapi = !useLocalHapi;
+        updateServerToggleUI();
+        if (useLocalHapi && fhirServerUrl) {
+            fhirServerUrl.value = '';
+        }
+        console.log(`Server toggled: ${useLocalHapi ? 'Local HAPI' : 'Custom URL'}`);
+    }
+
     function updateRequestBodyVisibility() {
-        const selectedMethod = document.querySelector('input[name="method"]:checked').value;
+        const selectedMethod = document.querySelector('input[name="method"]:checked')?.value;
+        if (!requestBodyGroup || !selectedMethod) return;
         requestBodyGroup.style.display = (selectedMethod === 'POST' || selectedMethod === 'PUT') ? 'block' : 'none';
         if (selectedMethod !== 'POST' && selectedMethod !== 'PUT') {
-            requestBody.value = '';
-            jsonError.style.display = 'none';
+            if (requestBody) requestBody.value = '';
+            if (jsonError) jsonError.style.display = 'none';
         }
     }
 
-    // Validate request body (JSON or form-encoded)
     function validateRequestBody(method, path) {
+        // Added check for requestBody existence
+        if (!requestBody || !jsonError) return method === 'GET' ? null : '';
         if (!requestBody.value.trim()) {
             requestBody.classList.remove('is-invalid');
             jsonError.style.display = 'none';
             return method === 'GET' ? null : '';
         }
-        const isSearch = path.endsWith('_search');
-        if (method === 'POST' && isSearch) {
-            return requestBody.value; // Allow form-encoded for _search
-        }
+        const isSearch = path && path.endsWith('_search');
+        if (method === 'POST' && isSearch) { return requestBody.value; }
         try {
             JSON.parse(requestBody.value);
             requestBody.classList.remove('is-invalid');
@@ -139,165 +192,107 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Clean FHIR path
     function cleanFhirPath(path) {
+        if (!path) return '';
         const cleaned = path.replace(/^(r4\/|fhir\/)*/i, '').replace(/^\/+|\/+$/g, '');
-        console.log(`Cleaned path: ${path} -> ${cleaned}`);
         return cleaned;
     }
 
-    // Toggle server
-    function toggleServer() {
-        useLocalHapi = !useLocalHapi;
-        toggleLabel.textContent = useLocalHapi ? 'Use Local HAPI' : 'Use Custom URL';
-        fhirServerUrl.style.display = useLocalHapi ? 'none' : 'block';
-        fhirServerUrl.value = '';
-        console.log(`Server toggled: ${useLocalHapi ? 'Local HAPI' : 'Custom URL'}`);
-    }
-
-    // Copy to clipboard
     async function copyToClipboard(text, button) {
+        if (!text || !button) return;
         try {
             await navigator.clipboard.writeText(text);
-            button.innerHTML = '<i class="bi bi-check"></i>';
-            setTimeout(() => {
-                button.innerHTML = '<i class="bi bi-clipboard"></i>';
-            }, 2000);
-        } catch (err) {
-            console.error('Copy failed:', err);
-            alert('Failed to copy to clipboard');
-        }
+            const originalIcon = button.innerHTML;
+            button.innerHTML = '<i class="bi bi-check-lg"></i>';
+            setTimeout(() => { button.innerHTML = originalIcon; }, 2000);
+        } catch (err) { console.error('Copy failed:', err); alert('Failed to copy to clipboard'); }
     }
 
-    // Bind toggle event
-    toggleServerButton.addEventListener('click', toggleServer);
+    // --- INITIAL SETUP & MODE CHECK ---
+    const appMode = '{{ app_mode | default("standalone") | lower }}';
+    console.log('App Mode:', appMode);
 
-    // Bind copy events
-    copyRequestBodyButton.addEventListener('click', () => {
-        copyToClipboard(requestBody.value, copyRequestBodyButton);
-    });
-
-    copyResponseHeadersButton.addEventListener('click', () => {
-        copyToClipboard(responseHeaders.textContent, copyResponseHeadersButton);
-    });
-
-    copyResponseBodyButton.addEventListener('click', () => {
-        copyToClipboard(responseBody.textContent, copyResponseBodyButton);
-    });
-
-    // Update visibility on method change
-    methodRadios.forEach(radio => {
-        radio.addEventListener('change', updateRequestBodyVisibility);
-    });
-
-    // Validate body on input
-    requestBody.addEventListener('input', () => validateRequestBody(
-        document.querySelector('input[name="method"]:checked').value,
-        fhirPath.value
-    ));
-
-    // Send request
-    sendButton.addEventListener('click', async function() {
-        if (!fhirPath.value.trim()) {
-            fhirPath.classList.add('is-invalid');
-            console.log('Path validation failed: empty');
-            return;
-        }
-        fhirPath.classList.remove('is-invalid');
-
-        const method = document.querySelector('input[name="method"]:checked').value;
-        console.log(`Sending request: Method=${method}, Input Path=${fhirPath.value}, Server=${useLocalHapi ? 'Local HAPI' : fhirServerUrl.value}`);
-
-        const data = validateRequestBody(method, fhirPath.value);
-        if ((method === 'POST' || method === 'PUT') && data === null) {
-            console.log('Body validation failed');
-            sendButton.disabled = false;
-            sendButton.textContent = 'Send Request';
-            return;
-        }
-
-        sendButton.disabled = true;
-        sendButton.textContent = 'Sending...';
-        responseCard.style.display = 'none';
-
-        const cleanPath = cleanFhirPath(fhirPath.value);
-        let fetchUrl, headers = {
-            'Accept': 'application/fhir+json'
-        };
-
-        if (useLocalHapi) {
-            fetchUrl = `/fhir/${cleanPath}`;
-            if (method === 'POST' || method === 'PUT') {
-                headers['Content-Type'] = cleanPath.endsWith('_search') ? 'application/x-www-form-urlencoded' : 'application/fhir+json';
-                headers['X-CSRFToken'] = '{{ form.csrf_token._value() }}';
+    if (appMode === 'lite') {
+        console.log('Lite mode detected: Disabling local HAPI toggle and setting default.');
+        // Check toggleServerButton again before using
+        if (toggleServerButton) {
+            toggleServerButton.disabled = true;
+            toggleServerButton.title = "Local HAPI is not available in Lite mode";
+            toggleServerButton.classList.add('disabled');
+            useLocalHapi = false;
+            if (fhirServerUrl) {
+                 fhirServerUrl.placeholder = "Enter FHIR Base URL (Local HAPI unavailable)";
             }
         } else {
-            if (!fhirServerUrl.value.trim()) {
-                fhirServerUrl.classList.add('is-invalid');
-                console.log('Server URL validation failed: empty');
-                sendButton.disabled = false;
-                sendButton.textContent = 'Send Request';
-                return;
-            }
-            fhirServerUrl.classList.remove('is-invalid');
-            fetchUrl = `${fhirServerUrl.value.replace(/\/+$/, '')}/${cleanPath}`;
-            if (method === 'POST' || method === 'PUT') {
-                headers['Content-Type'] = cleanPath.endsWith('_search') ? 'application/x-www-form-urlencoded' : 'application/fhir+json';
-            }
+             // This console log should have appeared earlier if button was missing
+             console.error("Lite mode: Could not find toggle server button (#toggleServer) to disable.");
         }
+    } else {
+         console.log('Standalone mode detected: Enabling local HAPI toggle.');
+         if (toggleServerButton) {
+             toggleServerButton.disabled = false;
+             toggleServerButton.title = "";
+             toggleServerButton.classList.remove('disabled');
+         } else {
+              console.error("Standalone mode: Could not find toggle server button (#toggleServer) to enable.");
+         }
+    }
 
-        console.log('Fetch details:', {
-            url: fetchUrl,
-            method,
-            headers,
-            body: data ? data.substring(0, 100) + '...' : null
-        });
-
-        try {
-            const response = await fetch(fetchUrl, {
-                method: method,
-                headers: headers,
-                body: method === 'GET' ? undefined : data
-            });
-            console.log('Response status:', response.status, response.statusText);
-
-            const responseHeadersObj = {};
-            response.headers.forEach((value, key) => responseHeadersObj[key] = value);
-            const contentType = responseHeadersObj['content-type'] || '';
-            const text = await response.text();
-            console.log('Response headers:', responseHeadersObj);
-            console.log('Response body (first 200 chars):', text.substring(0, 200));
-
-            responseCard.style.display = 'block';
-            responseStatus.textContent = `${response.status} ${response.statusText}`;
-            responseStatus.className = `badge ${response.status < 300 ? 'bg-success' : response.status < 400 ? 'bg-info' : 'bg-danger'}`;
-            responseHeaders.textContent = JSON.stringify(responseHeadersObj, null, 2);
-
-            if (contentType.includes('application/fhir+json') || contentType.includes('application/json')) {
-                try {
-                    responseBody.textContent = JSON.stringify(JSON.parse(text), null, 2);
-                } catch (e) {
-                    console.warn('Failed to parse JSON:', e.message);
-                    responseBody.textContent = text;
-                }
-            } else {
-                responseBody.textContent = text;
-            }
-        } catch (error) {
-            console.error('Fetch error:', error.name, error.message, error.stack);
-            responseCard.style.display = 'block';
-            responseStatus.textContent = 'Error';
-            responseStatus.className = 'badge bg-danger';
-            responseHeaders.textContent = '';
-            responseBody.textContent = `Error: ${error.message}`;
-        } finally {
-            sendButton.disabled = false;
-            sendButton.textContent = 'Send Request';
-        }
-    });
-
-    // Initialize visibility
+    // --- SET INITIAL UI STATE ---
+    // Call these *after* the mode check and function definitions
+    updateServerToggleUI();
     updateRequestBodyVisibility();
-});
+
+    // --- ATTACH EVENT LISTENERS ---
+
+    // Server Toggle Button
+    if (toggleServerButton) { // Check again before adding listener
+        toggleServerButton.addEventListener('click', toggleServer);
+    } else {
+        console.error("Cannot attach listener: Toggle Server Button not found.");
+    }
+
+    // Copy Buttons (Add checks)
+    if (copyRequestBodyButton && requestBody) { copyRequestBodyButton.addEventListener('click', () => copyToClipboard(requestBody.value, copyRequestBodyButton)); }
+    if (copyResponseHeadersButton && responseHeaders) { copyResponseHeadersButton.addEventListener('click', () => copyToClipboard(responseHeaders.textContent, copyResponseHeadersButton)); }
+    if (copyResponseBodyButton && responseBody) { copyResponseBodyButton.addEventListener('click', () => copyToClipboard(responseBody.textContent, copyResponseBodyButton)); }
+
+    // Method Radio Buttons
+    if (methodRadios) {
+        methodRadios.forEach(radio => { radio.addEventListener('change', updateRequestBodyVisibility); });
+    }
+
+    // Request Body Input Validation
+    if (requestBody && fhirPath) {
+        requestBody.addEventListener('input', () => validateRequestBody( document.querySelector('input[name="method"]:checked')?.value, fhirPath.value ));
+    }
+
+    // Send Request Button
+    if (sendButton && fhirPath && form) { // Added form check for CSRF
+        sendButton.addEventListener('click', async function() {
+            // (Keep the existing fetch/send logic here)
+            // ...
+            // Ensure you check for element existence inside this handler too if needed, e.g.:
+             if (!fhirPath.value.trim()) { /* ... */ }
+             const method = document.querySelector('input[name="method"]:checked')?.value;
+             if (!method) { /* ... */ }
+             // ...etc...
+
+             // Example: CSRF token retrieval inside handler
+             const csrfTokenInput = form.querySelector('input[name="csrf_token"]');
+             const csrfToken = csrfTokenInput ? csrfTokenInput.value : null;
+             if (useLocalHapi && (method === 'POST' || method === 'PUT') && csrfToken) {
+                  headers['X-CSRFToken'] = csrfToken;
+             } else if (useLocalHapi && (method === 'POST' || method === 'PUT')) {
+                  console.warn("CSRF token input not found for local request.");
+                  // Potentially alert the user or block the request
+             }
+             // ... rest of send logic ...
+        });
+    } else {
+        console.error("Cannot attach listener: Send Request Button, FHIR Path input, or Form element not found.");
+    }
+
+}); // End DOMContentLoaded Listener
 </script>
 {% endblock %}

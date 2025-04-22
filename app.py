@@ -32,6 +32,18 @@ app.config['VALIDATE_IMPOSED_PROFILES'] = True
 app.config['DISPLAY_PROFILE_RELATIONSHIPS'] = True
 app.config['UPLOAD_FOLDER'] = '/app/static/uploads'  # For GoFSH output
 
+# <<< ADD THIS CONTEXT PROCESSOR >>>
+@app.context_processor
+def inject_app_mode():
+    """Injects the app_mode into template contexts."""
+    return dict(app_mode=app.config.get('APP_MODE', 'standalone'))
+# <<< END ADD >>>
+
+# Read application mode from environment variable, default to 'standalone'
+app.config['APP_MODE'] = os.environ.get('APP_MODE', 'standalone').lower()
+logger.info(f"Application running in mode: {app.config['APP_MODE']}")
+# --- END mode check ---
+
 # Ensure directories exist and are writable
 instance_path = '/app/instance'
 packages_path = app.config['FHIR_PACKAGES_DIR']
@@ -192,6 +204,15 @@ def view_igs():
                            duplicate_groups=duplicate_groups, group_colors=group_colors,
                            site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now(),
                            config=app.config)
+
+@app.route('/about')
+def about():
+    """Renders the about page."""
+    # The app_mode is automatically injected by the context processor
+    return render_template('about.html',
+                           title="About", # Optional title for the page
+                           site_name='FHIRFLARE IG Toolkit') # Or get from config
+
 
 @app.route('/push-igs', methods=['GET'])
 def push_igs():
@@ -910,7 +931,7 @@ def validate_sample():
         packages=packages,
         validation_report=None,
         site_name='FHIRFLARE IG Toolkit',
-        now=datetime.datetime.now()
+        now=datetime.datetime.now(), app_mode=app.config['APP_MODE']
     )
 
 # Exempt specific API views defined directly on 'app'
@@ -939,12 +960,12 @@ class FhirRequestForm(FlaskForm):
 @app.route('/fhir')
 def fhir_ui():
     form = FhirRequestForm()
-    return render_template('fhir_ui.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+    return render_template('fhir_ui.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now(), app_mode=app.config['APP_MODE'])
 
 @app.route('/fhir-ui-operations')
 def fhir_ui_operations():
     form = FhirRequestForm()
-    return render_template('fhir_ui_operations.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+    return render_template('fhir_ui_operations.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now(), app_mode=app.config['APP_MODE'])
 
 @app.route('/fhir/<path:subpath>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy_hapi(subpath):

@@ -336,6 +336,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const swaggerUiContainer = document.getElementById('swagger-ui');
     const selectedResourceSpan = document.getElementById('selectedResource');
     const queryListContainer = document.getElementById('queryList');
+    // --- Add checks if desired ---
+    if (!toggleServerButton || !toggleLabel || !fhirServerUrlInput /* || other critical elements */) {
+        console.error("Crucial elements missing, stopping script."); return;
+    }
 
     // --- State Variables ---
     let isUsingLocalHapi = true; // Default state
@@ -343,6 +347,55 @@ document.addEventListener('DOMContentLoaded', () => {
     let availableSystemOperations = [];
     let fetchedMetadataCache = null;
     let operationDefinitionCache = {}; // <<< ADD THIS LINE: Cache for fetched OperationDefinitions
+
+    // <<< ADD THIS SECTION: Get App Mode >>>
+    const appMode = '{{ app_mode | default("standalone") | lower }}'; // Get mode from Flask
+    console.log(`App Mode (Operations): ${appMode}`);
+    // <<< END ADD >>>
+
+        // --- Helper Function to Update Toggle Button/Input UI (MODIFY THIS FUNCTION) ---
+    function updateServerToggleUI() {
+        // Keep checks for elements
+        if (!toggleLabel || !fhirServerUrlInput || !toggleServerButton) {
+             console.error("updateServerToggleUI: Required elements missing!");
+             return;
+        }
+        console.log(`updateServerToggleUI: appMode=${appMode}, current isUsingLocalHapi=${isUsingLocalHapi}`); // Debug
+
+        // <<< MODIFY THIS WHOLE IF/ELSE BLOCK >>>
+        if (appMode === 'lite') {
+            console.log("-> Applying Lite mode UI settings.");
+            isUsingLocalHapi = false; // Force state
+            toggleServerButton.disabled = true; // Set disabled attribute
+            toggleServerButton.classList.add('disabled'); // Add Bootstrap disabled class
+            // --- ADD !important to pointerEvents ---
+            toggleServerButton.style.pointerEvents = 'none !important';
+            // --- END ADD ---
+            toggleServerButton.setAttribute('aria-disabled', 'true'); // Accessibility
+            toggleServerButton.title = "Local HAPI is not available in Lite mode"; // Tooltip
+            toggleLabel.textContent = 'Use Custom URL'; // Set label text
+            fhirServerUrlInput.style.display = 'block'; // Show custom URL input
+            fhirServerUrlInput.placeholder = "Enter FHIR Base URL (Local HAPI unavailable)";
+        } else {
+            // Standalone mode
+            console.log("-> Applying Standalone mode UI settings.");
+            toggleServerButton.disabled = false; // Ensure enabled
+            toggleServerButton.classList.remove('disabled'); // Remove Bootstrap disabled class
+            // --- Ensure pointerEvents is auto in standalone ---
+            toggleServerButton.style.pointerEvents = 'auto';
+            // --- END ---
+            toggleServerButton.removeAttribute('aria-disabled'); // Accessibility
+            toggleServerButton.title = ""; // Clear tooltip
+
+            // Set text/display based on current standalone state
+            toggleLabel.textContent = isUsingLocalHapi ? 'Use Local HAPI' : 'Use Custom URL';
+            fhirServerUrlInput.style.display = isUsingLocalHapi ? 'none' : 'block';
+            fhirServerUrlInput.placeholder = "Enter FHIR Base URL e.g., https://hapi.fhir.org/baseR4";
+        }
+        fhirServerUrlInput.classList.remove('is-invalid'); // Clear validation state
+        console.log(`-> updateServerToggleUI finished. Button disabled: ${toggleServerButton.disabled}, pointer-events: ${toggleServerButton.style.pointerEvents}`); // Log pointer-events
+        // <<< END MODIFICATION >>>
+    }  
 
 // <<< REFINED fetchOperationDefinition >>>
     // <<< REFINED fetchOperationDefinition (v3 - Handles Local Proxy Target Correctly) >>>
@@ -427,37 +480,74 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     // <<< END REFINED fetchOperationDefinition (v3) >>>
 
-
-    
-    // --- Helper Function to Update Toggle Button/Input UI ---
     function updateServerToggleUI() {
-        if (!toggleLabel || !fhirServerUrlInput) {
-             console.error("Toggle UI elements not found!");
+        // Keep checks for elements
+        if (!toggleLabel || !fhirServerUrlInput || !toggleServerButton) {
+             console.error("updateServerToggleUI: Required elements missing!");
              return;
         }
-        toggleLabel.textContent = isUsingLocalHapi ? 'Use Local HAPI' : 'Use Custom URL';
-        fhirServerUrlInput.style.display = isUsingLocalHapi ? 'none' : 'block';
-        // Ensure input is cleared *only* when switching TO local
-        // No clearing needed here, handled in toggleServerSelection if needed
-        fhirServerUrlInput.classList.remove('is-invalid');
+        console.log(`updateServerToggleUI: appMode=<span class="math-inline">\{appMode\}, current isUsingLocalHapi\=</span>{isUsingLocalHapi}`); // Debug
+
+        if (appMode === 'lite') {
+            console.log("-> Applying Lite mode UI settings.");
+            isUsingLocalHapi = false; // Force state
+            toggleServerButton.disabled = true; // Set disabled attribute
+            toggleServerButton.classList.add('disabled'); // Add Bootstrap disabled class
+            // --- ADD !important to pointerEvents ---
+            toggleServerButton.style.pointerEvents = 'none !important';
+            // --- END ADD ---
+            toggleServerButton.setAttribute('aria-disabled', 'true'); // Accessibility
+            toggleServerButton.title = "Local HAPI is not available in Lite mode"; // Tooltip
+            toggleLabel.textContent = 'Use Custom URL'; // Set label text
+            fhirServerUrlInput.style.display = 'block'; // Show custom URL input
+            fhirServerUrlInput.placeholder = "Enter FHIR Base URL (Local HAPI unavailable)";
+        } else {
+            // Standalone mode
+            console.log("-> Applying Standalone mode UI settings.");
+            toggleServerButton.disabled = false; // Ensure enabled
+            toggleServerButton.classList.remove('disabled'); // Remove Bootstrap disabled class
+            // --- Ensure pointerEvents is auto in standalone ---
+            toggleServerButton.style.pointerEvents = 'auto';
+            // --- END ---
+            toggleServerButton.removeAttribute('aria-disabled'); // Accessibility
+            toggleServerButton.title = ""; // Clear tooltip
+
+            // Set text/display based on current standalone state
+            toggleLabel.textContent = isUsingLocalHapi ? 'Use Local HAPI' : 'Use Custom URL';
+            fhirServerUrlInput.style.display = isUsingLocalHapi ? 'none' : 'block';
+            fhirServerUrlInput.placeholder = "Enter FHIR Base URL e.g., https://hapi.fhir.org/baseR4";
+        }
+        // Clear potential validation errors regardless of mode
+        if(fhirServerUrlInput) fhirServerUrlInput.classList.remove('is-invalid'); // Add check for element existence
+        console.log(`-> updateServerToggleUI finished. Button disabled: ${toggleServerButton.disabled}, pointer-events: ${toggleServerButton.style.pointerEvents}`); // Log pointer-events
     }
 
-    // --- Server Toggle Functionality ---
+    // --- Server Toggle Functionality (REVISED - simplified) ---
     function toggleServerSelection() {
-        isUsingLocalHapi = !isUsingLocalHapi; // Flip the state first
+        console.log(`toggleServerSelection called. appMode: ${appMode}`); // Debug
+        // This check prevents state change and subsequent UI update call in Lite mode
+        if (appMode === 'lite') {
+            console.log("Server toggle ignored in Lite mode.");
+            return; // Explicitly do nothing if Lite
+        }
+
+        // Only flip state and update UI if in standalone mode
+        isUsingLocalHapi = !isUsingLocalHapi;
         updateServerToggleUI(); // Update the UI based on the new state
 
-        // Clear custom URL input value if we just switched TO local HAPI
-        if (isUsingLocalHapi) {
+        // Clear custom URL input value only when switching TO local
+        // Ensure fhirServerUrlInput exists before trying to access it
+        if (isUsingLocalHapi && fhirServerUrlInput) {
             fhirServerUrlInput.value = '';
         }
 
-        // Reset application state dependent on the server
+        // Reset dependent state
         if (resourceTypesDisplayDiv) resourceTypesDisplayDiv.style.display = 'none';
         if (swaggerUiContainer) swaggerUiContainer.style.display = 'none';
-        fetchedMetadataCache = null; // Invalidate metadata cache
-        availableSystemOperations = []; // Clear parsed operations
-        console.log(`Server toggled: ${isUsingLocalHapi ? 'Local HAPI' : 'Custom URL'}`);
+        fetchedMetadataCache = null;
+        availableSystemOperations = [];
+        operationDefinitionCache = {}; // Clear OpDef cache too
+        console.log(`Server toggled (Standalone): Now using ${isUsingLocalHapi ? 'Local HAPI' : 'Custom URL'}`);
     }
 
     // Add event listener to the toggle button

@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-okaidia.min.css" rel="stylesheet" />
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
-    <title>{% if title %}{{ title }} - {% endif %}{{ site_name }}</title>
+    <title>{% if app_mode == 'lite' %}(Lite Version) {% endif %}{% if title %}{{ title }} - {% endif %}{{ site_name }}</title>
     <style>
         /* Default (Light Theme) Styles */
         body {
@@ -753,7 +753,7 @@ html[data-theme="dark"] .structure-tree-root .list-group-item-warning {
 <body class="d-flex flex-column min-vh-100">
     <nav class="navbar navbar-expand-lg navbar-light">
         <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('index') }}">{{ site_name }}</a>
+            <a class="navbar-brand" href="{{ url_for('index') }}">{{ site_name }}{% if app_mode == 'lite' %} (Lite){% endif %}</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
