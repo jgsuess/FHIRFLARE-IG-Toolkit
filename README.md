@@ -1,65 +1,104 @@
-FHIRFLARE IG Toolkit
-Overview
+# FHIRFLARE IG Toolkit
+
+## Overview
+
 The FHIRFLARE IG Toolkit is a Flask-based web application designed to streamline the management, processing, validation, and deployment of FHIR Implementation Guides (IGs). It offers a user-friendly interface for importing IG packages, extracting metadata, validating FHIR resources or bundles, pushing IGs to FHIR servers, and converting FHIR resources to FHIR Shorthand (FSH) using GoFSH with advanced features. The toolkit includes a live console for real-time feedback and a waiting spinner for FSH conversion, making it an essential tool for FHIR developers and implementers.
-The application runs in a Dockerized environment with a Flask frontend, SQLite database, and an embedded HAPI FHIR server, ensuring consistent deployment and easy setup across platforms.
-Features
 
-Import IGs: Download FHIR IG packages and dependencies from a package registry, supporting flexible version formats (e.g., 1.2.3, 1.1.0-preview, 1.1.2-ballot, current).
-Manage IGs: View, process, unload, or delete downloaded IGs, with duplicate detection and resolution.
-Process IGs: Extract resource types, profiles, must-support elements, examples, and profile relationships (structuredefinition-compliesWithProfile and structuredefinition-imposeProfile).
-Validate FHIR Resources/Bundles: Validate single FHIR resources or bundles against selected IGs, with detailed error and warning reports (alpha feature, work in progress).
-Push IGs: Upload IG resources to a FHIR server (e.g., HAPI FHIR) with real-time console output and optional validation against imposed profiles.
-Profile Relationships: Display and validate compliesWithProfile and imposeProfile extensions in the UI.
-FSH Converter: Convert FHIR JSON/XML resources to FHIR Shorthand (FSH) using GoFSH, with advanced options:
-Package selection for context (e.g., hl7.fhir.au.core#1.1.0-preview).
-Input modes: File upload or text input.
-Output styles: file-per-definition, group-by-fsh-type, group-by-profile, single-file.
-Log levels: error, warn, info, debug.
-FHIR versions: R4, R4B, R5, or auto-detect.
-Fishing Trip: Round-trip validation with SUSHI, generating a comparison report (fshing-trip-comparison.html) accessible via a "Click here for SUSHI Validation" badge button.
-Dependencies: Load additional FHIR packages (e.g., hl7.fhir.us.core@6.1.0).
-Indented Rules: Output FSH with context path indentation for readability.
-Meta Profile Handling: Control meta.profile usage (only-one, first, none).
-Alias File: Load existing FSH aliases (e.g., $MyAlias = http://example.org).
-No Alias: Disable automatic alias generation.
-Waiting Spinner: Displays a themed animation (light/dark) during FSH execution to indicate processing.
+The application can run in two modes:
+
+* **Standalone:** Includes a Dockerized Flask frontend, SQLite database, and an embedded HAPI FHIR server for local validation and interaction.
+* **Lite:** Includes only the Dockerized Flask frontend and SQLite database, excluding the local HAPI FHIR server. Requires connection to external FHIR servers for certain features.
+
+## Installation Modes (Lite vs. Standalone)
+
+This toolkit offers two primary installation modes to suit different needs:
+
+* **Standalone Version:**
+    * Includes the full FHIRFLARE Toolkit application **and** an embedded HAPI FHIR server running locally within the Docker environment.
+    * Allows for local FHIR resource validation using HAPI FHIR's capabilities.
+    * Enables the "Use Local HAPI" option in the FHIR API Explorer and FHIR UI Operations pages, proxying requests to the internal HAPI server (`http://localhost:8080/fhir`).
+    * Requires Git and Maven during the initial build process (via the `.bat` script or manual steps) to prepare the HAPI FHIR server.
+    * Ideal for users who want a self-contained environment for development and testing or who don't have readily available external FHIR servers.
+
+* **Lite Version:**
+    * Includes the FHIRFLARE Toolkit application **without** the embedded HAPI FHIR server.
+    * Requires users to provide URLs for external FHIR servers when using features like the FHIR API Explorer and FHIR UI Operations pages. The "Use Local HAPI" option will be disabled in the UI.
+    * Resource validation relies solely on local checks against downloaded StructureDefinitions, which may be less comprehensive than HAPI FHIR's validation (e.g., for terminology bindings or complex invariants).
+    * **Does not require Git or Maven** for setup if using the `.bat` script or running the pre-built Docker image.
+    * Ideal for users who primarily want to use the IG management, processing, and FSH conversion features, or who will always connect to existing external FHIR servers.
+
+## Features
+
+* **Import IGs:** Download FHIR IG packages and dependencies from a package registry, supporting flexible version formats (e.g., `1.2.3`, `1.1.0-preview`, `1.1.2-ballot`, `current`).
+* **Manage IGs:** View, process, unload, or delete downloaded IGs, with duplicate detection and resolution.
+* **Process IGs:** Extract resource types, profiles, must-support elements, examples, and profile relationships (`structuredefinition-compliesWithProfile` and `structuredefinition-imposeProfile`).
+* **Validate FHIR Resources/Bundles:** Validate single FHIR resources or bundles against selected IGs, with detailed error and warning reports (alpha feature, work in progress). *Note: Lite version uses local SD checks only.*
+* **Push IGs:** Upload IG resources to a target FHIR server with real-time console output and optional validation against imposed profiles.
+* **Profile Relationships:** Display and validate `compliesWithProfile` and `imposeProfile` extensions in the UI.
+* **FSH Converter:** Convert FHIR JSON/XML resources to FHIR Shorthand (FSH) using GoFSH, with advanced options (Package context, Output styles, Log levels, FHIR versions, Fishing Trip, Dependencies, Indentation, Meta Profile handling, Alias File, No Alias). Includes a waiting spinner.
+* **FHIR Interaction UIs:** Explore FHIR server capabilities and interact with resources using the "FHIR API Explorer" and "FHIR UI Operations" pages. *Note: Lite version requires custom server URLs.*
+* **API Support:** RESTful API endpoints for importing, pushing, and retrieving IG metadata.
+* **Live Console:** Real-time logs for push, validation, and FSH conversion operations.
+* **Configurable Behavior:** Enable/disable imposed profile validation and UI display of profile relationships.
+* **Theming:** Supports light and dark modes.
+
+## Technology Stack
+
+* Python 3.12+, Flask 2.3.3, Flask-SQLAlchemy 3.0.5, Flask-WTF 1.2.1
+* Jinja2, Bootstrap 5.3.3, JavaScript (ES6), Lottie-Web 5.12.2
+* SQLite
+* Docker, Docker Compose, Supervisor
+* Node.js 18+ (for GoFSH/SUSHI), GoFSH, SUSHI
+* HAPI FHIR (Standalone version only)
+* Requests 2.31.0, Tarfile, Logging
+
+## Prerequisites
+
+* **Docker:** Required for containerized deployment (both versions).
+* **Git & Maven:** Required **only** for building the **Standalone** version from source using the `.bat` script or manual steps. Not required for the Lite version build or for running pre-built Docker Hub images.
+* **Windows:** Required if using the `.bat` scripts.
+
+## Setup Instructions
+
+### Running Pre-built Images (General Users)
+
+This is the easiest way to get started without needing Git or Maven. Choose the version you need:
+
+**Lite Version (No local HAPI FHIR):**
+
+# Pull the latest Lite image
+docker pull ghcr.io/sudo-jhare/fhirflare-ig-toolkit-lite:latest
+
+# Run the Lite version (maps port 5000 for the UI)
+# You'll need to create local directories for persistent data first:
+# mkdir instance logs static static/uploads instance/hapi-h2-data
+docker run -d \
+  -p 5000:5000 \
+  -v ./instance:/app/instance \
+  -v ./static/uploads:/app/static/uploads \
+  -v ./instance/hapi-h2-data:/app/h2-data \
+  -v ./logs:/app/logs \
+  --name fhirflare-lite \
+  ghcr.io/sudo-jhare/fhirflare-ig-toolkit-lite:latest
 
 
-API Support: RESTful API endpoints for importing, pushing, and retrieving IG metadata, including profile relationships.
-Live Console: Real-time logs for push, validation, and FSH conversion operations.
-Configurable Behavior: Enable/disable imposed profile validation and UI display of profile relationships.
 
-Technology Stack
+# Pull the latest Standalone image
+docker pull ghcr.io/sudo-jhare/fhirflare-ig-toolkit-standalone:latest
 
-Python 3.12+: Core backend language.
-Flask 2.3.3: Web framework for the application.
-Flask-SQLAlchemy 3.0.5: ORM for SQLite database management.
-Flask-WTF 1.2.1: Form creation, validation, and CSRF protection.
-Jinja2: Templating engine for HTML rendering.
-Bootstrap 5.3.3: Responsive frontend framework.
-JavaScript (ES6): Client-side scripting for interactive features (e.g., live console, form toggles, waiting spinner).
-Lottie-Web 5.12.2: Renders JSON-based animations for the FSH converter waiting spinner.
-SQLite: Lightweight database for processed IG metadata.
-Docker: Containerization with Flask and HAPI FHIR server.
-Node.js 18+: For GoFSH and SUSHI, used in the FSH Converter feature.
-GoFSH: Tool for converting FHIR resources to FHIR Shorthand (FSH).
-SUSHI: FSH compiler for round-trip validation in Fishing Trip.
-Requests 2.31.0: HTTP requests to FHIR servers.
-Tarfile: Handling .tgz package files.
-Logging: Python’s built-in logging for debugging.
+# Run the Standalone version (maps ports 5000 and 8080)
+# You'll need to create local directories for persistent data first:
+# mkdir instance logs static static/uploads instance/hapi-h2-data
+docker run -d \
+  -p 5000:5000 \
+  -p 8080:8080 \
+  -v ./instance:/app/instance \
+  -v ./static/uploads:/app/static/uploads \
+  -v ./instance/hapi-h2-data:/app/h2-data \
+  -v ./logs:/app/logs \
+  --name fhirflare-standalone \
+  ghcr.io/sudo-jhare/fhirflare-ig-toolkit-standalone:latest
 
-Prerequisites
-
-Docker: Required for containerized deployment.
-Git: For cloning repositories.
-Maven: For building the HAPI FHIR server.
-Windows (if using batch files): For running Build and Run for first time.bat and Run.bat.
-Linux/MacOS (if using manual steps): For running equivalent commands.
-
-Setup Instructions
-The toolkit can be set up using batch files (Windows) or manual steps (cross-platform).
-Using Batch Files (Windows)
-First-Time Setup and Build:
 
 Run Build and Run for first time.bat:
 cd "<project folder>"
