@@ -1,461 +1,418 @@
 {% extends "base.html" %}
 
+{# Import form helpers if needed, e.g., for CSRF token #}
+{% from "_form_helpers.html" import render_field %}
+
 {% block content %}
-<div class="container-fluid">
+<div class="container-fluid mt-4">
     <div class="row">
+        {# Left Column: Downloaded IGs List & Report Area #}
         <div class="col-md-6">
-            <h2>Downloaded IGs</h2>
+            <h2><i class="bi bi-box-seam me-2"></i>Downloaded IGs</h2>
             {% if packages %}
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Package Name</th>
-                            <th>Version</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for pkg in packages %}
-                            {% set name = pkg.name %}
-                            {% set version = pkg.version %}
-                            {% set filename = pkg.filename %}
-                            {% set processed = (name, version) in processed_ids %}
-                            {% set duplicate_group = duplicate_groups.get(name) %}
-                            <tr {% if duplicate_group %}class="{{ group_colors[name] }}"{% endif %}>
-                                <td>{{ name }}</td>
-                                <td>{{ version }}</td>
+                <div class="table-responsive mb-3">
+                    <table class="table table-striped table-sm">
+                        <thead>
+                            <tr>
+                                <th>Package Name</th>
+                                <th>Version</th>
                             </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {% for pkg in packages %}
+                                {% set name = pkg.name %}
+                                {% set version = pkg.version %}
+                                {% set duplicate_group = (duplicate_groups or {}).get(name) %}
+                                {% set color_class = group_colors[name] if (duplicate_group and group_colors and name in group_colors) else '' %}
+                                <tr {% if color_class %}class="{{ color_class }}"{% endif %}>
+                                    <td><code>{{ name }}</code></td>
+                                    <td>{{ version }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
                 {% if duplicate_groups %}
-                    <div class="alert alert-warning">
-                        <strong>Duplicate Packages Detected:</strong>
-                        <ul>
+                    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                        <strong><i class="bi bi-exclamation-triangle-fill me-2"></i>Duplicate Packages Detected:</strong>
+                        <ul class="mb-0 mt-2">
                             {% for name, versions in duplicate_groups.items() %}
                                 <li>{{ name }} (Versions: {{ versions | join(', ') }})</li>
                             {% endfor %}
                         </ul>
-                        <p>Please resolve duplicates by deleting older versions to avoid conflicts.</p>
+                        <p class="mt-2 mb-0"><small>Consider resolving duplicates by deleting unused versions.</small></p>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                 {% endif %}
             {% else %}
-                <p>No packages downloaded yet. Use the "Import IG" tab to download packages.</p>
+                <p class="text-muted">No packages downloaded yet. Use the "Import IG" tab.</p>
             {% endif %}
-        </div>
 
+            {# --- MOVED: Push Response Area --- #}
+            <div class="mt-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                     <h4><i class="bi bi-file-earmark-text me-2"></i>Push Report</h4>
+                     {# --- NEW: Report Action Buttons --- #}
+                     <div id="reportActions" style="display: none;">
+                         <button id="copyReportBtn" class="btn btn-sm btn-outline-secondary me-2" title="Copy Report Text">
+                             <i class="bi bi-clipboard"></i> Copy
+                         </button>
+                         <button id="downloadReportBtn" class="btn btn-sm btn-outline-secondary" title="Download Report as Text File">
+                             <i class="bi bi-download"></i> Download
+                         </button>
+                     </div>
+                     {# --- END NEW --- #}
+                </div>
+                <div id="pushResponse" class="border p-3 rounded bg-light" style="min-height: 100px;">
+                     <span class="text-muted">Report summary will appear here after pushing...</span>
+                     {# Flash messages can still appear here if needed #}
+                     {% with messages = get_flashed_messages(with_categories=true) %}
+                          {% if messages %}
+                              {% for category, message in messages %}
+                                  <div class="alert alert-{{ category }} alert-dismissible fade show mt-2" role="alert">
+                                      {{ message }}
+                                      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                  </div>
+                              {% endfor %}
+                          {% endif %}
+                     {% endwith %}
+                </div>
+            </div>
+             {# --- END MOVED --- #}
+
+        </div>{# End Left Column #}
+
+        {# Right Column: Push IGs Form and Console #}
         <div class="col-md-6">
-            <h2>Push IGs to FHIR Server</h2>
-            <form id="pushIgForm" method="POST">
-                {{ form.csrf_token }}
-                <div class="mb-3">
-                    <label for="packageSelect" class="form-label">Select Package to Push</label>
-                    <select class="form-select" id="packageSelect" name="package_id" required>
-                        <option value="" disabled selected>Select a package...</option>
-                        {% for pkg in packages %}
-                            <option value="{{ pkg.name }}#{{ pkg.version }}">{{ pkg.name }}#{{ pkg.version }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label for="dependencyMode" class="form-label">Dependency Mode Used During Import</label>
-                    <input type="text" class="form-control" id="dependencyMode" readonly>
-                </div>
-                <div class="mb-3">
-                    <label for="fhirServerUrl" class="form-label">FHIR Server URL</label>
-                    <input type="url" class="form-control" id="fhirServerUrl" name="fhir_server_url" placeholder="e.g., http://hapi.fhir.org/baseR4" required>
-                </div>
-                <div class="mb-3 form-check">
-                    <input type="checkbox" class="form-check-input" id="includeDependencies" name="include_dependencies" checked>
-                    <label class="form-check-label" for="includeDependencies">Include Dependencies</label>
-                </div>
-                <button type="submit" class="btn btn-primary" id="pushButton">Push to FHIR Server</button>
-            </form>
+            <h2><i class="bi bi-upload me-2"></i>Push IGs to FHIR Server</h2>
+             <form id="pushIgForm">
+                 {{ form.csrf_token if form else '' }} {# Use form passed from route #}
 
-            <div class="mt-3">
-                <h4>Live Console</h4>
-                <div id="liveConsole" class="border p-3 bg-dark text-light" style="height: 300px; overflow-y: auto; font-family: monospace; font-size: 14px;">
-                    <div>Console output will appear here...</div>
+                 {# Package Selection #}
+                 <div class="mb-3">
+                     <label for="packageSelect" class="form-label">Select Package to Push</label>
+                     <select class="form-select" id="packageSelect" name="package_id" required>
+                         <option value="" disabled selected>Select a package...</option>
+                         {% for pkg in packages %}
+                             <option value="{{ pkg.name }}#{{ pkg.version }}">{{ pkg.name }}#{{ pkg.version }}</option>
+                         {% endfor %}
+                     </select>
+                 </div>
+
+                 {# Dependency Mode Display #}
+                 <div class="mb-3">
+                     <label for="dependencyMode" class="form-label">Dependency Mode Used During Import</label>
+                     <input type="text" class="form-control" id="dependencyMode" readonly placeholder="Select package to view mode...">
+                 </div>
+
+                 {# FHIR Server URL #}
+                 <div class="mb-3">
+                     <label for="fhirServerUrl" class="form-label">Target FHIR Server URL</label>
+                     <input type="url" class="form-control" id="fhirServerUrl" name="fhir_server_url" placeholder="e.g., http://localhost:8080/fhir" required>
+                 </div>
+
+                 {# --- RESTRUCTURED: Auth and Checkboxes --- #}
+                 <div class="row g-3 mb-3 align-items-end">
+                     {# Authentication Dropdown & Token Input #}
+                     <div class="col-md-5">
+                         <label for="authType" class="form-label">Authentication</label>
+                         <select class="form-select" id="authType" name="auth_type">
+                              <option value="none" selected>None</option>
+                              <option value="apiKey">Toolkit API Key (Internal)</option>
+                              <option value="bearerToken">Bearer Token</option>
+                         </select>
+                      </div>
+                     <div class="col-md-7" id="authTokenGroup" style="display: none;">
+                         <label for="authToken" class="form-label">Bearer Token</label>
+                         <input type="password" class="form-control" id="authToken" name="auth_token" placeholder="Enter Bearer Token">
+                     </div>
+                 </div>
+
+                 {# Checkboxes Row #}
+                 <div class="row g-3 mb-3">
+                     <div class="col-6 col-sm-3">
+                         <div class="form-check">
+                             <input type="checkbox" class="form-check-input" id="includeDependencies" name="include_dependencies" checked>
+                             <label class="form-check-label" for="includeDependencies">Include Dependencies</label>
+                         </div>
+                     </div>
+                     <div class="col-6 col-sm-3">
+                          <div class="form-check">
+                             <input type="checkbox" class="form-check-input" id="forceUpload" name="force_upload">
+                             <label class="form-check-label" for="forceUpload">Force Upload</label>
+                             <small class="form-text text-muted d-block">Force upload all resources.</small>
+                         </div>
+                     </div>
+                     <div class="col-6 col-sm-3">
+                         <div class="form-check">
+                             <input type="checkbox" class="form-check-input" id="dryRun" name="dry_run">
+                             <label class="form-check-label" for="dryRun">Dry Run</label>
+                             <small class="form-text text-muted d-block">Simulate only.</small>
+                         </div>
+                     </div>
+                     <div class="col-6 col-sm-3">
+                         <div class="form-check">
+                             <input type="checkbox" class="form-check-input" id="verbose" name="verbose">
+                             <label class="form-check-label" for="verbose">Verbose Log</label>
+                             <small class="form-text text-muted d-block">Show detailed Log.</small>
+                         </div>
+                     </div>
+                 </div>
+                 {# --- END RESTRUCTURED --- #}
+
+
+                 {# Resource Type Filter #}
+                 <div class="mb-3">
+                     <label for="resourceTypesFilter" class="form-label">Filter Resource Types <small class="text-muted">(Optional)</small></label>
+                     <textarea class="form-control" id="resourceTypesFilter" name="resource_types_filter" rows="1" placeholder="Comma-separated, e.g., StructureDefinition, ValueSet"></textarea>
+                 </div>
+
+                 {# Skip Files Filter #}
+                 <div class="mb-3">
+                     <label for="skipFilesFilter" class="form-label">Skip Specific Files <small class="text-muted">(Optional)</small></label>
+                     <textarea class="form-control" id="skipFilesFilter" name="skip_files" rows="2" placeholder="Enter full file paths within package (e.g., package/examples/bad.json), one per line or comma-separated."></textarea>
+                 </div>
+
+                 <button type="submit" class="btn btn-primary w-100" id="pushButton">
+                     <i class="bi bi-cloud-upload me-2"></i>Push to FHIR Server
+                 </button>
+             </form>
+
+            {# Live Console #}
+            <div class="mt-4">
+                <h4><i class="bi bi-terminal me-2"></i>Live Console</h4>
+                <div id="liveConsole" class="border p-3 rounded bg-dark text-light" style="height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.85rem;">
+                    <span class="text-muted">Console output will appear here...</span>
                 </div>
             </div>
 
-            <div id="pushResponse" class="mt-3">
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                    {% if messages %}
-                        {% for category, message in messages %}
-                            <div class="alert alert-{{ category }}"> {{ message }}</div>
-                        {% endfor %}
-                    {% endif %}
-                {% endwith %}
-            </div>
-        </div>
-    </div>
-</div>
+        </div> {# End Right Column #}
+    </div> {# End row #}
+</div> {# End container-fluid #}
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // --- DOM Element References ---
     const packageSelect = document.getElementById('packageSelect');
     const dependencyModeField = document.getElementById('dependencyMode');
-    // Ensure form object exists before accessing csrf_token, handle potential errors
-    const csrfToken = typeof form !== 'undefined' && form.csrf_token ? "{{ form.csrf_token._value() }}" : document.querySelector('input[name="csrf_token"]')?.value || "";
-    if (!csrfToken) {
-        console.warn("CSRF token not found in template or hidden input.");
+    const pushIgForm = document.getElementById('pushIgForm');
+    const pushButton = document.getElementById('pushButton');
+    const liveConsole = document.getElementById('liveConsole');
+    const responseDiv = document.getElementById('pushResponse'); // Area for final report
+    const reportActions = document.getElementById('reportActions'); // Container for report buttons
+    const copyReportBtn = document.getElementById('copyReportBtn'); // New copy button
+    const downloadReportBtn = document.getElementById('downloadReportBtn'); // New download button
+    const authTypeSelect = document.getElementById('authType');
+    const authTokenGroup = document.getElementById('authTokenGroup');
+    const authTokenInput = document.getElementById('authToken');
+    const resourceTypesFilterInput = document.getElementById('resourceTypesFilter');
+    const skipFilesFilterInput = document.getElementById('skipFilesFilter');
+    const dryRunCheckbox = document.getElementById('dryRun');
+    const verboseCheckbox = document.getElementById('verbose');
+    const forceUploadCheckbox = document.getElementById('forceUpload');
+    const includeDependenciesCheckbox = document.getElementById('includeDependencies');
+    const fhirServerUrlInput = document.getElementById('fhirServerUrl');
+
+    // --- CSRF Token ---
+    const csrfTokenInput = pushIgForm ? pushIgForm.querySelector('input[name="csrf_token"]') : null;
+    const csrfToken = csrfTokenInput ? csrfTokenInput.value : "";
+    if (!csrfToken) { console.warn("CSRF token not found in form."); }
+
+    // --- Helper: Sanitize text for display ---
+    const sanitizeText = (str) => str ? String(str).replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
+
+    // --- Event Listeners ---
+    // Update dependency mode display
+    if (packageSelect && dependencyModeField) {
+        packageSelect.addEventListener('change', function() {
+            const packageId = this.value;
+            dependencyModeField.value = ''; // Clear on change
+            if (packageId) {
+                const [packageName, version] = packageId.split('#');
+                fetch(`/get-package-metadata?package_name=${packageName}&version=${version}`)
+                    .then(response => response.ok ? response.json() : Promise.reject(`Metadata fetch failed: ${response.status}`))
+                    .then(data => {
+                        dependencyModeField.value = (data && data.dependency_mode) ? data.dependency_mode : 'Unknown';
+                    })
+                    .catch(error => { console.error('Error fetching metadata:', error); dependencyModeField.value = 'Error'; });
+            }
+        });
+        if (packageSelect.value) { packageSelect.dispatchEvent(new Event('change')); }
     }
 
-    // Update dependency mode when package selection changes
-    packageSelect.addEventListener('change', function() {
-        const packageId = this.value;
-        if (packageId) {
+    // Show/Hide Bearer Token Input
+    if (authTypeSelect && authTokenGroup) {
+        authTypeSelect.addEventListener('change', function() {
+            authTokenGroup.style.display = this.value === 'bearerToken' ? 'block' : 'none';
+            if (this.value !== 'bearerToken' && authTokenInput) authTokenInput.value = '';
+        });
+        authTokenGroup.style.display = authTypeSelect.value === 'bearerToken' ? 'block' : 'none';
+    }
+
+    // --- NEW: Report Action Button Listeners ---
+    if (copyReportBtn && responseDiv) {
+        copyReportBtn.addEventListener('click', () => {
+            const reportAlert = responseDiv.querySelector('.alert'); // Get the alert div inside
+            const reportText = reportAlert ? reportAlert.innerText || reportAlert.textContent : ''; // Get text content
+            if (reportText && navigator.clipboard) {
+                navigator.clipboard.writeText(reportText)
+                    .then(() => {
+                        // Optional: Provide feedback (e.g., change button text/icon)
+                        const originalIcon = copyReportBtn.innerHTML;
+                        copyReportBtn.innerHTML = '<i class="bi bi-check-lg"></i> Copied!';
+                        setTimeout(() => { copyReportBtn.innerHTML = originalIcon; }, 2000);
+                    })
+                    .catch(err => {
+                        console.error('Failed to copy report text: ', err);
+                        alert('Failed to copy report text.');
+                    });
+            } else if (!navigator.clipboard) {
+                 alert('Clipboard API not available in this browser.');
+            } else {
+                 alert('No report content found to copy.');
+            }
+        });
+    }
+
+    if (downloadReportBtn && responseDiv) {
+        downloadReportBtn.addEventListener('click', () => {
+            const reportAlert = responseDiv.querySelector('.alert');
+            const reportText = reportAlert ? reportAlert.innerText || reportAlert.textContent : '';
+            const packageId = packageSelect ? packageSelect.value.replace('#','-') : 'fhir-ig';
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const filename = `push-report-${packageId}-${timestamp}.txt`;
+
+            if (reportText) {
+                const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url); // Clean up
+            } else {
+                alert('No report content found to download.');
+            }
+        });
+    }
+    // --- END NEW ---
+
+
+    // --- Form Submission ---
+    if (pushIgForm) {
+        pushIgForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+
+            // Get form values (with null checks for elements)
+            const packageId = packageSelect ? packageSelect.value : null;
+            const fhirServerUrl = fhirServerUrlInput ? fhirServerUrlInput.value.trim() : null;
+            if (!packageId || !fhirServerUrl) { alert('Please select package and enter FHIR Server URL.'); return; }
             const [packageName, version] = packageId.split('#');
-            fetch(`/get-package-metadata?package_name=${packageName}&version=${version}`)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`Metadata fetch failed: ${response.status}`);
-                    }
-                    return response.json();
-                 })
-                .then(data => {
-                    // Check specifically for the dependency_mode key in the response data
-                    if (data && typeof data === 'object' && data.hasOwnProperty('dependency_mode')) {
-                        dependencyModeField.value = data.dependency_mode !== null ? data.dependency_mode : 'N/A';
-                    } else {
-                         dependencyModeField.value = 'Unknown'; // Or 'N/A' if metadata exists but no mode
-                         console.warn('Dependency mode not found in metadata response:', data);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching or processing metadata:', error);
-                    dependencyModeField.value = 'Error';
+            const auth_type = authTypeSelect ? authTypeSelect.value : 'none';
+            const auth_token = (auth_type === 'bearerToken' && authTokenInput) ? authTokenInput.value : null;
+            const resource_types_filter_raw = resourceTypesFilterInput ? resourceTypesFilterInput.value.trim() : '';
+            const resource_types_filter = resource_types_filter_raw ? resource_types_filter_raw.split(',').map(s => s.trim()).filter(s => s) : null;
+            const skip_files_raw = skipFilesFilterInput ? skipFilesFilterInput.value.trim() : '';
+            const skip_files = skip_files_raw ? skip_files_raw.split(/[\s,\n]+/).map(s => s.trim()).filter(s => s) : null;
+            const dry_run = dryRunCheckbox ? dryRunCheckbox.checked : false;
+            const isVerboseChecked = verboseCheckbox ? verboseCheckbox.checked : false;
+            const include_dependencies = includeDependenciesCheckbox ? includeDependenciesCheckbox.checked : true;
+            const force_upload = forceUploadCheckbox ? forceUploadCheckbox.checked : false;
+
+            // UI Updates & API Key
+            if (pushButton) { pushButton.disabled = true; pushButton.textContent = 'Processing...'; }
+            if (liveConsole) { liveConsole.innerHTML = `<div>${new Date().toLocaleTimeString()} [INFO] Starting ${dry_run ? 'DRY RUN ' : ''}${force_upload ? 'FORCE ' : ''}push for ${packageName}#${version}...</div>`; }
+            if (responseDiv) { responseDiv.innerHTML = '<span class="text-muted">Processing...</span>'; } // Clear previous report
+            if (reportActions) { reportActions.style.display = 'none'; } // Hide report buttons initially
+            const internalApiKey = {{ api_key | default("") | tojson }}; // Use tojson filter
+
+            try {
+                // API Fetch
+                const response = await fetch('/api/push-ig', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/x-ndjson', 'X-CSRFToken': csrfToken, 'X-API-Key': internalApiKey },
+                    body: JSON.stringify({
+                        package_name: packageName, version: version, fhir_server_url: fhirServerUrl,
+                        include_dependencies: include_dependencies, auth_type: auth_type, auth_token: auth_token,
+                        resource_types_filter: resource_types_filter, skip_files: skip_files,
+                        dry_run: dry_run, verbose: isVerboseChecked, force_upload: force_upload
+                    })
                 });
-        } else {
-            dependencyModeField.value = '';
-        }
-    });
 
-    // Trigger change event on page load if a package is pre-selected
-    if (packageSelect.value) {
-        packageSelect.dispatchEvent(new Event('change'));
-    }
+                if (!response.ok) { throw new Error(`HTTP error! Status: ${response.status} ${response.statusText}`); }
+                if (!response.body) { throw new Error("Response body is missing."); }
 
-    // --- Push IG Form Submission ---
-    document.getElementById('pushIgForm').addEventListener('submit', async function(event) {
-        event.preventDefault();
+                // Stream Processing
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
 
-        const form = event.target;
-        const pushButton = document.getElementById('pushButton');
-        const formData = new FormData(form); // Use FormData to easily get values
-        const packageId = formData.get('package_id');
-        const fhirServerUrl = formData.get('fhir_server_url');
-        const includeDependencies = formData.get('include_dependencies') === 'on'; // Checkbox value is 'on' if checked
+                while (true) {
+                    const { done, value } = await reader.read(); if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n'); buffer = lines.pop() || '';
 
-        if (!packageId) {
-            alert('Please select a package to push.');
-            return;
-        }
-        if (!fhirServerUrl) {
-            alert('Please enter the FHIR Server URL.');
-            return;
-        }
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        try {
+                            const data = JSON.parse(line); const timestamp = new Date().toLocaleTimeString();
+                            let messageClass = 'text-light'; let prefix = '[INFO]'; let shouldDisplay = false;
 
-        const [packageName, version] = packageId.split('#');
+                            switch (data.type) { // Determine if message should display based on verbose
+                                case 'start': case 'error': case 'complete': shouldDisplay = true; break;
+                                case 'success': case 'warning': case 'info': case 'progress': if (isVerboseChecked) { shouldDisplay = true; } break;
+                                default: if (isVerboseChecked) { shouldDisplay = true; console.warn("Unknown type:", data.type); prefix = '[UNKNOWN]'; } break;
+                            }
 
-        // Disable the button to prevent multiple submissions
-        pushButton.disabled = true;
-        pushButton.textContent = 'Pushing...';
+                            if (shouldDisplay && liveConsole) { // Set prefix/class and append to console
+                                if(data.type==='error'){prefix='[ERROR]';messageClass='text-danger';}
+                                else if(data.type==='complete'){const s=data.data?.status||'info';if(s==='success'){prefix='[SUCCESS]';messageClass='text-success';}else if(s==='partial'){prefix='[PARTIAL]';messageClass='text-warning';}else{prefix='[ERROR]';messageClass='text-danger';}}
+                                else if(data.type==='start'){prefix='[START]';messageClass='text-info';}
+                                else if(data.type==='success'){prefix='[SUCCESS]';messageClass='text-success';}else if(data.type==='warning'){prefix='[WARNING]';messageClass='text-warning';}else if(data.type==='info'){prefix='[INFO]';messageClass='text-info';}else{prefix='[PROGRESS]';messageClass='text-light';}
 
-        // Clear the console and response area
-        const liveConsole = document.getElementById('liveConsole');
-        const responseDiv = document.getElementById('pushResponse');
-        liveConsole.innerHTML = `<div>${new Date().toLocaleTimeString()} [INFO] Starting push operation for ${packageName}#${version}...</div>`;
-        responseDiv.innerHTML = ''; // Clear previous final response
+                                const messageDiv = document.createElement('div'); messageDiv.className = messageClass;
+                                const messageText = (data.type === 'complete' && data.data) ? data.data.message : data.message;
+                                messageDiv.textContent = `${timestamp} ${prefix} ${sanitizeText(messageText) || 'Empty message.'}`;
+                                liveConsole.appendChild(messageDiv); liveConsole.scrollTop = liveConsole.scrollHeight;
+                            }
 
-        // Get API Key from template context - ensure 'api_key' is passed correctly from Flask route
-        const apiKey = '{{ api_key | default("") | safe }}';
-        if (!apiKey) {
-             console.warn("API Key not found in template context. Ensure 'api_key' is passed to render_template.");
-             // Optionally display a warning to the user if needed
-        }
+                            if (data.type === 'complete' && responseDiv) { // Update final summary box
+                                const summaryData = data.data || {}; let alertClass = 'alert-info'; let statusText = 'Info'; let pushedPkgs = 'None'; let failHtml = ''; let skipHtml = '';
+                                const isDryRun = summaryData.dry_run || false; const isForceUpload = summaryData.force_upload || false;
+                                const typeFilterUsed = summaryData.resource_types_filter ? summaryData.resource_types_filter.join(', ') : 'All';
+                                const fileFilterUsed = summaryData.skip_files_filter ? summaryData.skip_files_filter.join(', ') : 'None';
 
+                                if (summaryData.pushed_packages_summary?.length > 0) { pushedPkgs = summaryData.pushed_packages_summary.map(p => `${sanitizeText(p.id)} (${sanitizeText(p.resource_count)} resources)`).join('<br>'); }
+                                if (summaryData.status === 'success') { alertClass = 'alert-success'; statusText = 'Success';} else if (summaryData.status === 'partial') { alertClass = 'alert-warning'; statusText = 'Partial Success'; } else { alertClass = 'alert-danger'; statusText = 'Error'; }
+                                if (summaryData.failed_details?.length > 0) { failHtml = '<hr><strong>Failures:</strong><ul class="list-unstyled" style="font-size: 0.9em; max-height: 150px; overflow-y: auto; padding-left: 1em;">'; summaryData.failed_details.forEach(f => {failHtml += `<li><strong>${sanitizeText(f.resource)}:</strong> ${sanitizeText(f.error)}</li>`;}); failHtml += '</ul>';}
+                                if (summaryData.skipped_details?.length > 0) { skipHtml = '<hr><strong>Skipped:</strong><ul class="list-unstyled" style="font-size: 0.9em; max-height: 150px; overflow-y: auto; padding-left: 1em;">'; summaryData.skipped_details.forEach(s => {skipHtml += `<li><strong>${sanitizeText(s.resource)}:</strong> ${sanitizeText(s.reason)}</li>`;}); skipHtml += '</ul>';}
 
-        try {
-            const response = await fetch('/api/push-ig', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/x-ndjson', // We expect NDJSON stream
-                    'X-CSRFToken': csrfToken, // Include CSRF token from form/template
-                    'X-API-Key': apiKey // Send API Key in header (alternative to body)
-                },
-                body: JSON.stringify({ // Still send details in body
-                    package_name: packageName,
-                    version: version,
-                    fhir_server_url: fhirServerUrl,
-                    include_dependencies: includeDependencies
-                    // Removed api_key from body as it's now in header
-                })
-            });
+                                responseDiv.innerHTML = `<div class="alert ${alertClass} mt-0"><strong>${isDryRun?'[DRY RUN] ':''}${isForceUpload?'[FORCE] ':''}${statusText}:</strong> ${sanitizeText(summaryData.message)||'Complete.'}<hr><strong>Target:</strong> ${sanitizeText(summaryData.target_server)}<br><strong>Package:</strong> ${sanitizeText(summaryData.package_name)}#${sanitizeText(summaryData.version)}<br><strong>Config:</strong> Deps=${summaryData.included_dependencies?'Yes':'No'}, Types=${sanitizeText(typeFilterUsed)}, SkipFiles=${sanitizeText(fileFilterUsed)}, DryRun=${isDryRun?'Yes':'No'}, Force=${isForceUpload?'Yes':'No'}, Verbose=${isVerboseChecked?'Yes':'No'}<br><strong>Stats:</strong> Attempt=${sanitizeText(summaryData.resources_attempted)}, Success=${sanitizeText(summaryData.success_count)}, Fail=${sanitizeText(summaryData.failure_count)}, Skip=${sanitizeText(summaryData.skipped_count)}<br><strong>Pushed Pkgs:</strong><br><div style="padding-left:15px;">${pushedPkgs}</div>${failHtml}${skipHtml}</div>`;
+                                if (reportActions) { reportActions.style.display = 'block'; } // Show report buttons
+                            }
+                        } catch (parseError) { /* (Handle JSON parse errors) */ console.error('Stream parse error:', parseError); if(liveConsole){/*...add error to console...*/} }
+                    } // end for loop
+                } // end while loop
 
-             // Handle immediate errors before trying to read the stream
-             if (!response.ok) {
-                 let errorMsg = `HTTP error! status: ${response.status}`;
-                 try {
-                     // Try to parse a JSON error response from the server
-                     const errorData = await response.json();
-                     errorMsg = errorData.message || JSON.stringify(errorData);
-                 } catch (e) {
-                     // If response is not JSON, use the status text
-                     errorMsg = response.statusText || errorMsg;
-                 }
-                 throw new Error(errorMsg);
-             }
+                // Process Final Buffer (if any)
+                if (buffer.trim()) {
+                     try { /* (Parsing logic for final buffer, similar to above) */ }
+                     catch (parseError) { /* (Handle final buffer parse error) */ }
+                }
 
-            // --- Stream Processing ---
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break; // Exit loop when stream is finished
-
-                buffer += decoder.decode(value, { stream: true }); // Decode chunk and append to buffer
-                const lines = buffer.split('\n'); // Split buffer into lines
-                buffer = lines.pop(); // Keep potential partial line for next chunk
-
-                for (const line of lines) {
-                    if (!line.trim()) continue; // Skip empty lines
-                    try {
-                        const data = JSON.parse(line); // Parse each line as JSON
-                        const timestamp = new Date().toLocaleTimeString();
-                        let messageClass = 'text-light'; // Default text color for console
-                        let prefix = '[INFO]'; // Default prefix for console
-
-                        // --- Switch based on message type from backend ---
-                        switch (data.type) {
-                            case 'start':
-                            case 'progress':
-                            case 'info':
-                                messageClass = 'text-info';
-                                prefix = '[INFO]';
-                                break;
-                            case 'success':
-                                messageClass = 'text-success';
-                                prefix = '[SUCCESS]';
-                                break;
-                            case 'error':
-                                messageClass = 'text-danger';
-                                prefix = '[ERROR]';
-                                break;
-                            case 'warning':
-                                messageClass = 'text-warning';
-                                prefix = '[WARNING]';
-                                break;
-                            case 'complete':
-                                // ---vvv THIS IS THE CORRECTED BLOCK vvv---
-                                // Process the final summary data
-                                const summaryData = data.data; // data.data contains the summary object
-                                let alertClass = 'alert-info'; // Bootstrap class for responseDiv
-                                let statusText = 'Info';
-                                let pushedPackagesList = 'None';
-                                let failureDetailsHtml = ''; // Initialize failure details HTML
-
-                                // Format pushed packages summary (using correct field name)
-                                if (summaryData.pushed_packages_summary && summaryData.pushed_packages_summary.length > 0) {
-                                    pushedPackagesList = summaryData.pushed_packages_summary.map(pkg => `${pkg.id} (${pkg.resource_count} resources)`).join('<br>');
-                                }
-
-                                // Determine alert class based on status
-                                if (summaryData.status === 'success') {
-                                    alertClass = 'alert-success';
-                                    statusText = 'Success';
-                                    prefix = '[SUCCESS]'; // For console log
-                                } else if (summaryData.status === 'partial') {
-                                    alertClass = 'alert-warning';
-                                    statusText = 'Partial Success';
-                                    prefix = '[PARTIAL]'; // For console log
-                                } else { // failure or error
-                                    alertClass = 'alert-danger';
-                                    statusText = 'Error';
-                                    prefix = '[ERROR]'; // For console log
-                                }
-
-                                // Format failure details if present (using correct field name)
-                                if (summaryData.failed_details && summaryData.failed_details.length > 0) {
-                                    failureDetailsHtml += '<hr><strong>Failure Details:</strong><ul style="font-size: 0.9em; max-height: 150px; overflow-y: auto;">';
-                                    summaryData.failed_details.forEach(fail => {
-                                        const escapedResource = fail.resource ? fail.resource.replace(/</g, "&lt;").replace(/>/g, "&gt;") : "N/A";
-                                        const escapedError = fail.error ? fail.error.replace(/</g, "&lt;").replace(/>/g, "&gt;") : "Unknown error";
-                                        failureDetailsHtml += `<li><strong>${escapedResource}:</strong> ${escapedError}</li>`;
-                                    });
-                                    failureDetailsHtml += '</ul>';
-                                }
-
-                                // Update the final response area (pushResponse div)
-                                responseDiv.innerHTML = `
-                                    <div class="alert ${alertClass}">
-                                        <strong>${statusText}:</strong> ${summaryData.message || 'Operation complete.'}<br>
-                                        <hr>
-                                        <strong>Target Server:</strong> ${summaryData.target_server || 'N/A'}<br>
-                                        <strong>Package:</strong> ${summaryData.package_name || 'N/A'}#${summaryData.version || 'N/A'}<br>
-                                        <strong>Included Dependencies:</strong> ${summaryData.included_dependencies ? 'Yes' : 'No'}<br>
-                                        <strong>Resources Attempted:</strong> ${summaryData.resources_attempted !== undefined ? summaryData.resources_attempted : 'N/A'}<br>
-                                        <strong>Succeeded:</strong> ${summaryData.success_count !== undefined ? summaryData.success_count : 'N/A'}<br>
-                                        <strong>Failed:</strong> ${summaryData.failure_count !== undefined ? summaryData.failure_count : 'N/A'}<br>
-                                        <strong>Packages Pushed Summary:</strong><br><div style="padding-left: 15px;">${pushedPackagesList}</div>
-                                        ${failureDetailsHtml} </div>
-                                `;
-
-                                // Also set the final message class for the console log
-                                messageClass = alertClass.replace('alert-', 'text-');
-                                break; // Break from switch
-                                // ---^^^ END OF CORRECTED BLOCK ^^^---
-                            default:
-                                console.warn("Received unknown message type:", data.type);
-                                prefix = '[UNKNOWN]';
-                                break;
-                        } // End Switch
-
-                        // --- Add message to Live Console ---
-                        const messageDiv = document.createElement('div');
-                        messageDiv.className = messageClass;
-                        // Use data.message for most types, use summary message for complete type
-                        // Check if data.data exists for complete type before accessing its message
-                        const messageText = (data.type === 'complete' && data.data) ? data.data.message : data.message;
-                        messageDiv.textContent = `${timestamp} ${prefix} ${messageText || 'Received empty message.'}`;
-                        liveConsole.appendChild(messageDiv);
-                        liveConsole.scrollTop = liveConsole.scrollHeight; // Scroll to bottom
-
-                    } catch (parseError) { // Handle errors parsing individual JSON lines
-                        console.error('Error parsing streamed message:', parseError, 'Line:', line);
-                        const timestamp = new Date().toLocaleTimeString();
-                        const errorDiv = document.createElement('div');
-                        errorDiv.className = 'text-danger';
-                        errorDiv.textContent = `${timestamp} [PARSE_ERROR] Could not parse message: ${line.substring(0, 100)}${line.length > 100 ? '...' : ''}`; // Show partial line
-                        liveConsole.appendChild(errorDiv);
-                        liveConsole.scrollTop = liveConsole.scrollHeight;
-                    }
-                } // end for loop over lines
-            } // end while loop over stream
-
-            // --- Process Final Buffer ---
-            // (Repeat the parsing logic for any remaining data in the buffer)
-            if (buffer.trim()) {
-                 try {
-                        const data = JSON.parse(buffer);
-                        const timestamp = new Date().toLocaleTimeString();
-                        let messageClass = 'text-light'; // Default for console
-                        let prefix = '[INFO]'; // Default for console
-
-                        switch (data.type) {
-                             case 'start': // Less likely in final buffer, but handle defensively
-                             case 'progress':
-                             case 'info':
-                                 messageClass = 'text-info';
-                                 prefix = '[INFO]';
-                                 break;
-                             case 'success':
-                                 messageClass = 'text-success';
-                                 prefix = '[SUCCESS]';
-                                 break;
-                             case 'error':
-                                 messageClass = 'text-danger';
-                                 prefix = '[ERROR]';
-                                 break;
-                             case 'warning':
-                                 messageClass = 'text-warning';
-                                 prefix = '[WARNING]';
-                                 break;
-                             // ---vvv THIS IS THE CORRECTED BLOCK vvv---
-                             case 'complete':
-                                 const summaryData = data.data;
-                                 let alertClass = 'alert-info';
-                                 let statusText = 'Info';
-                                 let pushedPackagesList = 'None';
-                                 let failureDetailsHtml = '';
-
-                                 if (summaryData.pushed_packages_summary && summaryData.pushed_packages_summary.length > 0) {
-                                     pushedPackagesList = summaryData.pushed_packages_summary.map(pkg => `${pkg.id} (${pkg.resource_count} resources)`).join('<br>');
-                                 }
-                                 if (summaryData.status === 'success') {
-                                     alertClass = 'alert-success'; statusText = 'Success'; prefix = '[SUCCESS]';
-                                 } else if (summaryData.status === 'partial') {
-                                     alertClass = 'alert-warning'; statusText = 'Partial Success'; prefix = '[PARTIAL]';
-                                 } else {
-                                     alertClass = 'alert-danger'; statusText = 'Error'; prefix = '[ERROR]';
-                                 }
-
-                                 if (summaryData.failed_details && summaryData.failed_details.length > 0) {
-                                     failureDetailsHtml += '<hr><strong>Failure Details:</strong><ul style="font-size: 0.9em; max-height: 150px; overflow-y: auto;">';
-                                     summaryData.failed_details.forEach(fail => {
-                                         const escapedResource = fail.resource ? fail.resource.replace(/</g, "&lt;").replace(/>/g, "&gt;") : "N/A";
-                                         const escapedError = fail.error ? fail.error.replace(/</g, "&lt;").replace(/>/g, "&gt;") : "Unknown error";
-                                         failureDetailsHtml += `<li><strong>${escapedResource}:</strong> ${escapedError}</li>`;
-                                     });
-                                     failureDetailsHtml += '</ul>';
-                                 }
-
-                                 responseDiv.innerHTML = `
-                                     <div class="alert ${alertClass}">
-                                         <strong>${statusText}:</strong> ${summaryData.message || 'Operation complete.'}<br>
-                                         <hr>
-                                         <strong>Target Server:</strong> ${summaryData.target_server || 'N/A'}<br>
-                                         <strong>Package:</strong> ${summaryData.package_name || 'N/A'}#${summaryData.version || 'N/A'}<br>
-                                         <strong>Included Dependencies:</strong> ${summaryData.included_dependencies ? 'Yes' : 'No'}<br>
-                                         <strong>Resources Attempted:</strong> ${summaryData.resources_attempted !== undefined ? summaryData.resources_attempted : 'N/A'}<br>
-                                         <strong>Succeeded:</strong> ${summaryData.success_count !== undefined ? summaryData.success_count : 'N/A'}<br>
-                                         <strong>Failed:</strong> ${summaryData.failure_count !== undefined ? summaryData.failure_count : 'N/A'}<br>
-                                         <strong>Packages Pushed Summary:</strong><br><div style="padding-left: 15px;">${pushedPackagesList}</div>
-                                         ${failureDetailsHtml}
-                                     </div>
-                                 `;
-                                 messageClass = alertClass.replace('alert-', 'text-');
-                                 break;
-                                 // ---^^^ END OF CORRECTED BLOCK ^^^---
-                             default:
-                                console.warn("Received unknown message type in final buffer:", data.type);
-                                prefix = '[UNKNOWN]';
-                                 break;
-                         } // End Switch
-
-                        // Add final buffer message to live console
-                        const messageDiv = document.createElement('div');
-                        messageDiv.className = messageClass;
-                        const messageText = (data.type === 'complete' && data.data) ? data.data.message : data.message;
-                        messageDiv.textContent = `${timestamp} ${prefix} ${messageText || 'Received empty message.'}`;
-                        liveConsole.appendChild(messageDiv);
-                        liveConsole.scrollTop = liveConsole.scrollHeight;
-
-                    } catch (parseError) { // Handle error parsing final buffer
-                       console.error('Error parsing final streamed message:', parseError, 'Buffer:', buffer);
-                        const timestamp = new Date().toLocaleTimeString();
-                        const errorDiv = document.createElement('div');
-                        errorDiv.className = 'text-danger';
-                        errorDiv.textContent = `${timestamp} [PARSE_ERROR] Could not parse final message: ${buffer.substring(0, 100)}${buffer.length > 100 ? '...' : ''}`;
-                        liveConsole.appendChild(errorDiv);
-                        liveConsole.scrollTop = liveConsole.scrollHeight;
-                    }
-            } // end if buffer trim
-
-        } catch (error) { // Handle fetch errors or errors thrown during initial response check
-            console.error("Push operation failed:", error); // Log the error object
-            const timestamp = new Date().toLocaleTimeString();
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'text-danger';
-            errorDiv.textContent = `${timestamp} [FETCH_ERROR] Failed to push package: ${error.message}`;
-            liveConsole.appendChild(errorDiv);
-            liveConsole.scrollTop = liveConsole.scrollHeight;
-
-            // Display error message in the response area
-            responseDiv.innerHTML = `
-                <div class="alert alert-danger">
-                    <strong>Error:</strong> ${error.message}
-                </div>
-            `;
-        } finally {
-            // Re-enable the button regardless of success or failure
-            pushButton.disabled = false;
-            pushButton.textContent = 'Push to FHIR Server';
-        }
-    }); // End form submit listener
+            } catch (error) { // Handle overall fetch/network errors
+                console.error("Push operation failed:", error);
+                if (liveConsole) { /* ... add error to console ... */ }
+                if (responseDiv) { responseDiv.innerHTML = `<div class="alert alert-danger mt-3"><strong>Error:</strong> ${sanitizeText(error.message || error)}</div>`; }
+                if (reportActions) { reportActions.style.display = 'none'; } // Hide buttons on error
+            } finally { // Re-enable button
+                if (pushButton) { pushButton.disabled = false; pushButton.textContent = 'Push to FHIR Server'; }
+            }
+        }); // End form submit listener
+    } else { console.error("Push IG Form element not found."); }
 }); // End DOMContentLoaded listener
 </script>
 {% endblock %}

@@ -770,6 +770,9 @@ html[data-theme="dark"] .structure-tree-root .list-group-item-warning {
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.endpoint == 'push_igs' else '' }}" href="{{ url_for('push_igs') }}"><i class="fas fa-upload me-1"></i> Push IGs</a>
+                    </li>                    
+                    <li class="nav-item">
+                        <a class="nav-link {{ 'active' if request.endpoint == 'upload_test_data' else '' }}" href="{{ url_for('upload_test_data') }}"><i class="bi bi-clipboard-data me-1"></i>Upload Test Data</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.endpoint == 'validate_sample' else '' }}" href="{{ url_for('validate_sample') }}"><i class="fas fa-check-circle me-1"></i> Validate FHIR Sample</a>
@@ -777,7 +780,7 @@ html[data-theme="dark"] .structure-tree-root .list-group-item-warning {
                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.endpoint == 'fhir_ui' else '' }}" href="{{ url_for('fhir_ui') }}"><i class="fas fa-cloud-download-alt me-1"></i> FHIR API Explorer</a>
                     </li>
-			 <li class="nav-item">
+			         <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.endpoint == 'fhir_ui_operations' else '' }}" href="{{ url_for('fhir_ui_operations') }}"><i class="bi bi-gear me-1"></i> FHIR UI Operations</a>
                     </li>
                     <li class="nav-item">

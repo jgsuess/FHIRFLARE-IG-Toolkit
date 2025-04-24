@@ -93,8 +93,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- Get DOM Elements & Check Existence ---
     const form = document.getElementById('fhirRequestForm');
     const sendButton = document.getElementById('sendRequest');
-    const fhirPath = document.getElementById('fhirPath');
-    const requestBody = document.getElementById('requestBody');
+    const fhirPathInput = document.getElementById('fhirPath'); // Renamed for clarity
+    const requestBodyInput = document.getElementById('requestBody'); // Renamed for clarity
     const requestBodyGroup = document.getElementById('requestBodyGroup');
     const jsonError = document.getElementById('jsonError');
     const responseCard = document.getElementById('responseCard');
@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const methodRadios = document.getElementsByName('method');
     const toggleServerButton = document.getElementById('toggleServer');
     const toggleLabel = document.getElementById('toggleLabel');
-    const fhirServerUrl = document.getElementById('fhirServerUrl');
+    const fhirServerUrlInput = document.getElementById('fhirServerUrl'); // Renamed for clarity
     const copyRequestBodyButton = document.getElementById('copyRequestBody');
     const copyResponseHeadersButton = document.getElementById('copyResponseHeaders');
     const copyResponseBodyButton = document.getElementById('copyResponseBody');
@@ -113,8 +113,8 @@ document.addEventListener('DOMContentLoaded', function() {
     let elementsReady = true;
     if (!form) { console.error("Element not found: #fhirRequestForm"); elementsReady = false; }
     if (!sendButton) { console.error("Element not found: #sendRequest"); elementsReady = false; }
-    if (!fhirPath) { console.error("Element not found: #fhirPath"); elementsReady = false; }
-    if (!requestBody) { console.warn("Element not found: #requestBody"); } // Warn only, might be ok if not POST/PUT
+    if (!fhirPathInput) { console.error("Element not found: #fhirPath"); elementsReady = false; }
+    if (!requestBodyInput) { console.warn("Element not found: #requestBody"); } // Warn only
     if (!requestBodyGroup) { console.warn("Element not found: #requestBodyGroup"); } // Warn only
     if (!jsonError) { console.warn("Element not found: #jsonError"); } // Warn only
     if (!responseCard) { console.error("Element not found: #responseCard"); elementsReady = false; }
@@ -123,40 +123,33 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!responseBody) { console.error("Element not found: #responseBody"); elementsReady = false; }
     if (!toggleServerButton) { console.error("Element not found: #toggleServer"); elementsReady = false; }
     if (!toggleLabel) { console.error("Element not found: #toggleLabel"); elementsReady = false; }
-    if (!fhirServerUrl) { console.error("Element not found: #fhirServerUrl"); elementsReady = false; }
+    if (!fhirServerUrlInput) { console.error("Element not found: #fhirServerUrl"); elementsReady = false; }
     // Add checks for copy buttons if needed
 
     if (!elementsReady) {
         console.error("One or more critical UI elements could not be found. Script execution halted.");
-        // Optionally display a user-facing error message here
-        // const errorDisplay = document.getElementById('some-error-area');
-        // if(errorDisplay) errorDisplay.textContent = "Error initializing UI components.";
-        return; // Stop script execution if critical elements are missing
+        return; // Stop script execution
     }
     console.log("All critical elements checked/found.");
 
     // --- State Variable ---
-    let useLocalHapi = true; // Default state, will be adjusted by Lite mode check
+    let useLocalHapi = true;
 
-    // --- DEFINE FUNCTIONS (as before) ---
+    // --- DEFINE FUNCTIONS ---
 
     function updateServerToggleUI() {
-        // Add checks inside the function too, just in case
-        if (!toggleLabel || !fhirServerUrl) {
-             console.error("updateServerToggleUI: Toggle UI elements became unavailable!");
-             return;
-        }
+        if (!toggleLabel || !fhirServerUrlInput) { console.error("updateServerToggleUI: Toggle UI elements missing!"); return; }
         toggleLabel.textContent = useLocalHapi ? 'Use Local HAPI' : 'Use Custom URL';
-        fhirServerUrl.style.display = useLocalHapi ? 'none' : 'block';
-        fhirServerUrl.classList.remove('is-invalid');
+        fhirServerUrlInput.style.display = useLocalHapi ? 'none' : 'block';
+        fhirServerUrlInput.classList.remove('is-invalid');
     }
 
     function toggleServer() {
         if (appMode === 'lite') return; // Ignore clicks in Lite mode
         useLocalHapi = !useLocalHapi;
         updateServerToggleUI();
-        if (useLocalHapi && fhirServerUrl) {
-            fhirServerUrl.value = '';
+        if (useLocalHapi && fhirServerUrlInput) {
+            fhirServerUrlInput.value = '';
         }
         console.log(`Server toggled: ${useLocalHapi ? 'Local HAPI' : 'Custom URL'}`);
     }
@@ -166,47 +159,63 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!requestBodyGroup || !selectedMethod) return;
         requestBodyGroup.style.display = (selectedMethod === 'POST' || selectedMethod === 'PUT') ? 'block' : 'none';
         if (selectedMethod !== 'POST' && selectedMethod !== 'PUT') {
-            if (requestBody) requestBody.value = '';
+            if (requestBodyInput) requestBodyInput.value = '';
             if (jsonError) jsonError.style.display = 'none';
         }
     }
 
+    // Validates request body, returns null on error, otherwise returns body string or empty string
     function validateRequestBody(method, path) {
-        // Added check for requestBody existence
-        if (!requestBody || !jsonError) return method === 'GET' ? null : '';
-        if (!requestBody.value.trim()) {
-            requestBody.classList.remove('is-invalid');
+        if (!requestBodyInput || !jsonError) return (method === 'POST' || method === 'PUT') ? '' : undefined; // Return empty string for modifying methods if field missing, else undefined
+        const bodyValue = requestBodyInput.value.trim();
+        if (!bodyValue) {
+            requestBodyInput.classList.remove('is-invalid');
             jsonError.style.display = 'none';
-            return method === 'GET' ? null : '';
+            return ''; // Empty body is valid for POST/PUT
         }
         const isSearch = path && path.endsWith('_search');
-        if (method === 'POST' && isSearch) { return requestBody.value; }
-        try {
-            JSON.parse(requestBody.value);
-            requestBody.classList.remove('is-invalid');
+        const isJson = bodyValue.startsWith('{') || bodyValue.startsWith('[');
+        const isForm = !isJson; // Assume form urlencoded if not JSON
+
+        if (method === 'POST' && isSearch && isForm) { // POST Search with form params
+            requestBodyInput.classList.remove('is-invalid');
             jsonError.style.display = 'none';
-            return requestBody.value;
-        } catch (e) {
-            requestBody.classList.add('is-invalid');
-            jsonError.textContent = `Invalid JSON: ${e.message}`;
-            jsonError.style.display = 'block';
-            return null;
+            return bodyValue;
+        } else if (method === 'POST' || method === 'PUT') { // Other POST/PUT expect JSON
+            try {
+                JSON.parse(bodyValue);
+                requestBodyInput.classList.remove('is-invalid');
+                jsonError.style.display = 'none';
+                return bodyValue; // Return the valid JSON string
+            } catch (e) {
+                requestBodyInput.classList.add('is-invalid');
+                jsonError.textContent = `Invalid JSON: ${e.message}`;
+                jsonError.style.display = 'block';
+                return null; // Indicate validation error
+            }
         }
+        // For GET/DELETE, body should not be sent, but we don't error here
+        requestBodyInput.classList.remove('is-invalid');
+        jsonError.style.display = 'none';
+        return undefined; // Indicate no body should be sent
     }
 
+    // Cleans path for proxying
     function cleanFhirPath(path) {
         if (!path) return '';
+        // Remove optional leading 'r4/' or 'fhir/', then trim slashes
         const cleaned = path.replace(/^(r4\/|fhir\/)*/i, '').replace(/^\/+|\/+$/g, '');
         return cleaned;
     }
 
+    // Copies text to clipboard
     async function copyToClipboard(text, button) {
-        if (!text || !button) return;
+        if (text === null || text === undefined || !button) return;
         try {
-            await navigator.clipboard.writeText(text);
+            await navigator.clipboard.writeText(String(text)); // Ensure text is string
             const originalIcon = button.innerHTML;
             button.innerHTML = '<i class="bi bi-check-lg"></i>';
-            setTimeout(() => { button.innerHTML = originalIcon; }, 2000);
+            setTimeout(() => { if(button.isConnected) button.innerHTML = originalIcon; }, 2000);
         } catch (err) { console.error('Copy failed:', err); alert('Failed to copy to clipboard'); }
     }
 
@@ -215,82 +224,180 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('App Mode:', appMode);
 
     if (appMode === 'lite') {
-        console.log('Lite mode detected: Disabling local HAPI toggle and setting default.');
-        // Check toggleServerButton again before using
+        console.log('Lite mode detected: Disabling local HAPI toggle.');
         if (toggleServerButton) {
             toggleServerButton.disabled = true;
             toggleServerButton.title = "Local HAPI is not available in Lite mode";
             toggleServerButton.classList.add('disabled');
             useLocalHapi = false;
-            if (fhirServerUrl) {
-                 fhirServerUrl.placeholder = "Enter FHIR Base URL (Local HAPI unavailable)";
-            }
-        } else {
-             // This console log should have appeared earlier if button was missing
-             console.error("Lite mode: Could not find toggle server button (#toggleServer) to disable.");
-        }
+            if (fhirServerUrlInput) { fhirServerUrlInput.placeholder = "Enter FHIR Base URL (Local HAPI unavailable)"; }
+        } else { console.error("Lite mode: Could not find toggle server button."); }
     } else {
-         console.log('Standalone mode detected: Enabling local HAPI toggle.');
-         if (toggleServerButton) {
-             toggleServerButton.disabled = false;
-             toggleServerButton.title = "";
-             toggleServerButton.classList.remove('disabled');
-         } else {
-              console.error("Standalone mode: Could not find toggle server button (#toggleServer) to enable.");
-         }
+        console.log('Standalone mode detected.');
+        if (toggleServerButton) { toggleServerButton.disabled = false; toggleServerButton.title = ""; toggleServerButton.classList.remove('disabled'); }
+        else { console.error("Standalone mode: Could not find toggle server button."); }
     }
 
     // --- SET INITIAL UI STATE ---
-    // Call these *after* the mode check and function definitions
     updateServerToggleUI();
     updateRequestBodyVisibility();
 
     // --- ATTACH EVENT LISTENERS ---
-
-    // Server Toggle Button
-    if (toggleServerButton) { // Check again before adding listener
-        toggleServerButton.addEventListener('click', toggleServer);
-    } else {
-        console.error("Cannot attach listener: Toggle Server Button not found.");
-    }
-
-    // Copy Buttons (Add checks)
-    if (copyRequestBodyButton && requestBody) { copyRequestBodyButton.addEventListener('click', () => copyToClipboard(requestBody.value, copyRequestBodyButton)); }
+    if (toggleServerButton) { toggleServerButton.addEventListener('click', toggleServer); }
+    if (copyRequestBodyButton && requestBodyInput) { copyRequestBodyButton.addEventListener('click', () => copyToClipboard(requestBodyInput.value, copyRequestBodyButton)); }
     if (copyResponseHeadersButton && responseHeaders) { copyResponseHeadersButton.addEventListener('click', () => copyToClipboard(responseHeaders.textContent, copyResponseHeadersButton)); }
     if (copyResponseBodyButton && responseBody) { copyResponseBodyButton.addEventListener('click', () => copyToClipboard(responseBody.textContent, copyResponseBodyButton)); }
+    if (methodRadios) { methodRadios.forEach(radio => { radio.addEventListener('change', updateRequestBodyVisibility); }); }
+    if (requestBodyInput && fhirPathInput) { requestBodyInput.addEventListener('input', () => validateRequestBody( document.querySelector('input[name="method"]:checked')?.value, fhirPathInput.value )); }
 
-    // Method Radio Buttons
-    if (methodRadios) {
-        methodRadios.forEach(radio => { radio.addEventListener('change', updateRequestBodyVisibility); });
-    }
-
-    // Request Body Input Validation
-    if (requestBody && fhirPath) {
-        requestBody.addEventListener('input', () => validateRequestBody( document.querySelector('input[name="method"]:checked')?.value, fhirPath.value ));
-    }
-
-    // Send Request Button
-    if (sendButton && fhirPath && form) { // Added form check for CSRF
+    // --- Send Request Button Listener (CORRECTED) ---
+    if (sendButton && fhirPathInput && form) {
         sendButton.addEventListener('click', async function() {
-            // (Keep the existing fetch/send logic here)
-            // ...
-            // Ensure you check for element existence inside this handler too if needed, e.g.:
-             if (!fhirPath.value.trim()) { /* ... */ }
-             const method = document.querySelector('input[name="method"]:checked')?.value;
-             if (!method) { /* ... */ }
-             // ...etc...
+            console.log("Send Request button clicked.");
+            sendButton.disabled = true; sendButton.textContent = 'Sending...';
+            responseCard.style.display = 'none';
+            responseStatus.textContent = ''; responseHeaders.textContent = ''; responseBody.textContent = '';
+            responseStatus.className = 'badge'; // Reset badge class
 
-             // Example: CSRF token retrieval inside handler
-             const csrfTokenInput = form.querySelector('input[name="csrf_token"]');
-             const csrfToken = csrfTokenInput ? csrfTokenInput.value : null;
-             if (useLocalHapi && (method === 'POST' || method === 'PUT') && csrfToken) {
-                  headers['X-CSRFToken'] = csrfToken;
-             } else if (useLocalHapi && (method === 'POST' || method === 'PUT')) {
-                  console.warn("CSRF token input not found for local request.");
-                  // Potentially alert the user or block the request
-             }
-             // ... rest of send logic ...
-        });
+            // 1. Get Values
+            const path = fhirPathInput.value.trim();
+            const method = document.querySelector('input[name="method"]:checked')?.value;
+            let body = undefined; // Default to no body
+
+            if (!path) { alert('Please enter a FHIR Path.'); sendButton.disabled = false; sendButton.textContent = 'Send Request'; return; }
+            if (!method) { alert('Please select a Request Type.'); sendButton.disabled = false; sendButton.textContent = 'Send Request'; return; }
+
+            // 2. Validate & Get Body (if needed)
+            if (method === 'POST' || method === 'PUT') {
+                 body = validateRequestBody(method, path);
+                 if (body === null) { // null indicates validation error
+                     alert('Request body contains invalid JSON.'); sendButton.disabled = false; sendButton.textContent = 'Send Request'; return;
+                 }
+                 // If body is empty string, ensure it's treated as such for fetch
+                 if (body === '') body = '';
+            }
+
+            // 3. Determine Target URL
+            const cleanedPath = cleanFhirPath(path);
+            const proxyBase = '/fhir'; // Always use the toolkit's proxy endpoint
+            let targetUrl = useLocalHapi ? `${proxyBase}/${cleanedPath}` : fhirServerUrlInput.value.trim().replace(/\/+$/, '') + `/${cleanedPath}`;
+            let finalFetchUrl = proxyBase + '/' + cleanedPath; // URL to send the fetch request TO
+
+            if (!useLocalHapi) {
+                const customUrl = fhirServerUrlInput.value.trim();
+                if (!customUrl) {
+                    alert('Please enter a custom FHIR Server URL when not using Local HAPI.');
+                    fhirServerUrlInput.classList.add('is-invalid');
+                    sendButton.disabled = false; sendButton.textContent = 'Send Request';
+                    return;
+                }
+                try {
+                    // Validate custom URL format, though actual reachability is checked by backend proxy
+                    new URL(customUrl);
+                    fhirServerUrlInput.classList.remove('is-invalid');
+                    // The proxy needs the *full* path including the custom base, it doesn't know it otherwise
+                    // We modify the path being sent TO THE PROXY
+                    // Let backend handle the full external URL based on path sent to it
+                    // This assumes the proxy handles the full path correctly.
+                    // *Correction*: Proxy expects just the relative path. Send custom URL in header?
+                    // Let's stick to the original proxy design: frontend sends relative path to /fhir/,
+                    // backend needs to know if it's proxying to local or custom.
+                    // WE NEED TO TELL THE BACKEND WHICH URL TO PROXY TO!
+                    // This requires backend changes. For now, assume proxy ALWAYS goes to localhost:8080.
+                    // To make custom URL work, the backend proxy needs modification.
+                    // Sticking with current backend: Custom URL cannot be proxied via '/fhir/'.
+                    // --> Reverting to only allowing local proxy for now.
+                    if (!useLocalHapi) {
+                         alert("Current implementation only supports proxying to the local HAPI server via '/fhir'. Custom URL feature requires backend changes to the proxy route.");
+                         sendButton.disabled = false; sendButton.textContent = 'Send Request';
+                         return;
+                    }
+                    // If backend were changed, we'd likely send the custom URL in a header or modify the request path.
+                } catch (_) {
+                    alert('Invalid custom FHIR Server URL format.');
+                    fhirServerUrlInput.classList.add('is-invalid');
+                    sendButton.disabled = false; sendButton.textContent = 'Send Request';
+                    return;
+                }
+            }
+
+            console.log(`Final Fetch URL: ${finalFetchUrl}`);
+
+            // 4. Prepare Headers
+            const headers = { 'Accept': 'application/fhir+json, application/fhir+xml;q=0.9' };
+            const isSearch = path.endsWith('_search');
+            if (method === 'POST' || method === 'PUT') {
+                 // Determine Content-Type based on body content if possible
+                 if (body && body.trim().startsWith('{')) { headers['Content-Type'] = 'application/fhir+json'; }
+                 else if (body && body.trim().startsWith('<')) { headers['Content-Type'] = 'application/fhir+xml'; }
+                 else if (method === 'POST' && isSearch && body && !body.trim().startsWith('{') && !body.trim().startsWith('<')) { headers['Content-Type'] = 'application/x-www-form-urlencoded'; }
+                 else if (body) { headers['Content-Type'] = 'application/fhir+json'; } // Default if body exists but type unknown
+            }
+
+            // Add CSRF token if method requires it AND using local proxy
+            const csrfTokenInput = form.querySelector('input[name="csrf_token"]');
+            const csrfToken = csrfTokenInput ? csrfTokenInput.value : null;
+            if (useLocalHapi && ['POST', 'PUT', 'DELETE'].includes(method) && csrfToken) { // Include DELETE
+                 headers['X-CSRFToken'] = csrfToken;
+                 console.log("CSRF Token added for local modifying request.");
+            } else if (useLocalHapi && ['POST', 'PUT', 'DELETE'].includes(method) && !csrfToken) {
+                 console.warn("CSRF token input not found for local modifying request.");
+                 // Potentially alert user or add specific handling
+            }
+
+            // 5. Make the Fetch Request
+            try {
+                const response = await fetch(finalFetchUrl, { method, headers, body }); // Body is undefined for GET/DELETE
+
+                // 6. Process Response
+                responseCard.style.display = 'block';
+                responseStatus.textContent = `${response.status} ${response.statusText}`;
+                responseStatus.className = `badge ${response.ok ? 'bg-success' : 'bg-danger'}`;
+
+                let headerText = '';
+                response.headers.forEach((value, key) => { headerText += `${key}: ${value}\n`; });
+                responseHeaders.textContent = headerText.trim();
+
+                const responseContentType = response.headers.get('content-type') || '';
+                let responseBodyText = await response.text();
+                let displayBody = responseBodyText;
+
+                // Attempt to pretty-print JSON
+                if (responseContentType.includes('json') && responseBodyText.trim()) {
+                    try {
+                        displayBody = JSON.stringify(JSON.parse(responseBodyText), null, 2);
+                    } catch (e) {
+                        console.warn("Failed to pretty-print JSON response:", e);
+                        displayBody = responseBodyText; // Show raw text if parsing fails
+                    }
+                }
+                 // Add XML formatting if needed later
+
+                responseBody.textContent = displayBody;
+
+                 // Highlight response body if Prism.js is available
+                 if (typeof Prism !== 'undefined') {
+                     responseBody.className = ''; // Clear previous classes
+                     if (responseContentType.includes('json')) {
+                         responseBody.classList.add('language-json');
+                     } else if (responseContentType.includes('xml')) {
+                         responseBody.classList.add('language-xml');
+                     } // Add other languages if needed
+                     Prism.highlightElement(responseBody);
+                 }
+
+
+            } catch (error) {
+                console.error('Fetch error:', error);
+                responseCard.style.display = 'block';
+                responseStatus.textContent = `Network Error`;
+                responseStatus.className = 'badge bg-danger';
+                responseHeaders.textContent = 'N/A';
+                responseBody.textContent = `Error: ${error.message}\n\nCould not connect to the FHIRFLARE proxy at ${finalFetchUrl}. Ensure the toolkit server is running.`;
+            } finally {
+                sendButton.disabled = false; sendButton.textContent = 'Send Request';
+            }
+        }); // End sendButton listener
     } else {
         console.error("Cannot attach listener: Send Request Button, FHIR Path input, or Form element not found.");
     }
