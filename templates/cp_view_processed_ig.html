@@ -1168,70 +1168,111 @@ function renderBindingsTable(elements) {
     }
 }
 
-// --- Function to Render Search Parameters Table (Add Logging) ---
+// --- Function to Render Search Parameters Table (Includes Conformance Badges & Tooltips) ---
 function renderSearchParametersTable(searchParamsData) {
+    // Find the table body element using its ID
     const tableBody = document.getElementById('searchparams-table')?.querySelector('tbody');
+
+    // Check if the table body element exists
     if (!tableBody) {
-        console.error('Search Params table body not found');
-        return;
+        console.error('Search Params table body element (#searchparams-table > tbody) not found');
+        return; // Exit if the table body isn't found
     }
-    tableBody.innerHTML = ''; // Clear existing rows
 
-    // *** ADDED LOG: Check data received by rendering function ***
+    tableBody.innerHTML = ''; // Clear any existing rows (like loading indicators)
+
+    // Log the data received for debugging
     console.log('[renderSearchParametersTable] Received data:', searchParamsData);
-    // **********************************************************
 
+    // Check if the received data is valid and is an array with items
     if (!searchParamsData || !Array.isArray(searchParamsData) || searchParamsData.length === 0) {
-        console.log('[renderSearchParametersTable] No valid search parameter data found, displaying message.'); // Added Log
+        console.log('[renderSearchParametersTable] No valid search parameter data found, displaying message.');
+        // Display a message indicating no parameters were found
         const row = tableBody.insertRow();
         const cell = row.insertCell();
-        cell.colSpan = 4;
+        cell.colSpan = 4; // Span across all columns
         cell.textContent = 'No relevant search parameters found for this resource type.';
         cell.style.textAlign = 'center';
-        cell.classList.add('text-muted', 'fst-italic');
-        return;
+        cell.classList.add('text-muted', 'fst-italic'); // Style the message
+        return; // Exit the function
     }
 
-    // Sort parameters alphabetically by code
+    // Sort parameters alphabetically by their 'code' before rendering
     searchParamsData.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
 
+    // Iterate through each search parameter object in the sorted array
     searchParamsData.forEach((param, index) => {
-        // *** ADDED LOG: Log each parameter being processed ***
-        console.log(`[renderSearchParametersTable] Processing param ${index + 1}:`, param);
-        // ***************************************************
+        console.log(`[renderSearchParametersTable] Processing param ${index + 1}:`, param); // Log each parameter
 
-        const row = tableBody.insertRow();
+        const row = tableBody.insertRow(); // Create a new table row
 
-        // Parameter Name (using 'code')
+        // --- Column 1: Parameter Code ---
         const nameCell = row.insertCell();
+        // Use escapeHtmlAttr (ensure this helper function exists in your scope)
+        // Display the parameter code within a <code> tag
         nameCell.innerHTML = `<code>${escapeHtmlAttr(param.code || 'N/A')}</code>`;
 
-        // Type
-        row.insertCell().textContent = param.type || 'N/A';
+        // --- Column 2: Parameter Type ---
+        row.insertCell().textContent = param.type || 'N/A'; // Display the parameter type
 
-        // Conformance (Placeholder)
+        // --- Column 3: Conformance Level (with Badges and Tooltip) ---
         const conformanceCell = row.insertCell();
-        conformanceCell.textContent = param.conformance || 'N/A'; // Show backend placeholder
-        // Add highlighting later if backend provides is_mandatory
-        // if (param.is_mandatory) { ... }
+        // Default to 'Optional' if conformance isn't specified in the data
+        const conformanceValue = param.conformance || 'Optional';
+        let badgeClass = 'bg-secondary'; // Default badge style
+        let titleText = 'Conformance level not specified in CapabilityStatement.'; // Default tooltip text
 
-        // Description
+        // Determine badge style and tooltip text based on the conformance value
+        if (conformanceValue === 'SHALL') {
+            badgeClass = 'bg-danger'; // Red for SHALL (Mandatory)
+            titleText = 'Server SHALL support this parameter.';
+        } else if (conformanceValue === 'SHOULD') {
+            badgeClass = 'bg-warning text-dark'; // Yellow for SHOULD (Recommended)
+             titleText = 'Server SHOULD support this parameter.';
+        } else if (conformanceValue === 'MAY') {
+            badgeClass = 'bg-info text-dark'; // Blue for MAY (Optional but defined)
+             titleText = 'Server MAY support this parameter.';
+        } else if (conformanceValue === 'Optional') {
+             badgeClass = 'bg-light text-dark border'; // Light grey for Optional (Not explicitly mentioned in Caps)
+             titleText = 'Server support for this parameter is optional.';
+        }
+        // Add handling for other potential values like 'SHALL-NOT', 'SHOULD-NOT' if needed
+
+        // Set the tooltip attributes
+        conformanceCell.setAttribute('title', titleText);
+        conformanceCell.setAttribute('data-bs-toggle', 'tooltip');
+        conformanceCell.setAttribute('data-bs-placement', 'top');
+        // Set the cell content with the styled badge
+        conformanceCell.innerHTML = `<span class="badge ${badgeClass}">${escapeHtmlAttr(conformanceValue)}</span>`;
+
+        // Initialize or re-initialize the Bootstrap tooltip for this specific cell
+        // This is important because the table rows are added dynamically
+        const existingTooltip = bootstrap.Tooltip.getInstance(conformanceCell);
+        if (existingTooltip) {
+            existingTooltip.dispose(); // Remove any previous tooltip instance to avoid conflicts
+        }
+        new bootstrap.Tooltip(conformanceCell); // Create and initialize the new tooltip
+
+        // --- Column 4: Description (with FHIRPath Tooltip if available) ---
         const descriptionCell = row.insertCell();
+        // Use escapeHtmlAttr for the description text
         descriptionCell.innerHTML = `<small>${escapeHtmlAttr(param.description || 'No description available.')}</small>`;
+        // If a FHIRPath expression exists, add it as a tooltip
         if (param.expression) {
-             descriptionCell.title = `FHIRPath: ${param.expression}`;
+             descriptionCell.setAttribute('title', `FHIRPath: ${param.expression}`);
              descriptionCell.setAttribute('data-bs-toggle', 'tooltip');
              descriptionCell.setAttribute('data-bs-placement', 'top');
-             // Ensure tooltip is initialized for dynamically added elements
-             const existingTooltip = bootstrap.Tooltip.getInstance(descriptionCell);
-             if (existingTooltip) {
-                 existingTooltip.dispose(); // Remove old instance if any
+             // Initialize or re-initialize the tooltip
+             const existingDescTooltip = bootstrap.Tooltip.getInstance(descriptionCell);
+             if (existingDescTooltip) {
+                 existingDescTooltip.dispose();
              }
              new bootstrap.Tooltip(descriptionCell);
         }
-    });
-    console.log('[renderSearchParametersTable] Finished rendering parameters.'); // Added Log
-} // End renderSearchParametersTable
+    }); // End forEach loop over searchParamsData
+
+    console.log('[renderSearchParametersTable] Finished rendering parameters.');
+} // End renderSearchParametersTable function
 
 
 // --- DOMContentLoaded Listener ---

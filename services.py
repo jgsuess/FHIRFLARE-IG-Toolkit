@@ -482,23 +482,30 @@ def get_package_metadata(name, version):
         return None
 
 def process_package_file(tgz_path):
-    """Extracts types, profile status, MS elements, examples, and profile relationships from a downloaded .tgz package."""
+    """
+    Extracts types, profile status, MS elements, examples, profile relationships,
+    and search parameter conformance from a downloaded .tgz package.
+    """
     if not tgz_path or not os.path.exists(tgz_path):
         logger.error(f"Package file not found for processing: {tgz_path}")
         return {'errors': [f"Package file not found: {tgz_path}"], 'resource_types_info': []}
 
     pkg_basename = os.path.basename(tgz_path)
-    name, version = parse_package_filename(pkg_basename)
-    logger.info(f"Processing package file details: {pkg_basename}")
+    name, version = parse_package_filename(tgz_path) # Assumes parse_package_filename exists
+    logger.info(f"Processing package file details: {pkg_basename} ({name}#{version})")
 
+    # Initialize results dictionary
     results = {
         'resource_types_info': [],
         'must_support_elements': {},
         'examples': {},
         'complies_with_profiles': [],
         'imposed_profiles': [],
+        'search_param_conformance': {}, # Dictionary to store conformance
         'errors': []
     }
+
+    # Intermediate storage for processing
     resource_info = defaultdict(lambda: {
         'name': None,
         'type': None,
@@ -510,157 +517,183 @@ def process_package_file(tgz_path):
         'optional_usage': False
     })
     referenced_types = set()
+    capability_statement_data = None # Store the main CapabilityStatement
 
     try:
         with tarfile.open(tgz_path, "r:gz") as tar:
             members = tar.getmembers()
             logger.debug(f"Found {len(members)} members in {pkg_basename}")
 
-            # Pass 1: Process StructureDefinitions
-            logger.debug("Processing StructureDefinitions...")
-            sd_members = [m for m in members if m.isfile() and m.name.startswith('package/') and m.name.lower().endswith('.json')]
+            # Filter for relevant JSON files once
+            json_members = []
+            for m in members:
+                if m.isfile() and m.name.startswith('package/') and m.name.lower().endswith('.json'):
+                     # Exclude common metadata files by basename
+                     basename_lower = os.path.basename(m.name).lower()
+                     if basename_lower not in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']:
+                         json_members.append(m)
+            logger.debug(f"Found {len(json_members)} potential JSON resource members.")
 
-            for member in sd_members:
-                base_filename_lower = os.path.basename(member.name).lower()
-                if base_filename_lower in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']:
-                    continue
-
+            # --- Pass 1: Process StructureDefinitions and Find CapabilityStatement ---
+            logger.debug("Pass 1: Processing StructureDefinitions and finding CapabilityStatement...")
+            for member in json_members:
                 fileobj = None
                 try:
                     fileobj = tar.extractfile(member)
                     if not fileobj: continue
 
                     content_bytes = fileobj.read()
+                    # Handle potential BOM (Byte Order Mark)
                     content_string = content_bytes.decode('utf-8-sig')
                     data = json.loads(content_string)
 
-                    if not isinstance(data, dict) or data.get('resourceType') != 'StructureDefinition':
-                        continue
+                    if not isinstance(data, dict): continue
+                    resourceType = data.get('resourceType')
 
-                    # Remove narrative text element
-                    data = remove_narrative(data)
+                    # --- Process StructureDefinition ---
+                    if resourceType == 'StructureDefinition':
+                        data = remove_narrative(data) # Assumes remove_narrative exists
+                        profile_id = data.get('id') or data.get('name')
+                        sd_type = data.get('type')
+                        sd_base = data.get('baseDefinition')
+                        is_profile_sd = bool(sd_base)
 
-                    profile_id = data.get('id') or data.get('name')
-                    sd_type = data.get('type')
-                    sd_base = data.get('baseDefinition')
-                    is_profile_sd = bool(sd_base)
-
-                    if not profile_id or not sd_type:
-                        logger.warning(f"Skipping StructureDefinition in {member.name} due to missing ID ('{profile_id}') or Type ('{sd_type}').")
-                        continue
-
-                    entry_key = profile_id
-                    entry = resource_info[entry_key]
-
-                    if entry.get('sd_processed'): continue
-
-                    logger.debug(f"Processing StructureDefinition: {entry_key} (type={sd_type}, is_profile={is_profile_sd})")
-
-                    entry['name'] = entry_key
-                    entry['type'] = sd_type
-                    entry['is_profile'] = is_profile_sd
-                    entry['sd_processed'] = True
-                    referenced_types.add(sd_type)
-
-                    # Cache StructureDefinition for all views
-                    views = ['differential', 'snapshot', 'must-support', 'key-elements']
-                    for view in views:
-                        view_elements = data.get('differential', {}).get('element', []) if view == 'differential' else data.get('snapshot', {}).get('element', [])
-                        if view == 'must-support':
-                            view_elements = [e for e in view_elements if e.get('mustSupport')]
-                        elif view == 'key-elements':
-                            key_elements = set()
-                            differential_elements = data.get('differential', {}).get('element', [])
-                            for e in view_elements:
-                                is_in_differential = any(de['id'] == e['id'] for de in differential_elements)
-                                if e.get('mustSupport') or is_in_differential or e.get('min', 0) > 0 or e.get('max') != '*' or e.get('slicing') or e.get('constraint'):
-                                    key_elements.add(e['id'])
-                                    parent_path = e['path']
-                                    while '.' in parent_path:
-                                        parent_path = parent_path.rsplit('.', 1)[0]
-                                        parent_element = next((el for el in view_elements if el['path'] == parent_path), None)
-                                        if parent_element:
-                                            key_elements.add(parent_element['id'])
-                            view_elements = [e for e in view_elements if e['id'] in key_elements]
-                        cache_data = {
-                            'structure_definition': data,
-                            'must_support_paths': [],
-                            'fallback_used': False,
-                            'source_package': f"{name}#{version}"
-                        }
-                        cache_structure(name, version, sd_type, view, cache_data)
-
-                    complies_with = []
-                    imposed = []
-                    for ext in data.get('extension', []):
-                        ext_url = ext.get('url')
-                        value = ext.get('valueCanonical')
-                        if value:
-                            if ext_url == 'http://hl7.org/fhir/StructureDefinition/structuredefinition-compliesWithProfile':
-                                complies_with.append(value)
-                            elif ext_url == 'http://hl7.org/fhir/StructureDefinition/structuredefinition-imposeProfile':
-                                imposed.append(value)
-                    results['complies_with_profiles'].extend(c for c in complies_with if c not in results['complies_with_profiles'])
-                    results['imposed_profiles'].extend(i for i in imposed if i not in results['imposed_profiles'])
-
-                    # Must Support and Optional Usage Logic
-                    has_ms_in_this_sd = False
-                    ms_paths_in_this_sd = set()
-                    elements = data.get('snapshot', {}).get('element', []) or data.get('differential', {}).get('element', [])
-
-                    for element in elements:
-                        if not isinstance(element, dict):
+                        if not profile_id or not sd_type:
+                            logger.warning(f"Skipping SD {member.name}: missing ID ('{profile_id}') or Type ('{sd_type}').")
                             continue
-                        must_support = element.get('mustSupport')
-                        element_id = element.get('id')
-                        element_path = element.get('path')
-                        slice_name = element.get('sliceName')
 
-                        logger.debug(f"Checking element in {entry_key}: id={element_id}, path={element_path}, sliceName={slice_name}, mustSupport={must_support}")
+                        entry_key = profile_id
+                        entry = resource_info[entry_key]
+                        if entry.get('sd_processed'): continue # Avoid reprocessing
 
-                        if must_support is True:
-                            if element_id and element_path:
-                                ms_path = f"{element_path}[sliceName='{slice_name}']" if slice_name else element_id
-                                ms_paths_in_this_sd.add(ms_path)
-                                has_ms_in_this_sd = True
-                                logger.info(f"Found MS element in {entry_key}: path={element_path}, id={element_id}, sliceName={slice_name}, ms_path={ms_path}")
-                            else:
-                                logger.warning(f"Found mustSupport=true without path/id in element of {entry_key} ({member.name})")
-                                has_ms_in_this_sd = True
+                        logger.debug(f"Processing SD: {entry_key} (type={sd_type}, profile={is_profile_sd})")
+                        entry['name'] = entry_key
+                        entry['type'] = sd_type
+                        entry['is_profile'] = is_profile_sd
+                        entry['sd_processed'] = True
+                        referenced_types.add(sd_type)
 
-                    if has_ms_in_this_sd:
-                        entry['ms_paths'].update(ms_paths_in_this_sd)
-                        entry['ms_flag'] = True
-                        logger.debug(f"Profile {entry_key} has MS flag set. MS paths: {entry['ms_paths']}")
+                        # Extract compliesWith/imposed profile URLs
+                        complies_with = []
+                        imposed = []
+                        for ext in data.get('extension', []):
+                            ext_url = ext.get('url')
+                            value = ext.get('valueCanonical')
+                            if value:
+                                if ext_url == 'http://hl7.org/fhir/StructureDefinition/structuredefinition-compliesWithProfile':
+                                    complies_with.append(value)
+                                elif ext_url == 'http://hl7.org/fhir/StructureDefinition/structuredefinition-imposeProfile':
+                                    imposed.append(value)
+                        # Add unique URLs to results
+                        results['complies_with_profiles'].extend(c for c in complies_with if c not in results['complies_with_profiles'])
+                        results['imposed_profiles'].extend(i for i in imposed if i not in results['imposed_profiles'])
 
-                    if sd_type == 'Extension' and has_ms_in_this_sd:
-                        internal_ms_exists = any(p.startswith('Extension.') or ':' in p for p in entry['ms_paths'])
-                        if internal_ms_exists:
-                            entry['optional_usage'] = True
-                            logger.info(f"Marked Extension {entry_key} as optional_usage: MS paths={entry['ms_paths']}")
+                        # Must Support and Optional Usage Logic
+                        has_ms_in_this_sd = False
+                        ms_paths_in_this_sd = set()
+                        elements = data.get('snapshot', {}).get('element', []) or data.get('differential', {}).get('element', [])
+                        for element in elements:
+                             if not isinstance(element, dict): continue
+                             must_support = element.get('mustSupport')
+                             element_id = element.get('id')
+                             element_path = element.get('path')
+                             slice_name = element.get('sliceName')
+                             if must_support is True:
+                                 if element_id and element_path:
+                                     # Use element ID as the key for MS paths unless it's a slice
+                                     ms_path_key = f"{element_path}[sliceName='{slice_name}']" if slice_name else element_id
+                                     ms_paths_in_this_sd.add(ms_path_key)
+                                     has_ms_in_this_sd = True
+                                 else:
+                                     logger.warning(f"MS=true without path/id in {entry_key} ({member.name})")
+                                     has_ms_in_this_sd = True
+
+                        if has_ms_in_this_sd:
+                            entry['ms_paths'].update(ms_paths_in_this_sd)
+                            entry['ms_flag'] = True
+
+                        if sd_type == 'Extension' and has_ms_in_this_sd:
+                             # Check if any MustSupport path is internal to the Extension definition
+                             internal_ms_exists = any(p.startswith('Extension.') or ':' in p for p in entry['ms_paths'])
+                             if internal_ms_exists:
+                                 entry['optional_usage'] = True
+                                 logger.info(f"Marked Extension {entry_key} as optional_usage")
+
+                    # --- Find CapabilityStatement ---
+                    elif resourceType == 'CapabilityStatement':
+                        # Store the first one found. Add logic here if specific selection needed.
+                        if capability_statement_data is None:
+                            capability_statement_data = data
+                            logger.info(f"Found primary CapabilityStatement in: {member.name} (ID: {data.get('id', 'N/A')})")
                         else:
-                            logger.debug(f"Extension {entry_key} has MS flag but no internal MS elements: {entry['ms_paths']}")
+                             logger.warning(f"Found multiple CapabilityStatements. Using first found ({capability_statement_data.get('id', 'unknown')}). Ignoring {member.name}.")
 
-                except json.JSONDecodeError as e:
-                    logger.warning(f"Could not parse JSON SD in {member.name}: {e}")
-                    results['errors'].append(f"JSON parse error in {member.name}")
-                except UnicodeDecodeError as e:
-                    logger.warning(f"Could not decode SD in {member.name}: {e}")
-                    results['errors'].append(f"Encoding error in {member.name}")
-                except Exception as e:
-                    logger.warning(f"Could not process SD member {member.name}: {e}", exc_info=False)
-                    results['errors'].append(f"Processing error in {member.name}: {e}")
+                # Error handling for individual file processing
+                except json.JSONDecodeError as e: logger.warning(f"JSON parse error in {member.name}: {e}"); results['errors'].append(f"JSON error in {member.name}")
+                except UnicodeDecodeError as e: logger.warning(f"Encoding error in {member.name}: {e}"); results['errors'].append(f"Encoding error in {member.name}")
+                except Exception as e: logger.warning(f"Error processing member {member.name}: {e}", exc_info=False); results['errors'].append(f"Processing error in {member.name}: {e}")
                 finally:
                     if fileobj: fileobj.close()
+            # --- End Pass 1 ---
 
-            # Pass 2: Process Examples
-            logger.debug("Processing Examples...")
+            # --- Pass 1.5: Process CapabilityStatement for Search Param Conformance ---
+            if capability_statement_data:
+                logger.debug("Processing CapabilityStatement for Search Parameter Conformance...")
+                conformance_map = defaultdict(dict)
+                # Standard FHIR extension URL for defining expectations
+                expectation_extension_url = "http://hl7.org/fhir/StructureDefinition/capabilitystatement-expectation"
+
+                for rest_component in capability_statement_data.get('rest', []):
+                    for resource_component in rest_component.get('resource', []):
+                        resource_type = resource_component.get('type')
+                        if not resource_type: continue
+
+                        for search_param in resource_component.get('searchParam', []):
+                            param_name = search_param.get('name')
+                            param_doc = search_param.get('documentation', '')
+                            # Default conformance level if not explicitly stated
+                            conformance_level = 'Optional'
+
+                            # Check for the standard expectation extension first
+                            extensions = search_param.get('extension', [])
+                            expectation_ext = next((ext for ext in extensions if ext.get('url') == expectation_extension_url), None)
+
+                            if expectation_ext and expectation_ext.get('valueCode'):
+                                # Use the value from the standard extension
+                                conformance_code = expectation_ext['valueCode'].upper()
+                                # Map to SHALL, SHOULD, MAY - adjust if other codes are used by the IG
+                                if conformance_code in ['SHALL', 'SHOULD', 'MAY', 'SHOULD-NOT']: # Add more if needed
+                                     conformance_level = conformance_code
+                                else:
+                                     logger.warning(f"Unknown expectation code '{expectation_ext['valueCode']}' for {resource_type}.{param_name}. Defaulting to Optional.")
+                                logger.debug(f"  Conformance for {resource_type}.{param_name} from extension: {conformance_level}")
+                            elif param_doc:
+                                # Fallback: Check documentation string for keywords (less reliable)
+                                doc_lower = param_doc.lower()
+                                if 'shall' in doc_lower: conformance_level = 'SHALL'
+                                elif 'should' in doc_lower: conformance_level = 'SHOULD'
+                                elif 'may' in doc_lower: conformance_level = 'MAY'
+                                if conformance_level != 'Optional':
+                                     logger.debug(f"  Conformance for {resource_type}.{param_name} from documentation keywords: {conformance_level}")
+
+                            if param_name:
+                                conformance_map[resource_type][param_name] = conformance_level
+
+                results['search_param_conformance'] = dict(conformance_map) # Convert back to regular dict
+                logger.info(f"Extracted Search Parameter conformance rules for {len(conformance_map)} resource types.")
+                # logger.debug(f"Full Conformance Map: {json.dumps(results['search_param_conformance'], indent=2)}") # Optional detailed logging
+            else:
+                 logger.warning(f"No CapabilityStatement found in package {pkg_basename}. Search parameter conformance data will be unavailable.")
+            # --- End Pass 1.5 ---
+
+            # --- Pass 2: Process Examples ---
+            logger.debug("Pass 2: Processing Examples...")
             example_members = [m for m in members if m.isfile() and m.name.startswith('package/') and 'example' in m.name.lower()]
 
             for member in example_members:
-                base_filename_lower = os.path.basename(member.name).lower()
-                if base_filename_lower in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']:
-                    continue
+                # Skip metadata files again just in case
+                basename_lower = os.path.basename(member.name).lower()
+                if basename_lower in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']: continue
 
                 logger.debug(f"Processing potential example file: {member.name}")
                 is_json = member.name.lower().endswith('.json')
@@ -677,92 +710,89 @@ def process_package_file(tgz_path):
                         data = json.loads(content_string)
 
                         if not isinstance(data, dict): continue
-                        resource_type = data.get('resourceType')
-                        if not resource_type: continue
+                        resource_type_ex = data.get('resourceType')
+                        if not resource_type_ex: continue
 
-                        # Remove narrative text element
-                        data = remove_narrative(data)
-
+                        # Find association key (profile or type)
                         profile_meta = data.get('meta', {}).get('profile', [])
                         found_profile_match = False
                         if profile_meta and isinstance(profile_meta, list):
                             for profile_url in profile_meta:
                                 if profile_url and isinstance(profile_url, str):
+                                    # Try matching by ID derived from profile URL first
                                     profile_id_from_meta = profile_url.split('/')[-1]
                                     if profile_id_from_meta in resource_info:
                                         associated_key = profile_id_from_meta
                                         found_profile_match = True
-                                        logger.debug(f"Example {member.name} associated with profile {associated_key} via meta.profile")
                                         break
+                                    # Fallback to matching by full profile URL if needed
                                     elif profile_url in resource_info:
                                         associated_key = profile_url
                                         found_profile_match = True
-                                        logger.debug(f"Example {member.name} associated with profile {associated_key} via meta.profile")
                                         break
-
+                        # If no profile match, associate with base resource type
                         if not found_profile_match:
-                            key_to_use = resource_type
+                            key_to_use = resource_type_ex
+                            # Ensure the base type exists in resource_info
                             if key_to_use not in resource_info:
-                                resource_info[key_to_use].update({'name': key_to_use, 'type': resource_type, 'is_profile': False})
+                                resource_info[key_to_use].update({'name': key_to_use, 'type': resource_type_ex, 'is_profile': False})
                             associated_key = key_to_use
-                            logger.debug(f"Example {member.name} associated with resource type {associated_key}")
-                        referenced_types.add(resource_type)
-                    else:
-                        guessed_type = base_filename_lower.split('-')[0].capitalize()
-                        guessed_profile_id = base_filename_lower.split('-')[0]
-                        key_to_use = None
-                        if guessed_profile_id in resource_info:
-                            key_to_use = guessed_profile_id
-                        elif guessed_type in resource_info:
-                            key_to_use = guessed_type
-                        else:
-                            key_to_use = guessed_type
-                            resource_info[key_to_use].update({'name': key_to_use, 'type': key_to_use, 'is_profile': False})
-                        associated_key = key_to_use
-                        logger.debug(f"Non-JSON Example {member.name} associated with profile/type {associated_key}")
-                        referenced_types.add(guessed_type)
 
+                        referenced_types.add(resource_type_ex) # Track type even if example has profile
+
+                    else: # Guessing for non-JSON examples
+                         guessed_type = basename_lower.split('-')[0].capitalize()
+                         guessed_profile_id = basename_lower.split('-')[0] # Often filename starts with profile ID
+                         key_to_use = None
+                         if guessed_profile_id in resource_info: key_to_use = guessed_profile_id
+                         elif guessed_type in resource_info: key_to_use = guessed_type
+                         else: # Add base type if not seen
+                              key_to_use = guessed_type
+                              resource_info[key_to_use].update({'name': key_to_use, 'type': key_to_use, 'is_profile': False})
+                         associated_key = key_to_use
+                         referenced_types.add(guessed_type)
+
+                    # Add example filename to the associated resource/profile
                     if associated_key:
                         resource_info[associated_key]['examples'].add(member.name)
+                        # logger.debug(f"Associated example {member.name} with {associated_key}")
                     else:
                         logger.warning(f"Could not associate example {member.name} with any known resource or profile.")
 
-                except json.JSONDecodeError as e:
-                    logger.warning(f"Could not parse JSON example in {member.name}: {e}")
-                except UnicodeDecodeError as e:
-                    logger.warning(f"Could not decode example in {member.name}: {e}")
-                except tarfile.TarError as e:
-                    logger.warning(f"TarError reading example {member.name}: {e}")
-                except Exception as e:
-                    logger.warning(f"Could not process example member {member.name}: {e}", exc_info=False)
+                # --- CORRECTED INDENTATION FOR FINALLY BLOCK ---
+                except json.JSONDecodeError as e: logger.warning(f"Could not parse JSON example {member.name}: {e}")
+                except UnicodeDecodeError as e: logger.warning(f"Could not decode example {member.name}: {e}")
+                except tarfile.TarError as e: logger.warning(f"TarError reading example {member.name}: {e}")
+                except Exception as e: logger.warning(f"Could not process example member {member.name}: {e}", exc_info=False)
                 finally:
-                    if fileobj: fileobj.close()
+                     if fileobj: fileobj.close()
+            # --- End Pass 2 ---
 
-            # Pass 3: Ensure Relevant Base Types
-            logger.debug("Ensuring relevant FHIR R4 base types...")
-            essential_types = {'CapabilityStatement'}
+            # --- Pass 3: Ensure Relevant Base Types ---
+            logger.debug("Pass 3: Ensuring relevant base types...")
+            essential_types = {'CapabilityStatement'} # Add any other types vital for display/logic
             for type_name in referenced_types | essential_types:
+                # Check against a predefined list of valid FHIR types (FHIR_R4_BASE_TYPES)
                 if type_name in FHIR_R4_BASE_TYPES and type_name not in resource_info:
                     resource_info[type_name]['name'] = type_name
                     resource_info[type_name]['type'] = type_name
                     resource_info[type_name]['is_profile'] = False
                     logger.debug(f"Added base type entry for {type_name}")
+            # --- End Pass 3 ---
 
-            # Final Consolidation
+            # --- Final Consolidation ---
+            logger.debug(f"Finalizing results from {len(resource_info)} resource_info entries...")
             final_list = []
             final_ms_elements = {}
             final_examples = {}
-            logger.debug(f"Finalizing results from resource_info keys: {list(resource_info.keys())}")
-
             for key, info in resource_info.items():
                 display_name = info.get('name') or key
                 base_type = info.get('type')
-
+                # Skip entries missing essential info (should be rare now)
                 if not display_name or not base_type:
-                    logger.warning(f"Skipping final formatting for incomplete key: {key} - Info: {info}")
-                    continue
-
-                logger.debug(f"Finalizing item '{display_name}': type='{base_type}', is_profile='{info.get('is_profile', False)}', ms_flag='{info.get('ms_flag', False)}', optional_usage='{info.get('optional_usage', False)}'")
+                     logger.warning(f"Skipping final format for incomplete key: {key} - Info: {info}")
+                     continue
+                # Add to final list for UI display
                 final_list.append({
                     'name': display_name,
                     'type': base_type,
@@ -770,55 +800,43 @@ def process_package_file(tgz_path):
                     'must_support': info.get('ms_flag', False),
                     'optional_usage': info.get('optional_usage', False)
                 })
+                # Add Must Support paths if present
                 if info['ms_paths']:
-                    final_paths = []
-                    for path in info['ms_paths']:
-                        if ':' in path and info['type'] == 'Extension':
-                            final_paths.append(path)
-                        else:
-                            final_paths.append(path)
-                    final_ms_elements[display_name] = sorted(final_paths)
+                     final_ms_elements[display_name] = sorted(list(info['ms_paths']))
+                # Add Examples if present
                 if info['examples']:
-                    final_examples[display_name] = sorted(list(info['examples']))
+                     final_examples[display_name] = sorted(list(info['examples']))
 
+            # Store final lists/dicts in results
             results['resource_types_info'] = sorted(final_list, key=lambda x: (not x.get('is_profile', False), x.get('name', '')))
             results['must_support_elements'] = final_ms_elements
             results['examples'] = final_examples
+            logger.debug(f"Final must_support_elements count: {len(final_ms_elements)}")
+            logger.debug(f"Final examples count: {len(final_examples)}")
+            # --- End Final Consolidation ---
 
-            logger.debug(f"Final must_support_elements: {json.dumps(final_ms_elements, indent=2)}")
-            logger.debug(f"Final examples: {json.dumps(final_examples, indent=2)}")
+    # Exception handling for opening/reading the tarfile itself
+    except tarfile.ReadError as e: err_msg = f"Tar ReadError processing package file {pkg_basename}: {e}"; logger.error(err_msg); results['errors'].append(err_msg)
+    except tarfile.TarError as e: err_msg = f"TarError processing package file {pkg_basename}: {e}"; logger.error(err_msg); results['errors'].append(err_msg)
+    except FileNotFoundError: err_msg = f"Package file not found during processing: {tgz_path}"; logger.error(err_msg); results['errors'].append(err_msg)
+    except Exception as e: err_msg = f"Unexpected error processing package file {pkg_basename}: {e}"; logger.error(err_msg, exc_info=True); results['errors'].append(err_msg)
 
-    except tarfile.ReadError as e:
-        err_msg = f"Tar ReadError processing package file {pkg_basename}: {e}"
-        logger.error(err_msg)
-        results['errors'].append(err_msg)
-    except tarfile.TarError as e:
-        err_msg = f"TarError processing package file {pkg_basename}: {e}"
-        logger.error(err_msg)
-        results['errors'].append(err_msg)
-    except FileNotFoundError:
-        err_msg = f"Package file not found during processing: {tgz_path}"
-        logger.error(err_msg)
-        results['errors'].append(err_msg)
-    except Exception as e:
-        err_msg = f"Unexpected error processing package file {pkg_basename}: {e}"
-        logger.error(err_msg, exc_info=True)
-        results['errors'].append(err_msg)
-
+    # --- Final Summary Logging ---
     final_types_count = len(results['resource_types_info'])
     ms_count = sum(1 for r in results['resource_types_info'] if r.get('must_support'))
     optional_ms_count = sum(1 for r in results['resource_types_info'] if r.get('optional_usage'))
     total_ms_paths = sum(len(v) for v in results['must_support_elements'].values())
     total_examples = sum(len(v) for v in results['examples'].values())
-    logger.info(f"Package processing finished for {pkg_basename}: "
-                f"{final_types_count} Resources/Profiles identified; "
-                f"{ms_count} have MS elements ({optional_ms_count} are Optional Extensions w/ MS); "
-                f"{total_ms_paths} total unique MS paths found across all profiles; "
-                f"{total_examples} examples associated. "
-                f"CompliesWith: {len(results['complies_with_profiles'])}, Imposed: {len(results['imposed_profiles'])}. "
-                f"Errors during processing: {len(results['errors'])}")
+    total_conf_types = len(results['search_param_conformance'])
+    total_conf_params = sum(len(v) for v in results['search_param_conformance'].values())
 
-    return results
+    logger.info(f"Package processing finished for {pkg_basename}: "
+                f"{final_types_count} Res/Profs; {ms_count} MS ({optional_ms_count} OptExt); {total_ms_paths} MS paths; "
+                f"{total_examples} Exs; Comp={len(results['complies_with_profiles'])}; Imp={len(results['imposed_profiles'])}; "
+                f"ConfParams={total_conf_params} for {total_conf_types} types; Errors={len(results['errors'])}")
+
+    return results # Return the full results dictionary
+
 
 # --- Validation Functions ---
 
@@ -2115,7 +2133,7 @@ def find_and_extract_search_params(tgz_path, base_resource_type):
     return search_params
 # --- END OF NEW FUNCTION ---
 
-# --- Full Replacement Function with Canonical Handling & POST/PUT ---
+# --- Full Replacement Function (Corrected Prefix Definitions & Unabbreviated) ---
 def generate_push_stream(package_name, version, fhir_server_url, include_dependencies,
                          auth_type, auth_token, resource_types_filter, skip_files,
                          dry_run, verbose, force_upload,
@@ -2125,291 +2143,418 @@ def generate_push_stream(package_name, version, fhir_server_url, include_depende
     Handles canonical resources (search by URL, POST/PUT),
     skips identical resources (unless force_upload is true), and specified files.
     """
+    # --- Variable Initializations ---
     pushed_packages_info = []
     success_count = 0
     failure_count = 0
     skipped_count = 0
-    post_count = 0 # Track POSTs
-    put_count = 0 # Track PUTs
-    total_resources_attempted = 0
+    post_count = 0
+    put_count = 0
+    total_resources_attempted = 0 # Calculated after collecting resources
     processed_resources = set() # Tracks resource IDs attempted in this run
     failed_uploads_details = []
     skipped_resources_details = []
-
     filter_set = set(resource_types_filter) if resource_types_filter else None
     skip_files_set = set(skip_files) if skip_files else set()
 
     try:
-        # (Start messages including dry_run, filters, force_upload - same as before)
+        # --- Start Messages ---
         operation_mode = " (DRY RUN)" if dry_run else ""
-        force_mode = " (FORCE UPLOAD)" if force_upload else ""
+        force_mode = " (FORCE UPLOAD)" if force_upload else "" # For initial message
         yield json.dumps({"type": "start", "message": f"Starting push{operation_mode}{force_mode} for {package_name}#{version} to {fhir_server_url}"}) + "\n"
-        # ... (yield other info messages for filters) ...
+        if filter_set:
+             yield json.dumps({"type": "info", "message": f"Filtering for resource types: {', '.join(sorted(list(filter_set)))}"}) + "\n"
+        if skip_files_set:
+             yield json.dumps({"type": "info", "message": f"Skipping {len(skip_files_set)} specific files."}) + "\n"
+        yield json.dumps({"type": "info", "message": f"Include Dependencies: {'Yes' if include_dependencies else 'No'}"}) + "\n"
 
-        # (Dependency Handling - same as before)
-        # ...
+        # --- Define packages_to_push ---
+        packages_to_push = []
+        primary_tgz_filename = construct_tgz_filename(package_name, version)
+        primary_tgz_path = os.path.join(packages_dir, primary_tgz_filename)
 
-        # (Resource Extraction & Filtering - same as before)
-        # ... loops through packages_to_push, tar members ...
-        # ... checks skip_files_set ...
-        # ... checks seen_resource_files ...
-        # ... extracts/parses resource_data ...
-        # ... checks filter_set ...
-        # ... appends to resources_to_upload ...
+        if not os.path.exists(primary_tgz_path):
+            yield json.dumps({"type": "error", "message": f"Primary package file not found: {primary_tgz_filename}"}) + "\n"
+            raise FileNotFoundError(f"Primary package file not found: {primary_tgz_path}")
+
+        # Always add the primary package
+        packages_to_push.append((package_name, version, primary_tgz_path))
+        logger.debug(f"Added primary package to push list: {package_name}#{version}")
+
+        # Handle dependencies IF include_dependencies is true
+        # NOTE: This uses the simple dependency inclusion based on import metadata.
+        # Aligning with UploadFIG's --includeReferencedDependencies requires more complex logic here.
+        if include_dependencies:
+            yield json.dumps({"type": "info", "message": "Including dependencies based on import metadata..."}) + "\n"
+            metadata = get_package_metadata(package_name, version) # Assumes this helper exists
+            if metadata and metadata.get('imported_dependencies'):
+                dependencies_to_include = metadata['imported_dependencies']
+                logger.info(f"Found {len(dependencies_to_include)} dependencies in metadata to potentially include.")
+                for dep in dependencies_to_include:
+                    dep_name = dep.get('name')
+                    dep_version = dep.get('version')
+                    if dep_name and dep_version:
+                        dep_tgz_filename = construct_tgz_filename(dep_name, dep_version)
+                        dep_tgz_path = os.path.join(packages_dir, dep_tgz_filename)
+                        if os.path.exists(dep_tgz_path):
+                            # Add dependency package to the list if file exists
+                            if (dep_name, dep_version, dep_tgz_path) not in packages_to_push:
+                                packages_to_push.append((dep_name, dep_version, dep_tgz_path))
+                                logger.debug(f"Added dependency package to push list: {dep_name}#{dep_version}")
+                        else:
+                            # Log a warning if a listed dependency file isn't found
+                            yield json.dumps({"type": "warning", "message": f"Dependency package file not found, cannot include: {dep_tgz_filename}"}) + "\n"
+                            logger.warning(f"Dependency package file listed in metadata but not found locally: {dep_tgz_path}")
+            else:
+                yield json.dumps({"type": "warning", "message": "Include Dependencies checked, but no dependency metadata found. Only pushing primary."}) + "\n"
+                logger.warning(f"No dependency metadata found for {package_name}#{version} despite include_dependencies=True")
+        # --- End Define packages_to_push ---
+
+        # --- Resource Extraction & Filtering ---
         resources_to_upload = []
-        seen_resource_files = set()
+        seen_resource_files = set() # Track filenames across all packages being pushed
+
+        # Iterate through the populated list of packages to push
         for pkg_name, pkg_version, pkg_path in packages_to_push:
-             yield json.dumps({"type": "progress", "message": f"Extracting: {pkg_name}#{pkg_version}..."}) + "\n"
-             # ... (try/except block for tarfile opening) ...
+             yield json.dumps({"type": "progress", "message": f"Extracting resources from: {pkg_name}#{pkg_version}..."}) + "\n"
              try:
                 with tarfile.open(pkg_path, "r:gz") as tar:
                     for member in tar.getmembers():
-                         # ... (basic file checks, skip metadata) ...
-                         if not (member.isfile() and member.name.startswith('package/') and member.name.lower().endswith('.json')): continue
-                         if os.path.basename(member.name).lower() in ['package.json', '.index.json']: continue
+                         # Basic file checks: must be a file, in 'package/', end with .json
+                         if not (member.isfile() and member.name.startswith('package/') and member.name.lower().endswith('.json')):
+                             continue
+                         # Skip common metadata files by basename
+                         basename_lower = os.path.basename(member.name).lower()
+                         if basename_lower in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']:
+                              continue
 
+                         # Check against skip_files list (using normalized paths)
                          normalized_member_name = member.name.replace('\\', '/')
                          if normalized_member_name in skip_files_set or member.name in skip_files_set:
-                             # ... (skip logic for file filter) ...
+                             if verbose: yield json.dumps({"type": "info", "message": f"Skipping file due to filter: {member.name}"}) + "\n"
                              continue
 
-                         if member.name in seen_resource_files: continue
+                         # Avoid processing the same file path if it appears in multiple packages
+                         if member.name in seen_resource_files:
+                             if verbose: yield json.dumps({"type": "info", "message": f"Skipping already seen file: {member.name}"}) + "\n"
+                             continue
                          seen_resource_files.add(member.name)
 
-                         try: # Extract/parse individual file
-                             # ... (extract/parse logic) ...
+                         # Extract and parse the resource JSON
+                         try:
                              with tar.extractfile(member) as f:
                                  resource_content = f.read().decode('utf-8-sig')
                                  resource_data = json.loads(resource_content)
-                                 if isinstance(resource_data, dict) and 'resourceType' in resource_data and 'id' in resource_data:
-                                     resource_type = resource_data.get('resourceType')
-                                     if filter_set and resource_type not in filter_set:
-                                         # ... (skip logic for type filter) ...
-                                         continue
-                                     resources_to_upload.append({ "data": resource_data, "source_package": f"{pkg_name}#{pkg_version}", "source_filename": member.name })
-                                 # ... (else log invalid resource) ...
-                         # ... (handle extract/parse errors) ...
-                         except Exception as extract_e: yield json.dumps({"type": "warning", "message": f"Error processing file {member.name}: {extract_e}"}) + "\n"
-             # ... (handle tarfile errors) ...
-             except Exception as tar_e: # Catch general tar errors too
-                  error_msg = f"Error reading package {pkg_name}#{pkg_version}: {tar_e}. Skipping."
-                  yield json.dumps({"type": "error", "message": error_msg}) + "\n"
-                  failure_count += 1; failed_uploads_details.append({'resource': f"Package: {pkg_name}", 'error': f"{tar_e}"})
-                  continue
 
+                                 # Basic validation of resource structure
+                                 if isinstance(resource_data, dict) and 'resourceType' in resource_data and 'id' in resource_data:
+                                     resource_type_val = resource_data.get('resourceType') # Use distinct var name
+                                     # Apply resource type filter if provided
+                                     if filter_set and resource_type_val not in filter_set:
+                                         if verbose: yield json.dumps({"type": "info", "message": f"Skipping resource type {resource_type_val} due to filter: {member.name}"}) + "\n"
+                                         continue
+                                     # Add valid resource to the upload list
+                                     resources_to_upload.append({
+                                         "data": resource_data,
+                                         "source_package": f"{pkg_name}#{pkg_version}",
+                                         "source_filename": member.name # Store original filename
+                                     })
+                                 else:
+                                     yield json.dumps({"type": "warning", "message": f"Skipping invalid/incomplete resource structure in file: {member.name}"}) + "\n"
+                         # Handle errors during extraction/parsing of individual files
+                         except json.JSONDecodeError as json_e: yield json.dumps({"type": "warning", "message": f"JSON parse error in file {member.name}: {json_e}"}) + "\n"
+                         except UnicodeDecodeError as uni_e: yield json.dumps({"type": "warning", "message": f"Encoding error in file {member.name}: {uni_e}"}) + "\n"
+                         except KeyError: yield json.dumps({"type": "warning", "message": f"File not found within archive (should not happen here): {member.name}"}) + "\n"
+                         except Exception as extract_e: yield json.dumps({"type": "warning", "message": f"Error processing file {member.name}: {extract_e}"}) + "\n"
+             # Handle errors opening/reading the tarfile itself
+             except tarfile.ReadError as tar_read_e:
+                  error_msg = f"Tar ReadError reading package {pkg_name}#{pkg_version}: {tar_read_e}. Skipping package."
+                  yield json.dumps({"type": "error", "message": error_msg}) + "\n"
+                  failure_count += 1 # Count as failure for summary
+                  failed_uploads_details.append({'resource': f"Package: {pkg_name}#{pkg_version}", 'error': f"Read Error: {tar_read_e}"})
+                  continue # Skip to next package in packages_to_push
+             except tarfile.TarError as tar_e:
+                  error_msg = f"TarError reading package {pkg_name}#{pkg_version}: {tar_e}. Skipping package."
+                  yield json.dumps({"type": "error", "message": error_msg}) + "\n"
+                  failure_count += 1
+                  failed_uploads_details.append({'resource': f"Package: {pkg_name}#{pkg_version}", 'error': f"Tar Error: {tar_e}"})
+                  continue
+             except Exception as pkg_e: # Catch other potential errors reading package
+                  error_msg = f"Unexpected error reading package {pkg_name}#{pkg_version}: {pkg_e}. Skipping package."
+                  yield json.dumps({"type": "error", "message": error_msg}) + "\n"
+                  failure_count += 1
+                  failed_uploads_details.append({'resource': f"Package: {pkg_name}#{pkg_version}", 'error': f"Unexpected: {pkg_e}"})
+                  logger.error(f"Error reading package {pkg_path}: {pkg_e}", exc_info=True)
+                  continue
+        # --- End Resource Extraction ---
 
         total_resources_attempted = len(resources_to_upload)
-        yield json.dumps({"type": "info", "message": f"Found {total_resources_attempted} resources matching filters."}) + "\n"
+        yield json.dumps({"type": "info", "message": f"Found {total_resources_attempted} resources matching filters across selected packages."}) + "\n"
 
-        # --- Resource Upload Loop ---
-        session = requests.Session()
-        base_url = fhir_server_url.rstrip('/')
-        headers = {'Content-Type': 'application/fhir+json', 'Accept': 'application/fhir+json'}
-        # (Add Authentication Header - same as before)
-        if auth_type == 'bearerToken' and auth_token: headers['Authorization'] = f'Bearer {auth_token}'; # ... yield message ...
-        elif auth_type == 'none': # ... yield message ...
-            pass # No header needed
-        # ...
+        if total_resources_attempted == 0:
+             yield json.dumps({"type": "warning", "message": "No resources found to upload after filtering."}) + "\n"
+             # Go straight to completion summary if nothing to upload
+        else:
+            # --- Resource Upload Loop Setup ---
+            session = requests.Session()
+            base_url = fhir_server_url.rstrip('/')
+            headers = {'Content-Type': 'application/fhir+json', 'Accept': 'application/fhir+json'}
+            # Add Authentication Header
+            if auth_type == 'bearerToken' and auth_token:
+                 headers['Authorization'] = f'Bearer {auth_token}'
+                 yield json.dumps({"type": "info", "message": "Using Bearer Token authentication."}) + "\n"
+            elif auth_type == 'apiKey':
+                 # Get internal key from Flask app config if available
+                 internal_api_key = None
+                 try:
+                     internal_api_key = current_app.config.get('API_KEY')
+                 except RuntimeError:
+                     logger.warning("Cannot access current_app config outside of request context for API Key.")
+                 if internal_api_key:
+                      headers['X-API-Key'] = internal_api_key
+                      yield json.dumps({"type": "info", "message": "Using internal API Key authentication."}) + "\n"
+                 else:
+                      yield json.dumps({"type": "warning", "message": "API Key auth selected, but no internal key configured/accessible."}) + "\n"
+            else: # 'none'
+                 yield json.dumps({"type": "info", "message": "Using no authentication."}) + "\n"
 
-        for i, resource_info in enumerate(resources_to_upload, 1):
-            local_resource = resource_info["data"]; source_pkg = resource_info["source_package"]
-            resource_type = local_resource.get('resourceType'); resource_id = local_resource.get('id')
-            resource_log_id = f"{resource_type}/{resource_id}"
-            canonical_url = local_resource.get('url')
-            canonical_version = local_resource.get('version')
-            is_canonical_type = resource_type in CANONICAL_RESOURCE_TYPES
+            # --- Main Upload Loop ---
+            for i, resource_info in enumerate(resources_to_upload, 1):
+                local_resource = resource_info["data"]
+                source_pkg = resource_info["source_package"]
+                resource_type = local_resource.get('resourceType')
+                resource_id = local_resource.get('id')
+                resource_log_id = f"{resource_type}/{resource_id}"
+                canonical_url = local_resource.get('url')
+                canonical_version = local_resource.get('version')
+                is_canonical_type = resource_type in CANONICAL_RESOURCE_TYPES # Assumes this set is defined
 
-            # Skip duplicates already attempted in this run (by ID)
-            if resource_log_id in processed_resources:
-                if verbose: yield json.dumps({"type": "info", "message": f"Skipping duplicate ID: {resource_log_id}"}) + "\n"
-                skipped_count += 1; skipped_resources_details.append({'resource': resource_log_id, 'reason': 'Duplicate ID'})
-                continue
-            processed_resources.add(resource_log_id)
+                # Skip duplicates already attempted *in this run* (by ResourceType/Id)
+                if resource_log_id in processed_resources:
+                    if verbose: yield json.dumps({"type": "info", "message": f"Skipping duplicate ID in processing list: {resource_log_id}"}) + "\n"
+                    # Note: Do not increment skipped_count here as it wasn't an upload attempt failure/skip
+                    continue
+                processed_resources.add(resource_log_id)
 
-            # --- Dry Run Handling ---
-            if dry_run:
-                dry_run_action = "check/PUT" # Default action
+                # --- Dry Run Handling ---
+                if dry_run:
+                    dry_run_action = "check/PUT" # Default action
+                    if is_canonical_type and canonical_url:
+                        dry_run_action = "search/POST/PUT"
+                    yield json.dumps({"type": "progress", "message": f"[DRY RUN] Would {dry_run_action} {resource_log_id} ({i}/{total_resources_attempted}) from {source_pkg}"}) + "\n"
+                    success_count += 1 # Count check/potential action as success in dry run
+                    # Track package info for dry run summary
+                    pkg_found = False
+                    for p in pushed_packages_info:
+                         if p["id"] == source_pkg:
+                             p["resource_count"] += 1
+                             pkg_found = True
+                             break
+                    if not pkg_found: pushed_packages_info.append({"id": source_pkg, "resource_count": 1})
+                    continue # Skip actual request processing for dry run
+
+                # --- Determine Upload Strategy ---
+                existing_resource_id = None
+                existing_resource_data = None
+                action = "PUT" # Default action is PUT by ID
+                target_url = f"{base_url}/{resource_type}/{resource_id}" # Default target URL for PUT
+                skip_resource = False # Flag to skip upload altogether
+
+                # 1. Handle Canonical Resources (Search by URL/Version)
                 if is_canonical_type and canonical_url:
-                    dry_run_action = "search/POST/PUT"
-                yield json.dumps({"type": "progress", "message": f"[DRY RUN] Would {dry_run_action} {resource_log_id} ({i}/{total_resources_attempted})"}) + "\n"
-                success_count += 1 # Count check/potential action as success in dry run
-                # (Track package info - same as before)
-                if source_pkg not in [p["id"] for p in pushed_packages_info]: pushed_packages_info.append({"id": source_pkg, "resource_count": 1})
-                else: #... increment count ...
-                     for p in pushed_packages_info:
-                         if p["id"] == source_pkg: p["resource_count"] += 1; break
-                continue # Skip actual request processing
+                    action = "SEARCH_POST_PUT" # Indicate canonical handling path
+                    search_params = {'url': canonical_url}
+                    if canonical_version:
+                        search_params['version'] = canonical_version
+                    search_url = f"{base_url}/{resource_type}"
+                    if verbose: yield json.dumps({"type": "info", "message": f"Canonical Type: Searching {search_url} with params {search_params}"}) + "\n"
 
-            # --- Determine Upload Strategy ---
-            existing_resource_id = None
-            existing_resource_data = None
-            action = "PUT" # Default action is PUT by ID
-            target_url = f"{base_url}/{resource_type}/{resource_id}" # Default target URL for PUT
-            skip_resource = False # Flag to skip upload altogether
+                    try:
+                        search_response = session.get(search_url, params=search_params, headers=headers, timeout=20)
+                        search_response.raise_for_status() # Check for HTTP errors on search
+                        search_bundle = search_response.json()
 
-            # 1. Handle Canonical Resources
-            if is_canonical_type and canonical_url:
-                action = "SEARCH_POST_PUT" # Indicate canonical handling path
-                search_params = {'url': canonical_url}
-                if canonical_version:
-                    search_params['version'] = canonical_version
-                search_url = f"{base_url}/{resource_type}"
-                if verbose: yield json.dumps({"type": "info", "message": f"Canonical Type: Searching {search_url} with params {search_params}"}) + "\n"
-
-                try:
-                    search_response = session.get(search_url, params=search_params, headers=headers, timeout=20)
-                    search_response.raise_for_status() # Check for HTTP errors on search
-                    search_bundle = search_response.json()
-
-                    if search_bundle.get('resourceType') == 'Bundle' and 'entry' in search_bundle:
-                        entries = search_bundle.get('entry', [])
-                        if len(entries) == 1:
-                            # Found exactly one match by canonical URL/version
-                            existing_resource_data = entries[0].get('resource')
-                            if existing_resource_data:
-                                existing_resource_id = existing_resource_data.get('id')
-                                if existing_resource_id:
-                                    action = "PUT" # Found existing, plan to PUT
-                                    target_url = f"{base_url}/{resource_type}/{existing_resource_id}"
-                                    if verbose: yield json.dumps({"type": "info", "message": f"Found existing canonical resource with ID: {existing_resource_id}"}) + "\n"
+                        if search_bundle.get('resourceType') == 'Bundle' and 'entry' in search_bundle:
+                            entries = search_bundle.get('entry', [])
+                            if len(entries) == 1:
+                                existing_resource_data = entries[0].get('resource')
+                                if existing_resource_data:
+                                    existing_resource_id = existing_resource_data.get('id')
+                                    if existing_resource_id:
+                                        action = "PUT" # Found existing, plan to PUT
+                                        target_url = f"{base_url}/{resource_type}/{existing_resource_id}"
+                                        if verbose: yield json.dumps({"type": "info", "message": f"Found existing canonical resource ID: {existing_resource_id}"}) + "\n"
+                                    else:
+                                        yield json.dumps({"type": "warning", "message": f"Found canonical {canonical_url}|{canonical_version} but lacks ID. Skipping update."}) + "\n"
+                                        action = "SKIP"; skip_resource = True; skipped_count += 1
+                                        skipped_resources_details.append({'resource': resource_log_id, 'reason': 'Found canonical match without ID'})
                                 else:
-                                    yield json.dumps({"type": "warning", "message": f"Found canonical resource for {canonical_url}|{canonical_version} but it lacks an ID. Skipping update."}) + "\n"
-                                    action = "SKIP"; skip_resource = True; skipped_count += 1
-                                    skipped_resources_details.append({'resource': resource_log_id, 'reason': 'Found canonical match without ID'})
-                            else:
-                                 yield json.dumps({"type": "warning", "message": f"Search for {canonical_url}|{canonical_version} returned entry without resource data. Assuming not found."}) + "\n"
-                                 action = "POST" # Treat as not found
-                                 target_url = f"{base_url}/{resource_type}"
-                        elif len(entries) == 0:
-                            # Not found by canonical URL/version, plan to POST
-                            action = "POST"
-                            target_url = f"{base_url}/{resource_type}"
-                            if verbose: yield json.dumps({"type": "info", "message": f"Canonical resource not found by URL/Version. Planning POST."}) + "\n"
-                        else:
-                            # Found multiple matches - conflict!
-                            ids_found = [e.get('resource', {}).get('id', 'unknown') for e in entries]
-                            yield json.dumps({"type": "error", "message": f"Conflict: Found multiple ({len(entries)}) resources matching {canonical_url}|{canonical_version} (IDs: {', '.join(ids_found)}). Skipping upload."}) + "\n"
-                            action = "SKIP"; skip_resource = True; failure_count += 1 # Count as failure due to conflict
-                            failed_uploads_details.append({'resource': resource_log_id, 'error': f"Conflict: Multiple matches found for canonical URL/Version ({len(entries)})"})
-                    else:
-                         yield json.dumps({"type": "warning", "message": f"Search for {canonical_url}|{canonical_version} returned non-Bundle result. Assuming not found."}) + "\n"
-                         action = "POST" # Treat as not found
-                         target_url = f"{base_url}/{resource_type}"
+                                     yield json.dumps({"type": "warning", "message": f"Search for {canonical_url}|{canonical_version} entry lacks resource data. Assuming not found."}) + "\n"
+                                     action = "POST"; target_url = f"{base_url}/{resource_type}"
+                            elif len(entries) == 0:
+                                action = "POST"; target_url = f"{base_url}/{resource_type}"
+                                if verbose: yield json.dumps({"type": "info", "message": f"Canonical not found by URL/Version. Planning POST."}) + "\n"
+                            else: # Found multiple matches - conflict!
+                                ids_found = [e.get('resource', {}).get('id', 'unknown') for e in entries]
+                                yield json.dumps({"type": "error", "message": f"Conflict: Found {len(entries)} matches for {canonical_url}|{canonical_version} (IDs: {', '.join(ids_found)}). Skipping."}) + "\n"
+                                action = "SKIP"; skip_resource = True; failure_count += 1 # Count conflict as failure
+                                failed_uploads_details.append({'resource': resource_log_id, 'error': f"Conflict: Multiple matches ({len(entries)}) for canonical URL/Version"})
+                        else: # Search returned non-Bundle or empty Bundle
+                             yield json.dumps({"type": "warning", "message": f"Search for {canonical_url}|{canonical_version} returned non-Bundle/empty. Assuming not found."}) + "\n"
+                             action = "POST"; target_url = f"{base_url}/{resource_type}"
 
-                except requests.exceptions.RequestException as search_err:
-                    yield json.dumps({"type": "warning", "message": f"Search failed for {resource_log_id}: {search_err}. Defaulting to PUT by ID."}) + "\n"
-                    action = "PUT" # Fallback to PUT by ID if search fails
-                    target_url = f"{base_url}/{resource_type}/{resource_id}"
-                except json.JSONDecodeError as json_err:
-                     yield json.dumps({"type": "warning", "message": f"Failed to parse search result for {resource_log_id}: {json_err}. Defaulting to PUT by ID."}) + "\n"
-                     action = "PUT"
-                     target_url = f"{base_url}/{resource_type}/{resource_id}"
-                except Exception as e:
-                     yield json.dumps({"type": "warning", "message": f"Unexpected error during canonical search for {resource_log_id}: {e}. Defaulting to PUT by ID."}) + "\n"
-                     action = "PUT"
-                     target_url = f"{base_url}/{resource_type}/{resource_id}"
+                    except requests.exceptions.RequestException as search_err:
+                        yield json.dumps({"type": "warning", "message": f"Search failed for {resource_log_id}: {search_err}. Defaulting to PUT by ID."}) + "\n"
+                        action = "PUT"; target_url = f"{base_url}/{resource_type}/{resource_id}" # Fallback
+                    except json.JSONDecodeError as json_err:
+                         yield json.dumps({"type": "warning", "message": f"Failed parse search result for {resource_log_id}: {json_err}. Defaulting PUT by ID."}) + "\n"
+                         action = "PUT"; target_url = f"{base_url}/{resource_type}/{resource_id}"
+                    except Exception as e: # Catch other unexpected errors during search
+                         yield json.dumps({"type": "warning", "message": f"Unexpected canonical search error for {resource_log_id}: {e}. Defaulting PUT by ID."}) + "\n"
+                         action = "PUT"; target_url = f"{base_url}/{resource_type}/{resource_id}"
 
+                # 2. Semantic Comparison (Only if PUTting an existing resource and NOT force_upload)
+                if action == "PUT" and not force_upload and not skip_resource:
+                    resource_to_compare = existing_resource_data # Use data from canonical search if available
+                    if not resource_to_compare:
+                        # If not canonical or search failed/skipped, try GET by ID for comparison
+                        try:
+                            if verbose: yield json.dumps({"type": "info", "message": f"Checking existing (PUT target): {target_url}"}) + "\n"
+                            get_response = session.get(target_url, headers=headers, timeout=15)
+                            if get_response.status_code == 200:
+                                resource_to_compare = get_response.json()
+                                if verbose: yield json.dumps({"type": "info", "message": f"Found resource by ID for comparison."}) + "\n"
+                            elif get_response.status_code == 404:
+                                 if verbose: yield json.dumps({"type": "info", "message": f"Resource {resource_log_id} not found by ID ({target_url}). Proceeding with PUT create."}) + "\n"
+                                 # No comparison needed if target doesn't exist
+                            else: # Handle other GET errors - log warning, comparison skipped, proceed with PUT
+                                 yield json.dumps({"type": "warning", "message": f"Comparison check failed (GET {get_response.status_code}). Attempting PUT."}) + "\n"
+                        except Exception as get_err:
+                             yield json.dumps({"type": "warning", "message": f"Comparison check failed (Error during GET by ID: {get_err}). Attempting PUT."}) + "\n"
 
-            # 2. Semantic Comparison (Only if PUTting an existing resource)
-            if action == "PUT" and not force_upload and not skip_resource:
-                resource_to_compare = existing_resource_data # From canonical search if available
-                if not resource_to_compare:
-                    # If not canonical or canonical search failed, try GET by ID
+                    # Perform comparison if we have fetched an existing resource
+                    if resource_to_compare:
+                        try:
+                            # Assumes are_resources_semantically_equal helper function exists and works
+                            if are_resources_semantically_equal(local_resource, resource_to_compare):
+                                yield json.dumps({"type": "info", "message": f"Skipping {resource_log_id} (Identical content)"}) + "\n"
+                                skip_resource = True; skipped_count += 1
+                                skipped_resources_details.append({'resource': resource_log_id, 'reason': 'Identical content'})
+                            elif verbose:
+                                yield json.dumps({"type": "info", "message": f"{resource_log_id} exists but differs. Updating."}) + "\n"
+                        except Exception as comp_err:
+                             # Log error during comparison but proceed with PUT
+                             yield json.dumps({"type": "warning", "message": f"Comparison failed for {resource_log_id}: {comp_err}. Proceeding with PUT."}) + "\n"
+
+                elif action == "PUT" and force_upload: # Force upload enabled, skip comparison
+                     if verbose: yield json.dumps({"type": "info", "message": f"Force Upload enabled, skipping comparison for {resource_log_id}."}) + "\n"
+
+                # 3. Execute Upload Action (POST or PUT, if not skipped)
+                if not skip_resource:
+                    http_method = action if action in ["POST", "PUT"] else "PUT" # Ensure valid method
+                    log_action = f"{http_method}ing"
+                    yield json.dumps({"type": "progress", "message": f"{log_action} {resource_log_id} ({i}/{total_resources_attempted}) to {target_url}..."}) + "\n"
+
                     try:
-                        if verbose: yield json.dumps({"type": "info", "message": f"Checking existing (PUT target): {target_url}"}) + "\n"
-                        get_response = session.get(target_url, headers=headers, timeout=15)
-                        if get_response.status_code == 200:
-                            resource_to_compare = get_response.json()
-                        elif get_response.status_code == 404:
-                             if verbose: yield json.dumps({"type": "info", "message": f"Resource {resource_log_id} not found by ID. Proceeding with PUT create."}) + "\n"
-                             # No comparison needed, resource doesn't exist at target PUT URL
-                        # (Handle other GET errors - log warning, proceed with PUT)
-                        elif get_response.status_code in [401, 403]: yield json.dumps({"type": "warning", "message": f"Comparison skipped (GET {get_response.status_code}). Attempting PUT."}) + "\n"
-                        else: yield json.dumps({"type": "warning", "message": f"Comparison skipped (GET Error {get_response.status_code}). Attempting PUT."}) + "\n"
-                    except Exception as get_err:
-                         yield json.dumps({"type": "warning", "message": f"Comparison skipped (Error during GET by ID: {get_err}). Attempting PUT."}) + "\n"
+                        # Send the request
+                        if http_method == "POST":
+                            response = session.post(target_url, json=local_resource, headers=headers, timeout=30)
+                            post_count += 1
+                        else: # Default to PUT
+                            response = session.put(target_url, json=local_resource, headers=headers, timeout=30)
+                            put_count += 1
 
-                # Perform comparison if we have an existing resource
-                if resource_to_compare:
-                    try:
-                        if are_resources_semantically_equal(local_resource, resource_to_compare): # Assumes defined
-                            yield json.dumps({"type": "info", "message": f"Skipping {resource_log_id} (Identical)"}) + "\n"
-                            skip_resource = True; skipped_count += 1
-                            skipped_resources_details.append({'resource': resource_log_id, 'reason': 'Identical'})
-                        elif verbose: yield json.dumps({"type": "info", "message": f"{resource_log_id} exists but differs. Updating."}) + "\n"
-                    except Exception as comp_err:
-                         yield json.dumps({"type": "warning", "message": f"Comparison failed for {resource_log_id}: {comp_err}. Proceeding with PUT."}) + "\n"
+                        response.raise_for_status() # Raises HTTPError for 4xx/5xx responses
 
-            elif action == "PUT" and force_upload:
-                 if verbose: yield json.dumps({"type": "info", "message": f"Force Upload enabled, skipping comparison for {resource_log_id}."}) + "\n"
-
-
-            # 3. Execute Action (POST or PUT, if not skipped)
-            if not skip_resource:
-                http_method = action # Will be PUT or POST
-                log_action = f"{http_method}ing"
-                yield json.dumps({"type": "progress", "message": f"{log_action} {resource_log_id} ({i}/{total_resources_attempted}) to {target_url}..."}) + "\n"
-
-                try:
-                    if http_method == "POST":
-                        response = session.post(target_url, json=local_resource, headers=headers, timeout=30)
-                        post_count += 1
-                    else: # Default to PUT
-                        response = session.put(target_url, json=local_resource, headers=headers, timeout=30)
-                        put_count += 1
-
-                    response.raise_for_status() # Raises HTTPError for 4xx/5xx responses
-
-                    # Log success, potentially including new ID if POSTed
-                    success_msg = f"{http_method} successful for {resource_log_id} (Status: {response.status_code})"
-                    if http_method == "POST":
-                        # Try to get ID from Location header or response body
-                        new_id = "unknown"
-                        location = response.headers.get('Location')
-                        if location:
-                             match = re.search(f"{resource_type}/([^/]+)/_history", location)
-                             if match: new_id = match.group(1)
-                        # Could also try parsing response body if server returns it on POST
-                        success_msg += f" -> New ID: {new_id}" if new_id != "unknown" else ""
-                    yield json.dumps({"type": "success", "message": success_msg}) + "\n"
-                    success_count += 1
-                    # Track package info
-                    if source_pkg not in [p["id"] for p in pushed_packages_info]: pushed_packages_info.append({"id": source_pkg, "resource_count": 1})
-                    else: #... increment count ...
+                        # Log success
+                        success_msg = f"{http_method} successful for {resource_log_id} (Status: {response.status_code})"
+                        if http_method == "POST" and response.status_code == 201:
+                             # Add Location header info if available on create
+                             location = response.headers.get('Location')
+                             if location:
+                                  # Try to extract ID from location header
+                                  match = re.search(f"{resource_type}/([^/]+)/_history", location)
+                                  new_id = match.group(1) if match else "unknown"
+                                  success_msg += f" -> New ID: {new_id}"
+                             else:
+                                   success_msg += " (No Location header)"
+                        yield json.dumps({"type": "success", "message": success_msg}) + "\n"
+                        success_count += 1
+                        # Track package info for successful upload
+                        pkg_found_success = False
                         for p in pushed_packages_info:
-                            if p["id"] == source_pkg: p["resource_count"] += 1; break
+                             if p["id"] == source_pkg:
+                                 p["resource_count"] += 1
+                                 pkg_found_success = True
+                                 break
+                        if not pkg_found_success:
+                             pushed_packages_info.append({"id": source_pkg, "resource_count": 1})
 
-                # Handle upload errors (same exception handling as before)
-                except requests.exceptions.HTTPError as e:
-                    outcome_text = ""; # ... (parse outcome logic) ...
-                    try: outcome = e.response.json(); # ... (parse details) ...
-                    except ValueError: outcome_text = e.response.text[:200]
-                    error_msg = f"Failed {http_method} {resource_log_id} (Status: {e.response.status_code}): {outcome_text or str(e)}"; yield json.dumps({"type": "error", "message": error_msg}) + "\n"; failure_count += 1; failed_uploads_details.append({'resource': resource_log_id, 'error': error_msg})
-                except requests.exceptions.Timeout: error_msg = f"Timeout during {http_method} {resource_log_id}"; yield json.dumps({"type": "error", "message": error_msg}) + "\n"; failure_count += 1; failed_uploads_details.append({'resource': resource_log_id, 'error': error_msg})
-                except requests.exceptions.ConnectionError as e: error_msg = f"Connection error during {http_method} {resource_log_id}: {e}"; yield json.dumps({"type": "error", "message": error_msg}) + "\n"; failure_count += 1; failed_uploads_details.append({'resource': resource_log_id, 'error': error_msg})
-                except requests.exceptions.RequestException as e: error_msg = f"Request error during {http_method} {resource_log_id}: {str(e)}"; yield json.dumps({"type": "error", "message": error_msg}) + "\n"; failure_count += 1; failed_uploads_details.append({'resource': resource_log_id, 'error': error_msg})
-                except Exception as e: error_msg = f"Unexpected error during {http_method} {resource_log_id}: {str(e)}"; yield json.dumps({"type": "error", "message": error_msg}) + "\n"; failure_count += 1; failed_uploads_details.append({'resource': resource_log_id, 'error': error_msg}); logger.error(f"[API Push Stream] Upload error: {e}", exc_info=True)
-            else: # Resource was skipped
-                 if source_pkg not in [p["id"] for p in pushed_packages_info]: pushed_packages_info.append({"id": source_pkg, "resource_count": 0})
+                    # --- CORRECTED ERROR HANDLING ---
+                    except requests.exceptions.HTTPError as http_err:
+                        outcome_text = ""
+                        status_code = http_err.response.status_code if http_err.response is not None else 'N/A'
+                        try:
+                            outcome = http_err.response.json()
+                            if outcome and outcome.get('resourceType') == 'OperationOutcome':
+                                issues = outcome.get('issue', [])
+                                outcome_text = "; ".join([ f"{i.get('severity','info')}: {i.get('diagnostics', i.get('details',{}).get('text','No details'))}" for i in issues]) if issues else "OperationOutcome with no issues."
+                            else: outcome_text = http_err.response.text[:200] if http_err.response is not None else "No response body"
+                        except ValueError: outcome_text = http_err.response.text[:200] if http_err.response is not None else "No response body (or not JSON)"
+                        # This block is now correctly indented
+                        error_msg = f"Failed {http_method} {resource_log_id} (Status: {status_code}): {outcome_text or str(http_err)}"
+                        yield json.dumps({"type": "error", "message": error_msg}) + "\n"; failure_count += 1; failed_uploads_details.append({'resource': resource_log_id, 'error': error_msg})
+                    # --- END CORRECTION ---
 
+                    except requests.exceptions.Timeout:
+                        error_msg = f"Timeout during {http_method} {resource_log_id}"
+                        yield json.dumps({"type": "error", "message": error_msg}) + "\n"; failure_count += 1; failed_uploads_details.append({'resource': resource_log_id, 'error': 'Timeout'})
+                    except requests.exceptions.ConnectionError as conn_err:
+                        error_msg = f"Connection error during {http_method} {resource_log_id}: {conn_err}"
+                        yield json.dumps({"type": "error", "message": error_msg}) + "\n"; failure_count += 1; failed_uploads_details.append({'resource': resource_log_id, 'error': f'Connection Error: {conn_err}'})
+                    except requests.exceptions.RequestException as req_err:
+                        error_msg = f"Request error during {http_method} {resource_log_id}: {str(req_err)}"
+                        yield json.dumps({"type": "error", "message": error_msg}) + "\n"; failure_count += 1; failed_uploads_details.append({'resource': resource_log_id, 'error': f'Request Error: {req_err}'})
+                    except Exception as e:
+                        error_msg = f"Unexpected error during {http_method} {resource_log_id}: {str(e)}"
+                        yield json.dumps({"type": "error", "message": error_msg}) + "\n"; failure_count += 1; failed_uploads_details.append({'resource': resource_log_id, 'error': f'Unexpected: {e}'}); logger.error(f"[API Push Stream] Upload error for {resource_log_id}: {e}", exc_info=True)
+                # --- End Execute Action ---
+
+                else: # Resource was skipped
+                     # Track package info even if skipped
+                     pkg_found_skipped = False
+                     for p in pushed_packages_info:
+                          if p["id"] == source_pkg:
+                              pkg_found_skipped = True; break
+                     if not pkg_found_skipped:
+                          pushed_packages_info.append({"id": source_pkg, "resource_count": 0}) # Add pkg with 0 count
+            # --- End Main Upload Loop ---
 
         # --- Final Summary ---
-        final_status = "success" if failure_count == 0 and (success_count > 0 or skipped_count > 0 or dry_run or total_resources_attempted == 0) else \
+        final_status = "success" if failure_count == 0 else \
                        "partial" if success_count > 0 else "failure"
+
+        # --- Define prefixes before use ---
         dry_run_prefix = "[DRY RUN] " if dry_run else ""
         force_prefix = "[FORCE UPLOAD] " if force_upload else ""
-        # Updated summary message
-        summary_message = f"{dry_run_prefix}{force_prefix}Push finished: {post_count} POSTed, {put_count} PUT, {failure_count} failed, {skipped_count} skipped ({total_resources_attempted} resources attempted)."
+        # --- End Define prefixes ---
 
+        # Adjust summary message construction
+        if total_resources_attempted == 0 and failure_count == 0:
+             summary_message = f"{dry_run_prefix}Push finished: No matching resources found to process."
+             final_status = "success" # Still success if no errors occurred
+        else:
+             # Use the defined prefixes
+             summary_message = f"{dry_run_prefix}{force_prefix}Push finished: {post_count} POSTed, {put_count} PUT, {failure_count} failed, {skipped_count} skipped ({total_resources_attempted} resources attempted)."
+
+        # Create summary dictionary
         summary = {
             "status": final_status, "message": summary_message,
             "target_server": fhir_server_url, "package_name": package_name, "version": version,
             "included_dependencies": include_dependencies, "resources_attempted": total_resources_attempted,
-            "success_count": success_count, # Total successful POSTs + PUTs
-            "post_count": post_count, # Added POST count
-            "put_count": put_count, # Added PUT count
+            "success_count": success_count, "post_count": post_count, "put_count": put_count,
             "failure_count": failure_count, "skipped_count": skipped_count,
-            "validation_failure_count": 0,
+            "validation_failure_count": 0, # Placeholder
             "failed_details": failed_uploads_details, "skipped_details": skipped_resources_details,
             "pushed_packages_summary": pushed_packages_info, "dry_run": dry_run, "force_upload": force_upload,
             "resource_types_filter": resource_types_filter,
@@ -2418,16 +2563,23 @@ def generate_push_stream(package_name, version, fhir_server_url, include_depende
         yield json.dumps({"type": "complete", "data": summary}) + "\n"
         logger.info(f"[API Push Stream] Completed {package_name}#{version}. Status: {final_status}. {summary_message}")
 
-    # Final Exception Handling
+    # --- Final Exception Handling for setup/initialization errors ---
+    except FileNotFoundError as fnf_err:
+         logger.error(f"[API Push Stream] Setup error: {str(fnf_err)}", exc_info=False)
+         error_response = {"status": "error", "message": f"Setup error: {str(fnf_err)}"}
+         try:
+             yield json.dumps({"type": "error", "message": error_response["message"]}) + "\n"
+             yield json.dumps({"type": "complete", "data": error_response}) + "\n"
+         except Exception as yield_e: logger.error(f"Error yielding final setup error: {yield_e}")
     except Exception as e:
-        logger.error(f"[API Push Stream] Critical error: {str(e)}", exc_info=True)
-        error_response = {"status": "error", "message": f"Server error during push: {str(e)}"}
+        logger.error(f"[API Push Stream] Critical error during setup or stream generation: {str(e)}", exc_info=True)
+        error_response = {"status": "error", "message": f"Server error during push setup: {str(e)}"}
         try:
             yield json.dumps({"type": "error", "message": error_response["message"]}) + "\n"
             yield json.dumps({"type": "complete", "data": error_response}) + "\n"
-        except Exception as yield_e: logger.error(f"Error yielding final error: {yield_e}")
+        except Exception as yield_e: logger.error(f"Error yielding final critical error: {yield_e}")
 
-# --- END REPLACEMENT FUNCTION ---
+# --- END generate_push_stream FUNCTION ---
 
 def are_resources_semantically_equal(resource1, resource2):
     """
