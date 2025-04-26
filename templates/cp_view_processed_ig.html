@@ -8,13 +8,6 @@
         <p class="lead mb-4">
             View details of the processed FHIR Implementation Guide.
         </p>
-          <!-----------------------------------------------------------------remove the buttons-----------------------------------------------------
-        <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
-            <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg px-4 gap-3">Back to Home</a>
-            <a href="{{ url_for('view_igs') }}" class="btn btn-outline-secondary btn-lg px-4">Manage FHIR Packages</a>
-            <a href="{{ url_for('push_igs') }}" class="btn btn-outline-secondary btn-lg px-4">Upload IG's</a>
-        </div>
-          ----------------------------------------------------------------remove the buttons----------------------------------------------------------------------------->
     </div>
 </div>
 
@@ -205,63 +198,63 @@
                             <ul id="structure-tree-key-elements" class="list-group list-group-flush structure-tree-root"></ul>
                         </div>
                         <div class="tab-pane fade" id="constraints-tab-pane" role="tabpanel" aria-labelledby="constraints-tab">
-                        <div class="mt-3 table-responsive">
-                            <p>Constraints defined in this profile:</p>
-                            <table class="table table-sm table-bordered table-striped" id="constraints-table">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Key</th>
-                                        <th>Severity</th>
-                                        <th>Path</th>
-                                        <th>Description</th>
-                                        <th>Expression (FHIRPath)</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr><td colspan="5">No constraints found or data not loaded.</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div class="tab-pane fade" id="terminology-tab-pane" role="tabpanel" aria-labelledby="terminology-tab">
-                        <div class="mt-3 table-responsive">
-                            <p>Terminology bindings defined in this profile:</p>
-                            <table class="table table-sm table-bordered table-striped" id="bindings-table">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Path</th>
-                                        <th>Strength</th>
-                                        <th>ValueSet</th>
-                                        <th>Description</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr><td colspan="4">No bindings found or data not loaded.</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div class="tab-pane fade" id="searchparams-tab-pane" role="tabpanel" aria-labelledby="searchparams-tab">
-                        <div class="mt-3">
-                            <p>Search parameters associated with this profile:</p>
-                            <div class="alert alert-warning" role="alert">
-                                <strong>Note:</strong> SearchParameter resources. This functionality is NEWLY implemented, please report any bugs)
+                            <div class="mt-3 table-responsive">
+                                <p>Constraints defined in this profile:</p>
+                                <table class="table table-sm table-bordered table-striped" id="constraints-table">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Key</th>
+                                            <th>Severity</th>
+                                            <th>Path</th>
+                                            <th>Description</th>
+                                            <th>Expression (FHIRPath)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td colspan="5">No constraints found or data not loaded.</td></tr>
+                                    </tbody>
+                                </table>
                             </div>
-                            <table class="table table-sm table-bordered table-striped" id="searchparams-table">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Parameter</th>
-                                        <th>Type</th>
-                                        <th>Conformance</th>
-                                        <th>Requirements / Description</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr><td colspan="4">Search Parameter data not available. Requires backend implementation.</td></tr>
-                                </tbody>
-                            </table>
                         </div>
-                    </div>
+                        <div class="tab-pane fade" id="terminology-tab-pane" role="tabpanel" aria-labelledby="terminology-tab">
+                            <div class="mt-3 table-responsive">
+                                <p>Terminology bindings defined in this profile:</p>
+                                <table class="table table-sm table-bordered table-striped" id="bindings-table">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Path</th>
+                                            <th>Strength</th>
+                                            <th>ValueSet</th>
+                                            <th>Description</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td colspan="4">No bindings found or data not loaded.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="searchparams-tab-pane" role="tabpanel" aria-labelledby="searchparams-tab">
+                            <div class="mt-3">
+                                <p>Search parameters associated with this profile:</p>
+                                <div class="alert alert-warning" role="alert">
+                                    <strong>Note:</strong> SearchParameter resources. This functionality is NEWLY implemented, please report any bugs)
+                                </div>
+                                <table class="table table-sm table-bordered table-striped" id="searchparams-table">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Parameter</th>
+                                            <th>Type</th>
+                                            <th>Conformance</th>
+                                            <th>Requirements / Description</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td colspan="4">Search Parameter data not available. Requires backend implementation.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -269,14 +262,14 @@
 
         <div id="raw-structure-wrapper" class="mt-4" style="display: none;">
             <div class="card">
-                 <div class="card-header d-flex justify-content-between align-items-center">
-                     <span>Raw Structure Definition for <code id="raw-structure-title"></code></span>
-                     <button type="button" class="btn btn-sm btn-outline-secondary btn-copy" id="copy-raw-def-button"
-                             data-bs-toggle="tooltip" data-bs-placement="top" title="Copy Raw Definition JSON">
-                         <i class="bi bi-clipboard" aria-hidden="true"></i>
-                         <span class="visually-hidden">Copy Raw Definition JSON to clipboard</span>
-                     </button>
-                 </div>
+                <div class="card-header d-flex justify-content-between align-itemsitum-center">
+                    <span>Raw Structure Definition for <code id="raw-structure-title"></code></span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary btn-copy" id="copy-raw-def-button"
+                            data-bs-toggle="tooltip" data-bs-placement="top" title="Copy Raw Definition JSON">
+                        <i class="bi bi-clipboard" aria-hidden="true"></i>
+                        <span class="visually-hidden">Copy Raw Definition JSON to clipboard</span>
+                    </button>
+                </div>
                 <div class="card-body">
                     <div id="raw-structure-loading" class="text-center py-3" style="display: none;">
                         <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
@@ -285,7 +278,6 @@
                 </div>
             </div>
         </div>
-
         <div id="example-display-wrapper" class="mt-4" style="display: none;">
             <div class="card">
                 <div class="card-header">Examples for <code id="example-resource-type-title"></code></div>
@@ -298,28 +290,32 @@
                         <div class="spinner-border spinner-border-sm text-secondary" role="status"><span class="visually-hidden">Loading...</span></div>
                     </div>
                     <div id="example-content-wrapper" style="display: none;">
+                        <div class="form-check mb-2">
+                            <input type="checkbox" class="form-check-input" id="includeNarrative" checked>
+                            <label class="form-check-label" for="includeNarrative">Include Narrative</label>
+                        </div>
                         <h6 id="example-filename" class="mt-2 small text-muted"></h6>
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="d-flex justify-content-between align-items-center mb-1">
-                                      <h6>Raw Content</h6>
-                                      <button type="button" class="btn btn-sm btn-outline-secondary btn-copy" id="copy-raw-ex-button"
-                                              data-bs-toggle="tooltip" data-bs-placement="top" title="Copy Raw Content">
-                                          <i class="bi bi-clipboard" aria-hidden="true"></i>
-                                          <span class="visually-hidden">Copy Raw Content to clipboard</span>
-                                      </button>
-                                 </div>
+                                    <h6>Raw Content</h6>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary btn-copy" id="copy-raw-ex-button"
+                                            data-bs-toggle="tooltip" data-bs-placement="top" title="Copy Raw Content">
+                                        <i class="bi bi-clipboard" aria-hidden="true"></i>
+                                        <span class="visually-hidden">Copy Raw Content to clipboard</span>
+                                    </button>
+                                </div>
                                 <pre><code id="example-content-raw" class="p-2 d-block border bg-light language-json" style="max-height: 400px; overflow-y: auto; white-space: pre;"></code></pre>
                             </div>
                             <div class="col-md-6">
-                                 <div class="d-flex justify-content-between align-items-center mb-1">
-                                     <h6>Pretty-Printed JSON</h6>
-                                     <button type="button" class="btn btn-sm btn-outline-secondary btn-copy" id="copy-pretty-json-button"
-                                             data-bs-toggle="tooltip" data-bs-placement="top" title="Copy JSON">
-                                          <i class="bi bi-clipboard" aria-hidden="true"></i>
-                                          <span class="visually-hidden">Copy JSON example to clipboard</span>
-                                      </button>
-                                 </div>
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <h6>Pretty-Printed JSON</h6>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary btn-copy" id="copy-pretty-json-button"
+                                            data-bs-toggle="tooltip" data-bs-placement="top" title="Copy JSON">
+                                        <i class="bi bi-clipboard" aria-hidden="true"></i>
+                                        <span class="visually-hidden">Copy JSON example to clipboard</span>
+                                    </button>
+                                </div>
                                 <pre><code id="example-content-json" class="p-2 d-block border bg-light language-json" style="max-height: 400px; overflow-y: auto;"></code></pre>
                             </div>
                         </div>
@@ -352,6 +348,7 @@ let copyRawDefTooltipInstance = null;
 let copyRawExTooltipInstance = null;
 let copyPrettyJsonTooltipInstance = null;
 let structureDataCache = {}; // Cache for fetched structure data
+let includeNarrativeCheckbox; // New global for narrative toggle
 
 // --- Global Helper Functions ---
 function parseFhirPath(path) {
@@ -379,13 +376,11 @@ function getNodeKey(element) {
     const baseKey = (element.id && element.id.includes('.')) ? element.id : element.path;
     if (!baseKey) {
         console.warn("Cannot generate key: element missing structured id and path", element);
-        // Provide a fallback key if absolutely necessary, though this indicates data issues
         return `no-key-${Math.random()}`;
     }
     // Append sliceName if present to ensure uniqueness for slices
     return element.sliceName ? `${baseKey}::slice::${element.sliceName}` : baseKey;
 }
-
 
 // Helper function to initialize a node
 function createNode(path, name, parentPathKey, element = null) {
@@ -458,16 +453,12 @@ function flagSlicingEntriesWithMSSlices(node) {
     // Flag THIS node if it defines slicing AND (a direct child is an MS slice OR a deeper descendant is an MS slice)
     if (node.element?.slicing && (directChildIsMSSlice || containedMSSliceInChildren)) {
         node.containsMustSupportSlice = true;
-        // --- DEBUG LOG ---
-        // console.log(`>>> Flagged Slicing Entry ${node.path} as containsMustSupportSlice = true (DirectChild: ${directChildIsMSSlice}, Descendant: ${containedMSSliceInChildren})`);
-        // --- END DEBUG LOG ---
     }
 
     // Return true if THIS node is an MS slice OR if it was flagged as containing one below it
     // This ensures the status propagates up correctly.
     return isMustSupportSlice || node.containsMustSupportSlice === true;
 } // End flagSlicingEntriesWithMSSlices V2
-
 
 // --- Build Tree Data - V13 (Correct Parent Finding for Nested Slices) ---
 function buildTreeData(elements, view, mustSupportPaths) {
@@ -524,13 +515,6 @@ function buildTreeData(elements, view, mustSupportPaths) {
         const nodeKey = getNodeKey(element);
         const isSlice = !!element.sliceName;
 
-        // Optional Debug Log
-        const debugPaths = ['Observation.component', 'Observation.component.code', 'Observation.component.code.coding'];
-        const shouldDebug = debugPaths.some(p => path?.startsWith(p));
-        // if (shouldDebug) { // Keep this commented out unless actively debugging parent finding
-        //    console.log(`[Debug] Processing element ${index}: Path='${path}', SliceName='${element.sliceName}', ID='${id}', Key='${nodeKey}'`);
-        // }
-
         if (!path || !nodeKey) { console.warn(`Skipping element ${index} with missing path/key`, element); return; }
 
         // Root element handling (Keep V12 logic)
@@ -558,42 +542,37 @@ function buildTreeData(elements, view, mustSupportPaths) {
             // Derive the expected parent ID/Path from the slice's ID or Path
             if (id && id.includes('.')) {
                 // Try deriving from ID first (more specific)
-                // Example: id = Observation.component:DiastolicBP.code.coding:DBPCode
-                // We want the parent ID = Observation.component:DiastolicBP.code.coding
-                 const idParts = id.split(':');
-                 if (idParts.length > 1) {
-                     const parentIdGuess = idParts.slice(0, -1).join(':');
-                     // Check if the parent ID ends with a path segment (contains '.')
-                     if (parentIdGuess.includes('.')) {
-                         expectedParentId = parentIdGuess;
-                     }
-                 }
-                 // Fallback: if ID didn't work well, try deriving from path
-                 if (!expectedParentId && path && path.includes('.')) {
-                      expectedParentPath = path; // The base path is the parent slicing entry path
-                 }
-
+                const idParts = id.split(':');
+                if (idParts.length > 1) {
+                    const parentIdGuess = idParts.slice(0, -1).join(':');
+                    if (parentIdGuess.includes('.')) {
+                        expectedParentId = parentIdGuess;
+                    }
+                }
+                // Fallback: if ID didn't work well, try deriving from path
+                if (!expectedParentId && path && path.includes('.')) {
+                    expectedParentPath = path; // The base path is the parent slicing entry path
+                }
             } else if (path && path.includes('.')) {
-                 // If no complex ID, use the path
-                 expectedParentPath = path;
+                // If no complex ID, use the path
+                expectedParentPath = path;
             }
 
-             // Now, find the slicing entry element using the derived parent identifiers
-             let slicingEntryElement = null;
-             if (expectedParentId) {
+            // Now, find the slicing entry element using the derived parent identifiers
+            let slicingEntryElement = null;
+            if (expectedParentId) {
                 // Prefer ID match
                 slicingEntryElement = elements.find(el => el.id === expectedParentId && el.slicing);
-             }
-             if (!slicingEntryElement && expectedParentPath) {
-                 // Fallback to path match if ID didn't work or wasn't derived
-                 slicingEntryElement = elements.find(el => el.path === expectedParentPath && !el.sliceName && el.slicing);
-             }
+            }
+            if (!slicingEntryElement && expectedParentPath) {
+                // Fallback to path match if ID didn't work or wasn't derived
+                slicingEntryElement = elements.find(el => el.path === expectedParentPath && !el.sliceName && el.slicing);
+            }
 
             if (slicingEntryElement) {
                 parentElement = slicingEntryElement;
                 parentNodeKey = getNodeKey(parentElement);
                 parentFound = true;
-                 // console.log(`[Debug] Parent Check 1 (Slice V13): ${nodeKey} -> ${parentNodeKey} (ParentID: ${expectedParentId}, ParentPath: ${expectedParentPath})`);
             } else {
                 console.warn(`Slicing entry element NOT FOUND for expected parent (ID: ${expectedParentId}, Path: ${expectedParentPath}) needed by slice '${nodeKey}'. Assigning root.`);
                 parentElement = rootElementData;
@@ -601,30 +580,28 @@ function buildTreeData(elements, view, mustSupportPaths) {
                 parentFound = true; // Consider parent determined (fallback)
             }
         }
-        // Check 2: Descendant of a Slice (using ID structure) (Keep V12 logic - seems okay from logs)
+        // Check 2: Descendant of a Slice (using ID structure) (Keep V12 logic)
         else if (id && id.includes(':') && id.includes('.')) {
-             const idParts = id.split('.');
-             let potentialSliceParentId = null;
-             for (let i = idParts.length - 2; i >= 0; i--) {
-                 const tempId = idParts.slice(0, i + 1).join('.');
-                 if (tempId.includes(':')) { potentialSliceParentId = tempId; break; }
-             }
-             if (potentialSliceParentId) {
-                 const potentialParentKey = potentialSliceParentId;
-                 if (nodeMap.has(potentialParentKey)) {
-                     const potentialParentNode = nodeMap.get(potentialParentKey);
-                     if (potentialParentNode?.element) {
-                         parentNodeKey = potentialParentKey; parentElement = potentialParentNode.element; parentFound = true;
-                         // console.log(`[Debug] Parent Check 2 (Slice Descendant ID V13): ${nodeKey} -> ${parentNodeKey} (via Map Key ${potentialParentKey})`);
-                     } else { console.warn(`Node found in map for key ${potentialParentKey} but its element was missing. Falling back.`); }
-                 } else {
-                     const sliceParentElement = elements.find(el => el.id === potentialSliceParentId);
-                     if (sliceParentElement) {
-                          parentNodeKey = getNodeKey(sliceParentElement); parentElement = sliceParentElement; parentFound = true;
-                          // console.log(`[Debug] Parent Check 2 (Slice Descendant ID V13): ${nodeKey} -> ${parentNodeKey} (via Element ID ${potentialSliceParentId})`);
-                     } else { console.warn(`Slice parent element ID '${potentialSliceParentId}' not found for descendant '${id}'. Falling back.`); }
-                 }
-             }
+            const idParts = id.split('.');
+            let potentialSliceParentId = null;
+            for (let i = idParts.length - 2; i >= 0; i--) {
+                const tempId = idParts.slice(0, i + 1).join('.');
+                if (tempId.includes(':')) { potentialSliceParentId = tempId; break; }
+            }
+            if (potentialSliceParentId) {
+                const potentialParentKey = potentialSliceParentId;
+                if (nodeMap.has(potentialParentKey)) {
+                    const potentialParentNode = nodeMap.get(potentialParentKey);
+                    if (potentialParentNode?.element) {
+                        parentNodeKey = potentialParentKey; parentElement = potentialParentNode.element; parentFound = true;
+                    } else { console.warn(`Node found in map for key ${potentialParentKey} but its element was missing. Falling back.`); }
+                } else {
+                    const sliceParentElement = elements.find(el => el.id === potentialSliceParentId);
+                    if (sliceParentElement) {
+                        parentNodeKey = getNodeKey(sliceParentElement); parentElement = sliceParentElement; parentFound = true;
+                    } else { console.warn(`Slice parent element ID '${potentialSliceParentId}' not found for descendant '${id}'. Falling back.`); }
+                }
+            }
         }
 
         // Check 3 & 4: Regular or Choice Descendant (Keep V12 logic)
@@ -634,24 +611,21 @@ function buildTreeData(elements, view, mustSupportPaths) {
                 const parentPathString = pathParts.slice(0, -1).join('.');
                 let potentialParentNode = nodeMap.get(parentPathString);
                 if (!potentialParentNode && path.includes('[x]')) {
-                     const originalPathParts = path.split('.');
-                     const parentPathWithChoice = originalPathParts.slice(0, -1).join('.');
-                     potentialParentNode = nodeMap.get(parentPathWithChoice);
+                    const originalPathParts = path.split('.');
+                    const parentPathWithChoice = originalPathParts.slice(0, -1).join('.');
+                    potentialParentNode = nodeMap.get(parentPathWithChoice);
                 }
                 if (potentialParentNode?.element) {
                     parentElement = potentialParentNode.element;
                     parentNodeKey = getNodeKey(parentElement);
                     parentFound = true;
-                    // console.log(`[Debug] Parent Check 3/4 (Path V13): ${nodeKey} -> ${parentNodeKey}`);
                 } else {
                     parentElement = rootElementData; parentNodeKey = getNodeKey(parentElement);
                     parentFound = true;
-                    // console.warn(`[Debug] Parent Check 3/4 (Path V13): Parent node NOT FOUND for path '${parentPathString}' needed by '${nodeKey}'. Assigning root.`);
                 }
             } else {
                 parentElement = rootElementData; parentNodeKey = getNodeKey(parentElement);
                 parentFound = true;
-                // console.log(`[Debug] Parent Check 3/4 (Path V13): Parent is root for ${nodeKey}`);
             }
         }
         // --- End Parent Finding Logic ---
@@ -683,7 +657,6 @@ function buildTreeData(elements, view, mustSupportPaths) {
             if (parentNode) {
                 if (!parentNode.children) parentNode.children = [];
                 parentNode.children.push(newNode);
-                 // console.log(`[Debug] Attaching new node ${nodeKey} to parent ${parentNodeKey}`);
             } else {
                 console.error(`Cannot add child ${nodeKey} as parent node object is unexpectedly null.`);
             }
@@ -712,12 +685,12 @@ function buildTreeData(elements, view, mustSupportPaths) {
 
         if (treeData[0]) {
             treeData[0].children = filterNodesRecursively(treeData[0].children || [], filterFunction);
-             if (!filterFunction(treeData[0]) && (!treeData[0].children || treeData[0].children.length === 0)) {
-                 if (view !== 'snapshot') {
-                     console.log(`Root node ${treeData[0].path} does not meet criteria for view '${view}' and has no matching children. Clearing tree.`);
-                     return [];
-                 }
-             }
+            if (!filterFunction(treeData[0]) && (!treeData[0].children || treeData[0].children.length === 0)) {
+                if (view !== 'snapshot') {
+                    console.log(`Root node ${treeData[0].path} does not meet criteria for view '${view}' and has no matching children. Clearing tree.`);
+                    return [];
+                }
+            }
         }
     } // End Filtering Logic
 
@@ -727,12 +700,8 @@ function buildTreeData(elements, view, mustSupportPaths) {
     return treeData;
 } // End buildTreeData V13
 
-
 // --- Render Node as List Item - V19 (Fixes isSlice error, keeps V18 logic) ---
 function renderNodeAsLi(node, mustSupportPathsSet, resourceType, level = 0, view = 'snapshot') {
-    // --- Constants for Primitive Types ---
-    // REMOVED PRIMITIVE_TYPES check to align with reference rendering
-
     if (!node || !node.path || !node.name) { console.warn(`Skipping render for invalid node:`, node); return ''; }
     const el = node.element || {};
     const path = el.path || node.path || `node-${level}-${Math.random()}`;
@@ -755,11 +724,9 @@ function renderNodeAsLi(node, mustSupportPathsSet, resourceType, level = 0, view
     let mustSupportTitle = isMustSupport ? 'Must Support' : '';
     let fhirPathExpression = path;
     if (sliceName && isMustSupport) {
-         mustSupportTitle = `Must Support (Slice: ${sliceName})`;
-         fhirPathExpression = `${path}[sliceName='${sliceName}']`;
+        mustSupportTitle = `Must Support (Slice: ${sliceName})`;
+        fhirPathExpression = `${path}[sliceName='${sliceName}']`;
     }
-    // Optional Debug Log for highlighting
-    // if (node.path === 'Patient.extension' || node.path === 'Patient.identifier') { console.log(...) }
     const msIconClass = (isMustSupport || node.containsMustSupportSlice) ? 'text-warning' : '';
     const mustSupportDisplay = (isMustSupport || node.containsMustSupportSlice) ? `<i class="bi bi-check-circle-fill ${msIconClass} ms-1" title="${escapeHtmlAttr(mustSupportTitle)}" data-bs-toggle="tooltip" data-fhirpath="${escapeHtmlAttr(fhirPathExpression)}"></i>` : '';
 
@@ -786,7 +753,7 @@ function renderNodeAsLi(node, mustSupportPathsSet, resourceType, level = 0, view
     // Type String Logic
     let typeString = '<span class="text-muted">N/A</span>';
     if (el.type && Array.isArray(el.type) && el.type.length > 0) {
-         typeString = el.type.map(t => {
+        typeString = el.type.map(t => {
             let s = escapeHtmlAttr(t.code || 'Unknown');
             let profiles = t.targetProfile || t.profile || [];
             if (profiles.length > 0) {
@@ -798,45 +765,44 @@ function renderNodeAsLi(node, mustSupportPathsSet, resourceType, level = 0, view
     } else if (el.contentReference) { typeString = `<span class="text-info" title="Content Reference">Ref: ${escapeHtmlAttr(el.contentReference)}</span>`; }
     else if (el.sliceName && path.endsWith('extension')) { typeString = '<span class="text-muted">Extension</span>'; }
 
-
     // Children HTML / Choice Type Display (V18 logic - reverted primitive filtering)
     let childrenOrChoiceHtml = '';
     if (showToggle) {
-         childrenOrChoiceHtml += `<ul class="collapse list-group list-group-flush ms-3" id="${collapseId}">`;
-         // Render children if they exist OR if slicing defined
-         if (hasActualChildren || definesSlicing) {
-             const sortedChildren = (node.children || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-             sortedChildren.forEach(childNode => {
-                  if (childNode) { childrenOrChoiceHtml += renderNodeAsLi(childNode, mustSupportPathsSet, resourceType, level + 1, view); }
-             });
-         }
-         // Render choice types ONLY if it's a choice element AND not sliced
-         else if (isChoiceElement && !definesSlicing && el.type && Array.isArray(el.type)) {
-             el.type.forEach(choiceType => {
-                 const typeCode = choiceType.code || 'Unknown';
-                 const baseName = (node.name || path.split('.').pop()).replace('[x]', '');
-                 const choiceDisplayName = escapeHtmlAttr(baseName + typeCode.charAt(0).toUpperCase() + typeCode.slice(1));
-                 const choiceTypeCode = escapeHtmlAttr(typeCode);
-                 const targetProfiles = choiceType.targetProfile || choiceType.profile || [];
-                 let profileDisplay = '';
-                  if (targetProfiles.length > 0) {
-                      const targetTypes = targetProfiles.map(p => (p || '').split('/').pop()).filter(Boolean).join(', ');
-                       if (targetTypes) { profileDisplay = ` (<span class="fst-italic" title="Profile(s): ${escapeHtmlAttr(targetProfiles.join(', '))}">${escapeHtmlAttr(targetTypes)}</span>)`; }
-                  }
-                 const choiceTooltipAttr = definition ? `title="${escapeHtmlAttr(definition)}"` : '';
-                 const choicePadding = padding + 20;
-                 childrenOrChoiceHtml += `<li class="list-group-item py-1 border-0 choice-type-item" ${choiceTooltipAttr} ${definition ? 'data-bs-toggle="tooltip" data-bs-placement="top"' : ''}>` +
-                                           `<div class="row gx-2 align-items-center">` +
-                                             `<div class="col-lg-4 col-md-3 text-truncate" style="padding-left: ${choicePadding}px;"><code>${choiceDisplayName}</code></div>` +
-                                             `<div class="col-lg-1 col-md-1 text-center small"></div>` +
-                                             `<div class="col-lg-3 col-md-3 text-truncate small"><code>${choiceTypeCode}</code>${profileDisplay}</div>` +
-                                             `<div class="col-lg-1 col-md-1 text-center"></div>` +
-                                             `<div class="col-lg-3 col-md-4 text-truncate small">${escapeHtmlAttr(short)}</div>` +
-                                           `</div>` +
-                                         `</li>`;
-             });
-         }
-          childrenOrChoiceHtml += `</ul>`;
+        childrenOrChoiceHtml += `<ul class="collapse list-group list-group-flush ms-3" id="${collapseId}">`;
+        // Render children if they exist OR if slicing defined
+        if (hasActualChildren || definesSlicing) {
+            const sortedChildren = (node.children || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            sortedChildren.forEach(childNode => {
+                if (childNode) { childrenOrChoiceHtml += renderNodeAsLi(childNode, mustSupportPathsSet, resourceType, level + 1, view); }
+            });
+        }
+        // Render choice types ONLY if it's a choice element AND not sliced
+        else if (isChoiceElement && !definesSlicing && el.type && Array.isArray(el.type)) {
+            el.type.forEach(choiceType => {
+                const typeCode = choiceType.code || 'Unknown';
+                const baseName = (node.name || path.split('.').pop()).replace('[x]', '');
+                const choiceDisplayName = escapeHtmlAttr(baseName + typeCode.charAt(0).toUpperCase() + typeCode.slice(1));
+                const choiceTypeCode = escapeHtmlAttr(typeCode);
+                const targetProfiles = choiceType.targetProfile || choiceType.profile || [];
+                let profileDisplay = '';
+                if (targetProfiles.length > 0) {
+                    const targetTypes = targetProfiles.map(p => (p || '').split('/').pop()).filter(Boolean).join(', ');
+                    if (targetTypes) { profileDisplay = ` (<span class="fst-italic" title="Profile(s): ${escapeHtmlAttr(targetProfiles.join(', '))}">${escapeHtmlAttr(targetTypes)}</span>)`; }
+                }
+                const choiceTooltipAttr = definition ? `title="${escapeHtmlAttr(definition)}"` : '';
+                const choicePadding = padding + 20;
+                childrenOrChoiceHtml += `<li class="list-group-item py-1 border-0 choice-type-item" ${choiceTooltipAttr} ${definition ? 'data-bs-toggle="tooltip" data-bs-placement="top"' : ''}>` +
+                                        `<div class="row gx-2 align-items-center">` +
+                                        `<div class="col-lg-4 col-md-3 text-truncate" style="padding-left: ${choicePadding}px;"><code>${choiceDisplayName}</code></div>` +
+                                        `<div class="col-lg-1 col-md-1 text-center small"></div>` +
+                                        `<div class="col-lg-3 col-md-3 text-truncate small"><code>${choiceTypeCode}</code>${profileDisplay}</div>` +
+                                        `<div class="col-lg-1 col-md-1 text-center"></div>` +
+                                        `<div class="col-lg-3 col-md-4 text-truncate small">${escapeHtmlAttr(short)}</div>` +
+                                        `</div>` +
+                                        `</li>`;
+            });
+        }
+        childrenOrChoiceHtml += `</ul>`;
     }
 
     // Build list item HTML (Main row)
@@ -863,7 +829,6 @@ function renderNodeAsLi(node, mustSupportPathsSet, resourceType, level = 0, view
     return itemHtml;
 } // End renderNodeAsLi (V19)
 
-
 // --- Function to Initialize Collapse Icon Listeners (Bootstrap Events) V3 - Explicit Cleanup ---
 function initializeBootstrapCollapseListeners(containerElement) {
     if (!containerElement) { return; }
@@ -876,8 +841,8 @@ function initializeBootstrapCollapseListeners(containerElement) {
         if (!triggerEl) { console.warn(`Trigger not found for #${collapseId}`); }
         if (collapseEl._handleShow && typeof collapseEl._handleShow === 'function') { collapseEl.removeEventListener('show.bs.collapse', collapseEl._handleShow); }
         if (collapseEl._handleHide && typeof collapseEl._handleHide === 'function') { collapseEl.removeEventListener('hide.bs.collapse', collapseEl._handleHide); }
-        const handleShow = (event) => { if (event.target === collapseEl && icon) { icon.classList.replace('bi-chevron-right', 'bi-chevron-down'); } /* console.log(...) */ };
-        const handleHide = (event) => { if (event.target === collapseEl && icon) { icon.classList.replace('bi-chevron-down', 'bi-chevron-right'); } /* console.log(...) */ };
+        const handleShow = (event) => { if (event.target === collapseEl && icon) { icon.classList.replace('bi-chevron-right', 'bi-chevron-down'); } };
+        const handleHide = (event) => { if (event.target === collapseEl && icon) { icon.classList.replace('bi-chevron-down', 'bi-chevron-right'); } };
         collapseEl._handleShow = handleShow; collapseEl._handleHide = handleHide;
         collapseEl.addEventListener('show.bs.collapse', handleShow);
         collapseEl.addEventListener('hide.bs.collapse', handleHide);
@@ -885,15 +850,14 @@ function initializeBootstrapCollapseListeners(containerElement) {
     });
 } // End initializeBootstrapCollapseListeners V3
 
-
-// --- Render Structure Tree (Calls V11 buildTreeData, V19 renderNode, V3 initBSCollapse) ---
+// --- Render Structure Tree (Calls V13 buildTreeData, V19 renderNode, V3 initBSCollapse) ---
 async function renderStructureTree(resourceType, view, snapshotElements, mustSupportPaths) { // Accepts snapshot elements
     const treeContainer = document.getElementById(`structure-tree-${view}`);
     if (!treeContainer) { console.error(`Tree container missing: ${view}`); return; }
     treeContainer.innerHTML = '';
 
     try {
-        // Build tree using V11 buildTreeData and snapshot data
+        // Build tree using V13 buildTreeData and snapshot data
         const treeData = buildTreeData(snapshotElements, view, mustSupportPaths);
 
         // Render HTML using V19 renderNodeAsLi
@@ -908,7 +872,13 @@ async function renderStructureTree(resourceType, view, snapshotElements, mustSup
         // Init listeners/tooltips
         initializeBootstrapCollapseListeners(treeContainer); // V3
         const tooltipTriggerList = treeContainer.querySelectorAll('[data-bs-toggle="tooltip"]');
-         tooltipTriggerList.forEach(tooltipTriggerEl => { const e=bootstrap.Tooltip.getInstance(tooltipTriggerEl); if(e){e.dispose();} if(tooltipTriggerEl.getAttribute('title')||tooltipTriggerEl.getAttribute('data-bs-original-title')){new bootstrap.Tooltip(tooltipTriggerEl);} });
+        tooltipTriggerList.forEach(tooltipTriggerEl => { 
+            const e = bootstrap.Tooltip.getInstance(tooltipTriggerEl); 
+            if (e) { e.dispose(); }
+            if (tooltipTriggerEl.getAttribute('title') || tooltipTriggerEl.getAttribute('data-bs-original-title')) {
+                new bootstrap.Tooltip(tooltipTriggerEl);
+            }
+        });
 
     } catch (error) {
         console.error(`Error rendering ${view} tree:`, error);
@@ -916,15 +886,21 @@ async function renderStructureTree(resourceType, view, snapshotElements, mustSup
     }
 } // End renderStructureTree
 
-
 // --- Fetch Structure Definition for Specific View ---
-async function fetchStructure(resourceType, view) {
-    const cacheKey = `${resourceType}-${view}`;
+async function fetchStructure(resourceType, view, includeNarrative, raw = false) {
+    const cacheKey = `${resourceType}-${view}-${includeNarrative}-${raw}`;
     if (structureDataCache[cacheKey]) {
         try { return JSON.parse(JSON.stringify(structureDataCache[cacheKey])); } catch (e) { return structureDataCache[cacheKey]; }
     }
     const structureBaseUrl = "{{ url_for('get_structure') }}";
-    const params = new URLSearchParams({ package_name: "{{ processed_ig.package_name }}", package_version: "{{ processed_ig.version }}", resource_type: resourceType, view: view });
+    const params = new URLSearchParams({ 
+        package_name: "{{ processed_ig.package_name }}", 
+        version: "{{ processed_ig.version }}",
+        resource_type: resourceType, 
+        view: view,
+        include_narrative: includeNarrative,
+        raw: raw
+    });
     const fetchUrl = `${structureBaseUrl}?${params.toString()}`;
     try {
         const response = await fetch(fetchUrl);
@@ -932,13 +908,11 @@ async function fetchStructure(resourceType, view) {
         const data = await response.json();
         try { structureDataCache[cacheKey] = JSON.parse(JSON.stringify(data)); } catch(e) { structureDataCache[cacheKey] = data; }
         return JSON.parse(JSON.stringify(data));
-    } catch (error) { console.error(`Error fetching ${view} structure:`, error); throw error; }
+    } catch (error) { console.error(`Error fetching ${raw ? 'raw' : view} structure:`, error); throw error; }
 }
 
-
-// --- Populate Structure for All Views - V4 (Add Search Param Logging) ---
+// --- Populate Structure for All Views - V5 (Add Search Param Logging, Include Narrative) ---
 async function populateStructure(resourceType) {
-    // ... (keep existing variable assignments and UI resets at the beginning) ...
     if (structureTitle) structureTitle.textContent = `${resourceType} ({{ processed_ig.package_name }}#{{ processed_ig.version }})`;
     if (rawStructureTitle) rawStructureTitle.textContent = `${resourceType} ({{ processed_ig.package_name }}#{{ processed_ig.version }})`;
     if (structureLoading) structureLoading.style.display = 'block';
@@ -955,70 +929,51 @@ async function populateStructure(resourceType) {
     if (bindingsTableBody) bindingsTableBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted fst-italic">Loading...</td></tr>';
     if (searchParamsTableBody) searchParamsTableBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted fst-italic">Loading...</td></tr>';
     if (rawStructureContent) rawStructureContent.textContent = 'Loading...';
-
     try {
         console.log(`PopulateStructure V4: Fetching structure and search params for ${resourceType}`);
-        const structureBaseUrl = "{{ url_for('get_structure') }}";
-        const params = new URLSearchParams({ package_name: "{{ processed_ig.package_name }}", package_version: "{{ processed_ig.version }}", resource_type: resourceType });
-        const fetchUrl = `${structureBaseUrl}?${params.toString()}`;
-        const response = await fetch(fetchUrl);
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP error ${response.status}: ${errorText}`);
-        }
-        const data = await response.json();
-
-        if (!data || !data.elements) { throw new Error(`Structure data or elements missing for ${resourceType}.`); }
-
-        const snapshotElementsCopy = JSON.parse(JSON.stringify(data.elements));
-        const mustSupportPaths = new Set(data.must_support_paths || []);
-        const searchParams = data.search_parameters || []; // Get search params
-        const fallbackUsed = data.fallback_used || false;
-        const fallbackSource = data.source_package || 'FHIR core';
-
-        // *** ADDED LOG: Check received search parameters ***
+        const includeNarrative = includeNarrativeCheckbox ? includeNarrativeCheckbox.checked : true;
+        // Fetch processed data for UI tabs
+        const processedData = await fetchStructure(resourceType, 'snapshot', includeNarrative, false);
+        if (!processedData || !processedData.elements) { throw new Error(`Structure data or elements missing for ${resourceType}.`); }
+        const snapshotElementsCopy = JSON.parse(JSON.stringify(processedData.elements));
+        const mustSupportPaths = new Set(processedData.must_support_paths || []);
+        const searchParams = processedData.search_parameters || [];
+        const fallbackUsed = processedData.fallback_used || false;
+        const sourcePackage = processedData.source_package || 'FHIR core';
         console.log('[populateStructure] Received search_parameters:', searchParams);
-        // *************************************************
-
-        // Update Raw JSON View
+        // Fetch raw StructureDefinition for raw view
+        const rawData = await fetchStructure(resourceType, 'snapshot', includeNarrative, true);
         if (rawStructureContent) {
-            rawStructureContent.textContent = JSON.stringify(data, null, 4);
-             if (rawStructureContent.classList.contains('hljs')) { rawStructureContent.classList.remove('hljs'); }
-             hljs.highlightElement(rawStructureContent);
-             if (fallbackUsed && structureFallbackMessage) {
-                 structureFallbackMessage.textContent = `Note: Displaying structure from fallback package: ${fallbackSource}`;
-                 structureFallbackMessage.style.display = 'block';
-             }
-        } else { if (rawStructureContent) rawStructureContent.textContent = '(Raw content display element not found)';}
-
-        // Render the Tree Views
+            rawStructureContent.textContent = JSON.stringify(rawData, null, 4);
+            if (rawStructureContent.classList.contains('hljs')) { rawStructureContent.classList.remove('hljs'); }
+            rawStructureContent.dataset.highlighted = '';
+            hljs.highlightElement(rawStructureContent);
+            if (fallbackUsed && structureFallbackMessage) {
+                structureFallbackMessage.textContent = `Note: Displaying structure from fallback package: ${sourcePackage}`;
+                structureFallbackMessage.style.display = 'block';
+            }
+        } else { if (rawStructureContent) rawStructureContent.textContent = '(Raw content display element not found)'; }
         for (const view of views) {
-             console.log(`PopulateStructure V4: Rendering view '${view}' for ${resourceType}`);
-             const treeContainer = document.getElementById(`structure-tree-${view}`);
-             if (!treeContainer) { console.error(`Container missing for ${view}`); continue; }
-             await renderStructureTree(resourceType, view, JSON.parse(JSON.stringify(snapshotElementsCopy)), mustSupportPaths);
+            console.log(`PopulateStructure V4: Rendering view '${view}' for ${resourceType}`);
+            const treeContainer = document.getElementById(`structure-tree-${view}`);
+            if (!treeContainer) { console.error(`Container missing for ${view}`); continue; }
+            await renderStructureTree(resourceType, view, JSON.parse(JSON.stringify(snapshotElementsCopy)), mustSupportPaths);
         }
-
-        // Render Constraints & Bindings tables
-        renderConstraintsTable(data.elements);
-        renderBindingsTable(data.elements);
-        // Render Search Params table (passing potentially empty array)
-        renderSearchParametersTable(searchParams); // Pass the retrieved data
-
+        renderConstraintsTable(processedData.elements);
+        renderBindingsTable(processedData.elements);
+        renderSearchParametersTable(searchParams);
     } catch (error) {
         console.error("Error populating structure:", error);
-        // ... existing error handling ...
         views.forEach(v => { const tc = document.getElementById(`structure-tree-${v}`); if(tc) tc.innerHTML = `<div class="alert alert-danger m-2">Error loading structure: ${error.message}</div>`; });
         if (constraintsTableBody) constraintsTableBody.innerHTML = `<tr><td colspan="5" class="text-danger text-center">Error loading constraints: ${error.message}</td></tr>`;
         if (bindingsTableBody) bindingsTableBody.innerHTML = `<tr><td colspan="4" class="text-danger text-center">Error loading bindings: ${error.message}</td></tr>`;
-        if (searchParamsTableBody) searchParamsTableBody.innerHTML = `<tr><td colspan="4" class="text-danger text-center">Error loading search params: ${error.message}</td></tr>`; // Show error here too
+        if (searchParamsTableBody) searchParamsTableBody.innerHTML = `<tr><td colspan="4" class="text-danger text-center">Error loading search params: ${error.message}</td></tr>`;
         if (rawStructureContent) { rawStructureContent.textContent = `Error: ${error.message}`; }
-     } finally {
+    } finally {
         if (structureLoading) structureLoading.style.display = 'none';
         if (rawStructureLoading) rawStructureLoading.style.display = 'none';
     }
-} // End populateStructure V4
-
+}// End populateStructure V5
 
 // --- Populate Example Selector Dropdown ---
 function populateExampleSelector(resourceOrProfileIdentifier) {
@@ -1040,24 +995,73 @@ async function fetchAndDisplayExample(selectedFilePath) {
     const resetCopyButton = (button, tooltipInstance, originalTitle) => { if (tooltipInstance && button?.isConnected) { tooltipInstance.hide(); button.setAttribute('data-bs-original-title', originalTitle); button.querySelector('i')?.classList.replace('bi-check-lg', 'bi-clipboard'); } };
     resetCopyButton(copyRawExButton, copyRawExTooltipInstance, 'Copy Raw Content'); resetCopyButton(copyPrettyJsonButton, copyPrettyJsonTooltipInstance, 'Copy JSON');
     if (!selectedFilePath) { exampleLoading.style.display = 'none'; return; }
-    const exampleBaseUrl = "{{ url_for('get_example') }}"; const exampleParams = new URLSearchParams({ package_name: "{{ processed_ig.package_name }}", package_version: "{{ processed_ig.version }}", filename: selectedFilePath }); const exampleFetchUrl = `${exampleBaseUrl}?${exampleParams.toString()}`;
+    const exampleBaseUrl = "{{ url_for('get_example') }}";
+    const includeNarrative = includeNarrativeCheckbox ? includeNarrativeCheckbox.checked : true;
+    const exampleParams = new URLSearchParams({ 
+        package_name: "{{ processed_ig.package_name }}", 
+        version: "{{ processed_ig.version }}",  // Changed from package_version to version
+        filename: selectedFilePath,
+        include_narrative: includeNarrative
+    });
+    const exampleFetchUrl = `${exampleBaseUrl}?${exampleParams.toString()}`;
     try {
-        const response = await fetch(exampleFetchUrl); if (!response.ok) { throw new Error(`HTTP error ${response.status}`); } const rawData = await response.text();
-        if(exampleFilename) exampleFilename.textContent = `Source: ${selectedFilePath.split('/').pop()}`; if(exampleContentRaw) exampleContentRaw.textContent = rawData; let prettyJson = '(Not valid JSON)';
-        try { prettyJson = JSON.stringify(JSON.parse(rawData), null, 4); } catch (e) { prettyJson = rawData.startsWith('<') ? '(Content is XML, not JSON)' : `(Error parsing JSON: ${e.message})`; } if(exampleContentJson) exampleContentJson.textContent = prettyJson;
-        if (exampleContentRaw) hljs.highlightElement(exampleContentRaw); if (exampleContentJson) hljs.highlightElement(exampleContentJson); if(exampleContentWrapper) exampleContentWrapper.style.display = 'block';
-    } catch (error) { console.error("Error fetching or displaying example:", error); if (exampleFilename) exampleFilename.textContent = 'Error loading example'; if (exampleContentRaw) exampleContentRaw.textContent = `Error: ${error.message}`; if (exampleContentJson) exampleContentJson.textContent = `Error: ${error.message}`; if (exampleContentWrapper) exampleContentWrapper.style.display = 'block'; }
-    finally { if (exampleLoading) exampleLoading.style.display = 'none'; }
+        const response = await fetch(exampleFetchUrl); 
+        if (!response.ok) { throw new Error(`HTTP error ${response.status}`); } 
+        const rawData = await response.text();
+        if(exampleFilename) exampleFilename.textContent = `Source: ${selectedFilePath.split('/').pop()}`; 
+        if(exampleContentRaw) exampleContentRaw.textContent = rawData; 
+        let prettyJson = '(Not valid JSON)';
+        try { prettyJson = JSON.stringify(JSON.parse(rawData), null, 4); } catch (e) { prettyJson = rawData.startsWith('<') ? '(Content is XML, not JSON)' : `(Error parsing JSON: ${e.message})`; } 
+        if(exampleContentJson) exampleContentJson.textContent = prettyJson;
+        if (exampleContentRaw) hljs.highlightElement(exampleContentRaw); 
+        if (exampleContentJson) hljs.highlightElement(exampleContentJson); 
+        if(exampleContentWrapper) exampleContentWrapper.style.display = 'block';
+    } catch (error) { 
+        console.error("Error fetching or displaying example:", error); 
+        if (exampleFilename) exampleFilename.textContent = 'Error loading example'; 
+        if (exampleContentRaw) exampleContentRaw.textContent = `Error: ${error.message}`; 
+        if (exampleContentJson) exampleContentJson.textContent = `Error: ${error.message}`; 
+        if (exampleContentWrapper) exampleContentWrapper.style.display = 'block'; 
+    } finally { 
+        if (exampleLoading) exampleLoading.style.display = 'none'; 
+    }
 }
-
 
 // --- Generic Copy Logic Function ---
 function setupCopyButton(buttonElement, sourceElement, tooltipInstance, successTitle, originalTitle, errorTitle, nothingTitle) {
     if (!buttonElement || !sourceElement) { return null; }
     bootstrap.Tooltip.getInstance(buttonElement)?.dispose();
     tooltipInstance = new bootstrap.Tooltip(buttonElement, { title: originalTitle });
-    const clickHandler = () => { const textToCopy = sourceElement.textContent; const copyIcon = buttonElement.querySelector('i'); const updateTooltip = (newTitle, iconClass) => { buttonElement.setAttribute('data-bs-original-title', newTitle); tooltipInstance?.setContent({ '.tooltip-inner': newTitle }); tooltipInstance?.show(); if (copyIcon) copyIcon.className = `bi ${iconClass}`; setTimeout(() => { if (buttonElement.isConnected) { tooltipInstance?.hide(); buttonElement.setAttribute('data-bs-original-title', originalTitle); if (copyIcon) copyIcon.className = 'bi bi-clipboard'; } }, 1500); }; if (textToCopy && textToCopy.trim() && !textToCopy.startsWith('(Could not') && !textToCopy.startsWith('(Not valid') && !textToCopy.startsWith('Error:')) { navigator.clipboard.writeText(textToCopy).then(() => { updateTooltip(successTitle, 'bi-check-lg'); }).catch(err => { console.error(`Copy failed:`, err); updateTooltip(errorTitle, 'bi-exclamation-triangle'); }); } else { updateTooltip(nothingTitle, 'bi-clipboard'); } };
-    buttonElement.removeEventListener('click', clickHandler); buttonElement.addEventListener('click', clickHandler); return tooltipInstance;
+    const clickHandler = () => { 
+        const textToCopy = sourceElement.textContent; 
+        const copyIcon = buttonElement.querySelector('i'); 
+        const updateTooltip = (newTitle, iconClass) => { 
+            buttonElement.setAttribute('data-bs-original-title', newTitle); 
+            tooltipInstance?.setContent({ '.tooltip-inner': newTitle }); 
+            tooltipInstance?.show(); 
+            if (copyIcon) copyIcon.className = `bi ${iconClass}`; 
+            setTimeout(() => { 
+                if (buttonElement.isConnected) { 
+                    tooltipInstance?.hide(); 
+                    buttonElement.setAttribute('data-bs-original-title', originalTitle); 
+                    if (copyIcon) copyIcon.className = 'bi bi-clipboard'; 
+                } 
+            }, 1500); 
+        }; 
+        if (textToCopy && textToCopy.trim() && !textToCopy.startsWith('(Could not') && !textToCopy.startsWith('(Not valid') && !textToCopy.startsWith('Error:')) { 
+            navigator.clipboard.writeText(textToCopy).then(() => { 
+                updateTooltip(successTitle, 'bi-check-lg'); 
+            }).catch(err => { 
+                console.error(`Copy failed:`, err); 
+                updateTooltip(errorTitle, 'bi-exclamation-triangle'); 
+            }); 
+        } else { 
+            updateTooltip(nothingTitle, 'bi-clipboard'); 
+        } 
+    };
+    buttonElement.removeEventListener('click', clickHandler); 
+    buttonElement.addEventListener('click', clickHandler); 
+    return tooltipInstance;
 }
 
 // --- Function to Render Constraints Table ---
@@ -1071,13 +1075,11 @@ function renderConstraintsTable(elements) {
     let constraintsFound = false;
 
     if (!elements || !Array.isArray(elements)) {
-         console.warn("renderConstraintsTable called with invalid elements data:", elements);
-         elements = []; // Prevent errors later
+        console.warn("renderConstraintsTable called with invalid elements data:", elements);
+        elements = []; // Prevent errors later
     }
 
-
     elements.forEach(element => {
-        // Check if element exists and has a constraint property which is an array
         if (element && element.constraint && Array.isArray(element.constraint) && element.constraint.length > 0) {
             element.constraint.forEach(constraint => {
                 if (constraint) { // Ensure constraint object itself exists
@@ -1106,14 +1108,12 @@ function renderConstraintsTable(elements) {
     }
 
     // Re-run highlight.js for the new code blocks
-    // Use setTimeout to allow the DOM to update before highlighting
-     setTimeout(() => {
-         document.querySelectorAll('#constraints-table code.language-fhirpath').forEach((block) => {
-             // Remove existing highlight classes if any, before re-highlighting
-             block.classList.remove('hljs');
-             hljs.highlightElement(block);
-         });
-     }, 0);
+    setTimeout(() => {
+        document.querySelectorAll('#constraints-table code.language-fhirpath').forEach((block) => {
+            block.classList.remove('hljs');
+            hljs.highlightElement(block);
+        });
+    }, 0);
 }
 
 // --- Function to Render Terminology Bindings Table ---
@@ -1127,12 +1127,11 @@ function renderBindingsTable(elements) {
     let bindingsFound = false;
 
     if (!elements || !Array.isArray(elements)) {
-         console.warn("renderBindingsTable called with invalid elements data:", elements);
-         elements = []; // Prevent errors later
+        console.warn("renderBindingsTable called with invalid elements data:", elements);
+        elements = []; // Prevent errors later
     }
 
     elements.forEach(element => {
-        // Check if element exists and has a binding property which is an object
         if (element && element.binding && typeof element.binding === 'object') {
             bindingsFound = true;
             const binding = element.binding;
@@ -1143,12 +1142,11 @@ function renderBindingsTable(elements) {
             if (binding.valueSet) {
                 const valueSetLink = document.createElement('a');
                 valueSetLink.href = binding.valueSet; // Ideally, resolve canonical to actual URL if possible
-                // Try to show last part of URL as name, or full URL if no '/'
                 const urlParts = binding.valueSet.split('/');
                 valueSetLink.textContent = urlParts.length > 1 ? urlParts[urlParts.length - 1] : binding.valueSet;
                 valueSetLink.target = '_blank'; // Open in new tab
-                 valueSetLink.title = `Open ValueSet: ${binding.valueSet}`; // Add tooltip
-                 valueSetLink.setAttribute('data-bs-toggle', 'tooltip'); // Enable tooltip
+                valueSetLink.title = `Open ValueSet: ${binding.valueSet}`; // Add tooltip
+                valueSetLink.setAttribute('data-bs-toggle', 'tooltip'); // Enable tooltip
                 valueSetCell.appendChild(valueSetLink);
                 // Re-initialize tooltips for dynamically added links
                 const tooltip = new bootstrap.Tooltip(valueSetLink);
@@ -1170,110 +1168,71 @@ function renderBindingsTable(elements) {
 
 // --- Function to Render Search Parameters Table (Includes Conformance Badges & Tooltips) ---
 function renderSearchParametersTable(searchParamsData) {
-    // Find the table body element using its ID
     const tableBody = document.getElementById('searchparams-table')?.querySelector('tbody');
-
-    // Check if the table body element exists
     if (!tableBody) {
         console.error('Search Params table body element (#searchparams-table > tbody) not found');
-        return; // Exit if the table body isn't found
+        return;
     }
 
-    tableBody.innerHTML = ''; // Clear any existing rows (like loading indicators)
-
-    // Log the data received for debugging
+    tableBody.innerHTML = '';
     console.log('[renderSearchParametersTable] Received data:', searchParamsData);
 
-    // Check if the received data is valid and is an array with items
     if (!searchParamsData || !Array.isArray(searchParamsData) || searchParamsData.length === 0) {
         console.log('[renderSearchParametersTable] No valid search parameter data found, displaying message.');
-        // Display a message indicating no parameters were found
         const row = tableBody.insertRow();
         const cell = row.insertCell();
-        cell.colSpan = 4; // Span across all columns
+        cell.colSpan = 4;
         cell.textContent = 'No relevant search parameters found for this resource type.';
         cell.style.textAlign = 'center';
-        cell.classList.add('text-muted', 'fst-italic'); // Style the message
-        return; // Exit the function
+        cell.classList.add('text-muted', 'fst-italic');
+        return;
     }
 
-    // Sort parameters alphabetically by their 'code' before rendering
     searchParamsData.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
 
-    // Iterate through each search parameter object in the sorted array
     searchParamsData.forEach((param, index) => {
-        console.log(`[renderSearchParametersTable] Processing param ${index + 1}:`, param); // Log each parameter
-
-        const row = tableBody.insertRow(); // Create a new table row
-
-        // --- Column 1: Parameter Code ---
+        console.log(`[renderSearchParametersTable] Processing param ${index + 1}:`, param);
+        const row = tableBody.insertRow();
         const nameCell = row.insertCell();
-        // Use escapeHtmlAttr (ensure this helper function exists in your scope)
-        // Display the parameter code within a <code> tag
         nameCell.innerHTML = `<code>${escapeHtmlAttr(param.code || 'N/A')}</code>`;
-
-        // --- Column 2: Parameter Type ---
-        row.insertCell().textContent = param.type || 'N/A'; // Display the parameter type
-
-        // --- Column 3: Conformance Level (with Badges and Tooltip) ---
+        row.insertCell().textContent = param.type || 'N/A';
         const conformanceCell = row.insertCell();
-        // Default to 'Optional' if conformance isn't specified in the data
         const conformanceValue = param.conformance || 'Optional';
-        let badgeClass = 'bg-secondary'; // Default badge style
-        let titleText = 'Conformance level not specified in CapabilityStatement.'; // Default tooltip text
-
-        // Determine badge style and tooltip text based on the conformance value
+        let badgeClass = 'bg-secondary';
+        let titleText = 'Conformance level not specified in CapabilityStatement.';
         if (conformanceValue === 'SHALL') {
-            badgeClass = 'bg-danger'; // Red for SHALL (Mandatory)
+            badgeClass = 'bg-danger';
             titleText = 'Server SHALL support this parameter.';
         } else if (conformanceValue === 'SHOULD') {
-            badgeClass = 'bg-warning text-dark'; // Yellow for SHOULD (Recommended)
-             titleText = 'Server SHOULD support this parameter.';
+            badgeClass = 'bg-warning text-dark';
+            titleText = 'Server SHOULD support this parameter.';
         } else if (conformanceValue === 'MAY') {
-            badgeClass = 'bg-info text-dark'; // Blue for MAY (Optional but defined)
-             titleText = 'Server MAY support this parameter.';
+            badgeClass = 'bg-info text-dark';
+            titleText = 'Server MAY support this parameter.';
         } else if (conformanceValue === 'Optional') {
-             badgeClass = 'bg-light text-dark border'; // Light grey for Optional (Not explicitly mentioned in Caps)
-             titleText = 'Server support for this parameter is optional.';
+            badgeClass = 'bg-light text-dark border';
+            titleText = 'Server support for this parameter is optional.';
         }
-        // Add handling for other potential values like 'SHALL-NOT', 'SHOULD-NOT' if needed
-
-        // Set the tooltip attributes
         conformanceCell.setAttribute('title', titleText);
         conformanceCell.setAttribute('data-bs-toggle', 'tooltip');
         conformanceCell.setAttribute('data-bs-placement', 'top');
-        // Set the cell content with the styled badge
         conformanceCell.innerHTML = `<span class="badge ${badgeClass}">${escapeHtmlAttr(conformanceValue)}</span>`;
-
-        // Initialize or re-initialize the Bootstrap tooltip for this specific cell
-        // This is important because the table rows are added dynamically
         const existingTooltip = bootstrap.Tooltip.getInstance(conformanceCell);
-        if (existingTooltip) {
-            existingTooltip.dispose(); // Remove any previous tooltip instance to avoid conflicts
-        }
-        new bootstrap.Tooltip(conformanceCell); // Create and initialize the new tooltip
-
-        // --- Column 4: Description (with FHIRPath Tooltip if available) ---
+        if (existingTooltip) { existingTooltip.dispose(); }
+        new bootstrap.Tooltip(conformanceCell);
         const descriptionCell = row.insertCell();
-        // Use escapeHtmlAttr for the description text
         descriptionCell.innerHTML = `<small>${escapeHtmlAttr(param.description || 'No description available.')}</small>`;
-        // If a FHIRPath expression exists, add it as a tooltip
         if (param.expression) {
-             descriptionCell.setAttribute('title', `FHIRPath: ${param.expression}`);
-             descriptionCell.setAttribute('data-bs-toggle', 'tooltip');
-             descriptionCell.setAttribute('data-bs-placement', 'top');
-             // Initialize or re-initialize the tooltip
-             const existingDescTooltip = bootstrap.Tooltip.getInstance(descriptionCell);
-             if (existingDescTooltip) {
-                 existingDescTooltip.dispose();
-             }
-             new bootstrap.Tooltip(descriptionCell);
+            descriptionCell.setAttribute('title', `FHIRPath: ${param.expression}`);
+            descriptionCell.setAttribute('data-bs-toggle', 'tooltip');
+            descriptionCell.setAttribute('data-bs-placement', 'top');
+            const existingDescTooltip = bootstrap.Tooltip.getInstance(descriptionCell);
+            if (existingDescTooltip) { existingDescTooltip.dispose(); }
+            new bootstrap.Tooltip(descriptionCell);
         }
-    }); // End forEach loop over searchParamsData
-
+    });
     console.log('[renderSearchParametersTable] Finished rendering parameters.');
-} // End renderSearchParametersTable function
-
+} // End renderSearchParametersTable
 
 // --- DOMContentLoaded Listener ---
 document.addEventListener('DOMContentLoaded', function() {
@@ -1303,6 +1262,7 @@ document.addEventListener('DOMContentLoaded', function() {
         copyRawDefButton = document.getElementById('copy-raw-def-button');
         copyRawExButton = document.getElementById('copy-raw-ex-button');
         copyPrettyJsonButton = document.getElementById('copy-pretty-json-button');
+        includeNarrativeCheckbox = document.getElementById('includeNarrative');
 
         // --- Initialize Highlight.js ---
         hljs.configure({ languages: ['json'] });
@@ -1325,7 +1285,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const resourceType = link.dataset.resourceType;
                 if (!resourceType) { console.error("Missing data-resource-type"); return; }
                 console.log("Resource type link clicked:", resourceType);
-                await populateStructure(resourceType); // Uses V9 buildTreeData, V2 populateStructure
+                await populateStructure(resourceType);
                 populateExampleSelector(resourceType);
                 if (structureDisplayWrapper) { structureDisplayWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
             });
@@ -1336,7 +1296,21 @@ document.addEventListener('DOMContentLoaded', function() {
             exampleSelect.addEventListener('change', function(event) { fetchAndDisplayExample(this.value); });
         } else { console.warn("Example select dropdown not found."); }
 
-        // --- No Collapse Listeners Here ---
+        // Narrative Toggle Checkbox Handler
+        if (includeNarrativeCheckbox) {
+            includeNarrativeCheckbox.addEventListener('change', async function() {
+                const selectedFilePath = exampleSelect?.value;
+                const resourceType = exampleResourceTypeTitle?.textContent;
+                if (selectedFilePath) {
+                    await fetchAndDisplayExample(selectedFilePath);
+                }
+                if (resourceType && resourceType !== '(unknown)') {
+                    await populateStructure(resourceType);
+                }
+            });
+        } else {
+            console.warn("Narrative checkbox not found.");
+        }
 
         // --- Initial UI State ---
         if(structureDisplayWrapper) structureDisplayWrapper.style.display = 'none';
@@ -1351,11 +1325,11 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error("JavaScript error during DOMContentLoaded setup:", e);
         const body = document.querySelector('body');
         if (body) {
-             const errorDiv = document.createElement('div');
-             errorDiv.className = 'alert alert-danger m-3';
-             errorDiv.textContent = 'A critical error occurred while initializing the page view.';
-             if(body.firstChild) { body.insertBefore(errorDiv, body.firstChild); } else { body.appendChild(errorDiv); }
-         }
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'alert alert-danger m-3';
+            errorDiv.textContent = 'A critical error occurred while initializing the page view.';
+            if(body.firstChild) { body.insertBefore(errorDiv, body.firstChild); } else { body.appendChild(errorDiv); }
+        }
     }
 }); // End DOMContentLoaded Listener
 

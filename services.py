@@ -244,14 +244,18 @@ def parse_package_filename(filename):
     version = ""
     return name, version
 
-def remove_narrative(resource):
-    """Remove narrative text element from a FHIR resource."""
-    if isinstance(resource, dict):
+def remove_narrative(resource, include_narrative=False):
+    """Remove narrative text element from a FHIR resource if not including narrative."""
+    if isinstance(resource, dict) and not include_narrative:
         if 'text' in resource:
             logger.debug(f"Removing narrative text from resource: {resource.get('resourceType', 'unknown')}")
             del resource['text']
         if resource.get('resourceType') == 'Bundle' and 'entry' in resource:
-            resource['entry'] = [dict(entry, resource=remove_narrative(entry.get('resource'))) if entry.get('resource') else entry for entry in resource['entry']]
+            resource['entry'] = [
+                dict(entry, resource=remove_narrative(entry.get('resource'), include_narrative))
+                if entry.get('resource') else entry
+                for entry in resource['entry']
+            ]
     return resource
 
 def get_cached_structure(package_name, package_version, resource_type, view):
@@ -300,7 +304,7 @@ def cache_structure(package_name, package_version, resource_type, view, structur
     except Exception as e:
         logger.error(f"Error caching structure: {e}", exc_info=True)
 
-def find_and_extract_sd(tgz_path, resource_identifier, profile_url=None):
+def find_and_extract_sd(tgz_path, resource_identifier, profile_url=None, include_narrative=False, raw=False):
     """Helper to find and extract StructureDefinition json from a tgz path, prioritizing profile match."""
     sd_data = None
     found_path = None
@@ -310,25 +314,19 @@ def find_and_extract_sd(tgz_path, resource_identifier, profile_url=None):
     try:
         with tarfile.open(tgz_path, "r:gz") as tar:
             logger.debug(f"Searching for SD matching '{resource_identifier}' with profile '{profile_url}' in {os.path.basename(tgz_path)}")
-            # Store potential matches to evaluate the best one at the end
-            potential_matches = [] # Store tuples of (precision_score, data, member_name)
-
+            potential_matches = []
             for member in tar:
                 if not (member.isfile() and member.name.startswith('package/') and member.name.lower().endswith('.json')):
                     continue
-                # Skip common metadata files
                 if os.path.basename(member.name).lower() in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']:
                     continue
-
                 fileobj = None
                 try:
                     fileobj = tar.extractfile(member)
                     if fileobj:
                         content_bytes = fileobj.read()
-                        # Handle potential BOM (Byte Order Mark)
                         content_string = content_bytes.decode('utf-8-sig')
                         data = json.loads(content_string)
-
                         if isinstance(data, dict) and data.get('resourceType') == 'StructureDefinition':
                             sd_id = data.get('id')
                             sd_name = data.get('name')
@@ -337,57 +335,32 @@ def find_and_extract_sd(tgz_path, resource_identifier, profile_url=None):
                             sd_filename_base = os.path.splitext(os.path.basename(member.name))[0]
                             sd_filename_lower = sd_filename_base.lower()
                             resource_identifier_lower = resource_identifier.lower() if resource_identifier else None
-
-                            # logger.debug(f"Checking SD: id={sd_id}, name={sd_name}, type={sd_type}, url={sd_url}, file={sd_filename_lower} against identifier='{resource_identifier}'")
-
-                            match_score = 0 # Higher score means more precise match
-
-                            # Highest precision: Exact match on profile_url
+                            match_score = 0
                             if profile_url and sd_url == profile_url:
                                 match_score = 5
-                                logger.debug(f"Exact match found based on profile_url: {profile_url}")
-                                # If we find the exact profile URL, this is the best possible match.
-                                sd_data = remove_narrative(data)
+                                sd_data = remove_narrative(data, include_narrative)
                                 found_path = member.name
-                                logger.info(f"Found definitive SD matching profile '{profile_url}' at path: {found_path}. Stopping search.")
-                                break # Stop searching immediately
-
-                            # Next highest precision: Exact match on id or name
+                                logger.info(f"Found definitive SD matching profile '{profile_url}' at path: {found_path}")
+                                break
                             elif resource_identifier_lower:
                                 if sd_id and resource_identifier_lower == sd_id.lower():
                                     match_score = 4
-                                    logger.debug(f"Match found based on exact sd_id: {sd_id}")
                                 elif sd_name and resource_identifier_lower == sd_name.lower():
-                                     match_score = 4
-                                     logger.debug(f"Match found based on exact sd_name: {sd_name}")
-                                # Next: Match filename pattern "StructureDefinition-{identifier}.json"
+                                    match_score = 4
                                 elif sd_filename_lower == f"structuredefinition-{resource_identifier_lower}":
-                                     match_score = 3
-                                     logger.debug(f"Match found based on exact filename pattern: {member.name}")
-                                 # Next: Match on type ONLY if the identifier looks like a base type (no hyphens/dots)
+                                    match_score = 3
                                 elif sd_type and resource_identifier_lower == sd_type.lower() and not re.search(r'[-.]', resource_identifier):
-                                      match_score = 2
-                                      logger.debug(f"Match found based on sd_type (simple identifier): {sd_type}")
-                                 # Lower precision: Check if identifier is IN the filename
+                                    match_score = 2
                                 elif resource_identifier_lower in sd_filename_lower:
-                                      match_score = 1
-                                      logger.debug(f"Potential match based on identifier in filename: {member.name}")
-                                 # Lowest precision: Check if identifier is IN the URL
+                                    match_score = 1
                                 elif sd_url and resource_identifier_lower in sd_url.lower():
-                                      match_score = 1
-                                      logger.debug(f"Potential match based on identifier in url: {sd_url}")
-
+                                    match_score = 1
                             if match_score > 0:
-                                potential_matches.append((match_score, remove_narrative(data), member.name))
-
-                                # If it's a very high precision match, we can potentially break early
-                                if match_score >= 3: # Exact ID, Name, or Filename pattern
-                                     logger.info(f"Found high-confidence match for '{resource_identifier}' ({member.name}), stopping search.")
-                                     # Set sd_data here and break
-                                     sd_data = remove_narrative(data)
-                                     found_path = member.name
-                                     break
-
+                                potential_matches.append((match_score, remove_narrative(data, include_narrative), member.name))
+                                if match_score >= 3:
+                                    sd_data = remove_narrative(data, include_narrative)
+                                    found_path = member.name
+                                    break
                 except json.JSONDecodeError as e:
                     logger.debug(f"Could not parse JSON in {member.name}, skipping: {e}")
                 except UnicodeDecodeError as e:
@@ -395,36 +368,38 @@ def find_and_extract_sd(tgz_path, resource_identifier, profile_url=None):
                 except tarfile.TarError as e:
                     logger.warning(f"Tar error reading member {member.name}, skipping: {e}")
                 except Exception as e:
-                    logger.warning(f"Could not read/parse potential SD {member.name}, skipping: {e}", exc_info=False)
+                    logger.warning(f"Could not read/parse potential SD {member.name}, skipping: {e}")
                 finally:
                     if fileobj:
                         fileobj.close()
-
-            # If the loop finished without finding an exact profile_url or high-confidence match (score >= 3)
             if not sd_data and potential_matches:
-                # Sort potential matches by score (highest first)
                 potential_matches.sort(key=lambda x: x[0], reverse=True)
                 best_match = potential_matches[0]
                 sd_data = best_match[1]
                 found_path = best_match[2]
                 logger.info(f"Selected best match for '{resource_identifier}' from potential matches (Score: {best_match[0]}): {found_path}")
-
             if sd_data is None:
                 logger.info(f"SD matching identifier '{resource_identifier}' or profile '{profile_url}' not found within archive {os.path.basename(tgz_path)}")
-
+            elif raw:
+                # Return the full, unprocessed StructureDefinition JSON
+                with tarfile.open(tgz_path, "r:gz") as tar:
+                    fileobj = tar.extractfile(found_path)
+                    content_bytes = fileobj.read()
+                    content_string = content_bytes.decode('utf-8-sig')
+                    raw_data = json.loads(content_string)
+                    return remove_narrative(raw_data, include_narrative), found_path
     except tarfile.ReadError as e:
         logger.error(f"Tar ReadError reading {tgz_path}: {e}")
         return None, None
     except tarfile.TarError as e:
         logger.error(f"TarError reading {tgz_path} in find_and_extract_sd: {e}")
-        raise # Re-raise critical tar errors
+        raise
     except FileNotFoundError:
         logger.error(f"FileNotFoundError reading {tgz_path} in find_and_extract_sd.")
-        raise # Re-raise critical file errors
+        raise
     except Exception as e:
         logger.error(f"Unexpected error in find_and_extract_sd for {tgz_path}: {e}", exc_info=True)
-        raise # Re-raise unexpected errors
-
+        raise
     return sd_data, found_path
 
 # --- Metadata Saving/Loading ---
@@ -2056,25 +2031,19 @@ def process_fhir_input(input_mode, fhir_file, fhir_text, alias_file=None):
 
 # --- ADD THIS NEW FUNCTION TO services.py ---
 def find_and_extract_search_params(tgz_path, base_resource_type):
-    """
-    Finds and extracts SearchParameter resources relevant to a given base resource type
-    from a FHIR package tgz file.
-    """
+    """Finds and extracts SearchParameter resources relevant to a given base resource type from a FHIR package tgz file."""
     search_params = []
     if not tgz_path or not os.path.exists(tgz_path):
         logger.error(f"Package file not found for SearchParameter extraction: {tgz_path}")
-        return search_params # Return empty list on error
-
+        return search_params
     logger.debug(f"Searching for SearchParameters based on '{base_resource_type}' in {os.path.basename(tgz_path)}")
     try:
         with tarfile.open(tgz_path, "r:gz") as tar:
             for member in tar:
-                # Basic filtering for JSON files in package directory, excluding common metadata
                 if not (member.isfile() and member.name.startswith('package/') and member.name.lower().endswith('.json')):
                     continue
                 if os.path.basename(member.name).lower() in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']:
                     continue
-
                 fileobj = None
                 try:
                     fileobj = tar.extractfile(member)
@@ -2082,31 +2051,23 @@ def find_and_extract_search_params(tgz_path, base_resource_type):
                         content_bytes = fileobj.read()
                         content_string = content_bytes.decode('utf-8-sig')
                         data = json.loads(content_string)
-
-                        # Check if it's a SearchParameter resource
                         if isinstance(data, dict) and data.get('resourceType') == 'SearchParameter':
-                            # Check if the SearchParameter applies to the requested base resource type
-                            sp_bases = data.get('base', []) # 'base' is a list of applicable resource types
+                            sp_bases = data.get('base', [])
                             if base_resource_type in sp_bases:
-                                # Extract relevant information
                                 param_info = {
                                     'id': data.get('id'),
                                     'url': data.get('url'),
                                     'name': data.get('name'),
                                     'description': data.get('description'),
-                                    'code': data.get('code'), # The actual parameter name used in searches
-                                    'type': data.get('type'), # e.g., token, reference, date
-                                    'expression': data.get('expression'), # FHIRPath expression
+                                    'code': data.get('code'),
+                                    'type': data.get('type'),
+                                    'expression': data.get('expression'),
                                     'base': sp_bases,
-                                    # NOTE: Conformance (mandatory/optional) usually comes from CapabilityStatement,
-                                    # which is not processed here. Add placeholders or leave out for now.
-                                    'conformance': 'N/A', # Placeholder
-                                    'is_mandatory': False  # Placeholder
+                                    'conformance': 'N/A',
+                                    'is_mandatory': False
                                 }
                                 search_params.append(param_info)
                                 logger.debug(f"Found relevant SearchParameter: {param_info.get('name')} (ID: {param_info.get('id')}) for base {base_resource_type}")
-
-                # --- Error handling for individual file processing ---
                 except json.JSONDecodeError as e:
                     logger.debug(f"Could not parse JSON for SearchParameter in {member.name}, skipping: {e}")
                 except UnicodeDecodeError as e:
@@ -2118,8 +2079,6 @@ def find_and_extract_search_params(tgz_path, base_resource_type):
                 finally:
                     if fileobj:
                         fileobj.close()
-
-    # --- Error handling for opening/reading the tgz file ---
     except tarfile.ReadError as e:
         logger.error(f"Tar ReadError extracting SearchParameters from {tgz_path}: {e}")
     except tarfile.TarError as e:
@@ -2128,7 +2087,6 @@ def find_and_extract_search_params(tgz_path, base_resource_type):
         logger.error(f"Package file not found during SearchParameter extraction: {tgz_path}")
     except Exception as e:
         logger.error(f"Unexpected error extracting SearchParameters from {tgz_path}: {e}", exc_info=True)
-
     logger.info(f"Found {len(search_params)} SearchParameters relevant to '{base_resource_type}' in {os.path.basename(tgz_path)}")
     return search_params
 # --- END OF NEW FUNCTION ---
