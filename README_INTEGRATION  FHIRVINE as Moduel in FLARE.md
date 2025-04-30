@@ -148,4 +148,4 @@ FHIRVINE’s core functionality (OAuth2 proxy, app registration) will be integra
 
 - **Route Conflicts**: Ensure no overlapping routes between FHIRFLARE and FHIRVINE.
 - **Database Issues**: Verify `SQLALCHEMY_DATABASE_URI` points to the same database.
-- **Logs**: Check `flask run` logs for errors.
+- **Logs**: Check `flask run` logs for errors......
