@@ -3,6 +3,7 @@ import os
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 import datetime
 import shutil
+import queue
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response, current_app, session, send_file, make_response
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -17,7 +18,7 @@ import logging
 import requests
 import re
 import services  # Restore full module import
-from services import services_bp, construct_tgz_filename, parse_package_filename  # Keep Blueprint import
+from services import services_bp, construct_tgz_filename, parse_package_filename, import_package_and_dependencies  # Keep Blueprint import
 from forms import IgImportForm, ValidationForm, FSHConverterForm, TestDataUploadForm
 from wtforms import SubmitField
 #from models import ProcessedIg
@@ -52,6 +53,23 @@ class CustomFormDataParser(FormDataParser):
         # Set to a sufficiently high number for your expected maximum file count.
         super().__init__(*args, max_form_parts=2000, **kwargs) # Example: Allow 2000 parts
 # --- END NEW ---
+
+# Custom logging handler to capture INFO logs from services module
+log_queue = queue.Queue()
+class StreamLogHandler(logging.Handler):
+    def __init__(self):
+        super().__init__(level=logging.INFO)
+        self.formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
+
+    def emit(self, record):
+        if record.name == 'services' and record.levelno == logging.INFO:
+            msg = self.format(record)
+            log_queue.put(msg)
+
+# Add custom handler to services logger
+services_logger = logging.getLogger('services')
+stream_handler = StreamLogHandler()
+services_logger.addHandler(stream_handler)
 
 # <<< ADD THIS CONTEXT PROCESSOR >>>
 @app.context_processor
@@ -182,12 +200,19 @@ def index():
 @app.route('/import-ig', methods=['GET', 'POST'])
 def import_ig():
     form = IgImportForm()
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
     if form.validate_on_submit():
         name = form.package_name.data
         version = form.package_version.data
         dependency_mode = form.dependency_mode.data
+
+        # Clear log queue for this request
+        while not log_queue.empty():
+            log_queue.get()
+
         try:
-            result = services.import_package_and_dependencies(name, version, dependency_mode=dependency_mode)
+            result = import_package_and_dependencies(name, version, dependency_mode=dependency_mode)
             if result['errors'] and not result['downloaded']:
                 error_msg = result['errors'][0]
                 simplified_msg = error_msg
@@ -199,6 +224,8 @@ def import_ig():
                     simplified_msg = "Could not connect to the FHIR package registry."
                 flash(f"Failed to import {name}#{version}: {simplified_msg}", "error")
                 logger.error(f"Import failed critically for {name}#{version}: {error_msg}")
+                if is_ajax:
+                    return jsonify({"status": "error", "message": simplified_msg}), 400
             else:
                 if result['errors']:
                     flash(f"Partially imported {name}#{version} with errors during dependency processing. Check logs.", "warning")
@@ -206,15 +233,39 @@ def import_ig():
                         logger.warning(f"Import warning for {name}#{version}: {err}")
                 else:
                     flash(f"Successfully downloaded {name}#{version} and dependencies! Mode: {dependency_mode}", "success")
+                if is_ajax:
+                    return jsonify({"status": "success", "message": f"Imported {name}#{version}", "redirect": url_for('view_igs')})
                 return redirect(url_for('view_igs'))
         except Exception as e:
             logger.error(f"Unexpected error during IG import: {str(e)}", exc_info=True)
             flash(f"An unexpected error occurred downloading the IG: {str(e)}", "error")
+            if is_ajax:
+                return jsonify({"status": "error", "message": str(e)}), 500
     else:
         for field, errors in form.errors.items():
             for error in errors:
                 flash(f"Error in {getattr(form, field).label.text}: {error}", "danger")
+        if is_ajax:
+            return jsonify({"status": "error", "message": "Form validation failed", "errors": form.errors}), 400
+
     return render_template('import_ig.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+
+@app.route('/stream-import-logs')
+def stream_import_logs():
+    logger.debug("Accessing stream-import-logs endpoint")
+    def generate():
+        while True:
+            try:
+                msg = log_queue.get(timeout=1)
+                if 'Downloaded' in msg or 'Processing' in msg:
+                    clean_msg = msg.replace('INFO:services:', '').strip()
+                    yield f"data: {clean_msg}\n\n"
+            except queue.Empty:
+                yield ": keepalive\n\n"
+            except GeneratorExit:
+                break
+        yield "data: [DONE]\n\n"
+    return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/view-igs')
 def view_igs():

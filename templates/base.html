@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-okaidia.min.css" rel="stylesheet" />
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/fire-animation.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/animation.css') }}">
     <title>{% if app_mode == 'lite' %}(Lite Version) {% endif %}{% if title %}{{ title }} - {% endif %}{{ site_name }}</title>
     <style>
         /* Default (Light Theme) Styles */
@@ -86,7 +88,7 @@
             height: 1.25rem !important;
             margin-top: 0.25rem;
             display: inline-block !important;
-            border: 1px solid #6c757d;
+            border: 1px solide #6c757d;
         }
         .form-check-input:checked {
             background-color: #007bff;
@@ -177,44 +179,44 @@
              background: inherit; /* Ensure background comes from pre or theme */
         }
 
-/* General Button Theme (Primary, Secondary) */
-.btn-primary {
-    background-color: #007bff;
-    border-color: #007bff;
-    color: white;
-}
-.btn-primary:hover {
-    background-color: #0056b3;
-    border-color: #004085;
-}
-.btn-outline-primary {
-    color: #007bff;
-    border-color: #007bff;
-}
-.btn-outline-primary:hover {
-    background-color: #007bff;
-    color: white;
-}
+        /* General Button Theme (Primary, Secondary) */
+        .btn-primary {
+            background-color: #007bff;
+            border-color: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+            border-color: #004085;
+        }
+        .btn-outline-primary {
+            color: #007bff;
+            border-color: #007bff;
+        }
+        .btn-outline-primary:hover {
+            background-color: #007bff;
+            color: white;
+        }
 
-.btn-secondary {
-    background-color: #6c757d;
-    border-color: #6c757d;
-    color: white;
-}
-.btn-secondary:hover {
-    background-color: #5a6268;
-    border-color: #545b62;
-}
-.btn-outline-secondary {
-    color: #6c757d;
-    border-color: #6c757d;
-}
-.btn-outline-secondary:hover {
-    background-color: #6c757d;
-    color: white;
-}
+        .btn-secondary {
+            background-color: #6c757d;
+            border-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #5a6268;
+            border-color: #545b62;
+        }
+        .btn-outline-secondary {
+            color: #6c757d;
+            border-color: #6c757d;
+        }
+        .btn-outline-secondary:hover {
+            background-color: #6c757d;
+            color: white;
+        }
 
-/* --- Prism.js Theme Overrides for Light Mode --- */
+        /* --- Prism.js Theme Overrides for Light Mode --- */
 
         /* Target code blocks only when NOT in dark theme */
         html:not([data-theme="dark"]) .token.punctuation,
@@ -256,380 +258,380 @@
 
         /* --- End Prism.js Overrides --- */
 
-/* --- Theme Styles for FSH Code Blocks --- */
-pre, pre code {
-    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    font-size: 0.875em;
-    white-space: pre-wrap; /* Allow wrapping */
-    word-break: break-all; /* Break long lines */
-}
+        /* --- Theme Styles for FSH Code Blocks --- */
+        pre, pre code {
+            font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 0.875em;
+            white-space: pre-wrap; /* Allow wrapping */
+            word-break: break-all; /* Break long lines */
+        }
 
-/* Target pre blocks specifically used for FSH output if needed */
-/* If the pre block has a specific class or ID, use that */
-#fsh-output pre, /* Targets any pre within the output container */
-._fsh_output pre /* Targets any pre within the partial template content */
-{
-    background-color: #e9ecef; /* Light theme background */
-    color: #212529; /* Light theme text */
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    padding: 10px;
-    max-height: 600px; /* Adjust as needed */
-    overflow: auto;
-}
+        /* Target pre blocks specifically used for FSH output if needed */
+        /* If the pre block has a specific class or ID, use that */
+        #fsh-output pre, /* Targets any pre within the output container */
+        ._fsh_output pre /* Targets any pre within the partial template content */
+        {
+            background-color: #e9ecef; /* Light theme background */
+            color: #212529; /* Light theme text */
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 600px; /* Adjust as needed */
+            overflow: auto;
+        }
 
-#fsh-output pre code,
-._fsh_output pre code {
-     background-color: transparent !important; /* Ensure code tag doesn't override pre bg */
-     padding: 0;
-     color: inherit; /* Inherit text color from pre */
-     font-size: inherit; /* Inherit font size from pre */
-     display: block; /* Make code fill pre */
-}
-
-
-/* Dark Theme Override */
-html[data-theme="dark"] #fsh-output pre,
-html[data-theme="dark"] ._fsh_output pre
- {
-    background-color: #495057; /* Dark theme background */
-    color: #f8f9fa; /* Dark theme text */
-    border-color: #6c757d;
-}
-
- html[data-theme="dark"] #fsh-output pre code,
- html[data-theme="dark"] ._fsh_output pre code {
-     color: inherit;
- }
-
-/* --- Theme Styles for FHIR UI Operations (fhir_ui_operations.html) --- */
-
-/* Operation Block Container */
-.opblock {
-    border: 1px solid #dee2e6; /* Light theme border */
-    background: #ffffff; /* Light theme background */
-    color: #212529; /* Light theme text */
-}
-html[data-theme="dark"] .opblock {
-    border-color: #495057; /* Dark theme border */
-    background: #343a40; /* Dark theme background (card bg) */
-    color: #f8f9fa; /* Dark theme text */
-}
-
-/* Operation Summary (Header) */
-.opblock-summary {
-    background: #f8f9fa; /* Light theme summary bg */
-    border-bottom: 1px solid #dee2e6;
-    color: #212529; /* Default text color for summary */
-}
-.opblock-summary:hover {
-    background: #e9ecef;
-}
-html[data-theme="dark"] .opblock-summary {
-    background: #40464c; /* Darker summary bg */
-    border-bottom-color: #495057;
-    color: #f8f9fa;
-}
-html[data-theme="dark"] .opblock-summary:hover {
-    background: #495057;
-}
-/* Keep method badge colors fixed - DO NOT override .opblock-summary-method */
-.opblock-summary-description {
-    color: #495057; /* Slightly muted description text */
-}
-html[data-theme="dark"] .opblock-summary-description {
-    color: #adb5bd; /* Lighter muted text for dark */
-}
-
-/* Operation Body (Expanded Section) */
-.opblock-body {
-    border-top: 1px solid #dee2e6;
-}
-html[data-theme="dark"] .opblock-body {
-    border-top-color: #495057;
-}
-
-/* Section Headers within Body */
-.opblock-section-header {
-    border-bottom: 1px solid #eee;
-    color: inherit; /* Inherit from .opblock */
-}
-html[data-theme="dark"] .opblock-section-header {
-    border-bottom-color: #495057;
-}
-.opblock-title {
-     color: inherit; /* Inherit from .opblock */
-}
-
-/* Parameters Table */
-.parameters-table th,
-.parameters-table td {
-    border: 1px solid #dee2e6;
-    color: inherit; /* Inherit from .opblock */
-}
-html[data-theme="dark"] .parameters-table th,
-html[data-theme="dark"] .parameters-table td {
-    border-color: #495057;
-}
-.parameter__type,
-.parameter__in {
-    color: #6c757d; /* Use standard muted color */
-}
-html[data-theme="dark"] .parameter__type,
-html[data-theme="dark"] .parameter__in {
-    color: #adb5bd; /* Use standard dark muted color */
-}
-.parameters-col_description input[type="text"],
-.parameters-col_description input[type="number"] {
-    background-color: #fff; /* Match light form controls */
-    border: 1px solid #ced4da;
-    color: #212529;
-}
-html[data-theme="dark"] .parameters-col_description input[type="text"],
-html[data-theme="dark"] .parameters-col_description input[type="number"] {
-    background-color: #495057; /* Match dark form controls */
-    border-color: #6c757d;
-    color: #f8f9fa;
-}
-
-/* Request Body Textarea */
-.request-body-textarea {
-    background-color: #fff; /* Match light form controls */
-    border: 1px solid #ced4da;
-    color: #212529;
-}
-html[data-theme="dark"] .request-body-textarea {
-    background-color: #495057; /* Match dark form controls */
-    border-color: #6c757d;
-    color: #f8f9fa;
-}
-
-/* Responses Table */
-.responses-table th,
-.responses-table td {
-    border: 1px solid #dee2e6;
-    color: inherit;
-}
-html[data-theme="dark"] .responses-table th,
-html[data-theme="dark"] .responses-table td {
-    border-color: #495057;
-}
-
-/* Example/Schema Tabs & Controls */
-.response-control-media-type {
-    background-color: #f8f9fa;
-}
-html[data-theme="dark"] .response-control-media-type {
-    background-color: #40464c; /* Match summary header bg */
-}
-.tablinks.badge { /* Default inactive tab */
-    background: #dee2e6 !important; /* Light grey inactive */
-    color: #333 !important;
-}
-.tablinks.badge.active { /* Default active tab */
-    background: #007bff !important; /* Use primary color */
-    color: white !important;
-}
-html[data-theme="dark"] .tablinks.badge { /* Dark inactive tab */
-    background: #6c757d !important; /* Dark grey inactive */
-    color: white !important;
-}
-html[data-theme="dark"] .tablinks.badge.active { /* Dark active tab */
-    background: #4dabf7 !important; /* Use dark primary color */
-    color: #000 !important;
-}
-
-/* Code/Output Blocks */
-.highlight-code,
-.request-url-output,
-.curl-output,
-.execute-wrapper pre.response-output-content {
-    background: #e9ecef; /* Light theme pre background */
-    color: #212529;
-    border: 1px solid #dee2e6;
-}
-html[data-theme="dark"] .highlight-code,
-html[data-theme="dark"] .request-url-output,
-html[data-theme="dark"] .curl-output,
-html[data-theme="dark"] .execute-wrapper pre.response-output-content {
-    background: #495057; /* Dark theme pre background */
-    color: #f8f9fa;
-    border-color: #6c757d;
-}
-
-/* Narrative Response Box */
-.execute-wrapper div.response-output-narrative {
-     background: #ffffff;
-     color: #212529;
-     border: 1px solid #dee2e6;
-}
-html[data-theme="dark"] .execute-wrapper div.response-output-narrative {
-     background: #343a40; /* Match card body */
-     color: #f8f9fa;
-     border: 1px solid #495057;
-}
-
-/* Response Status Text */
-.execute-wrapper .response-status[style*="color: green"] { color: #198754 !important; }
-.execute-wrapper .response-status[style*="color: red"] { color: #dc3545 !important; }
-html[data-theme="dark"] .execute-wrapper .response-status[style*="color: green"] { color: #20c997 !important; }
-html[data-theme="dark"] .execute-wrapper .response-status[style*="color: red"] { color: #e63946 !important; }
+        #fsh-output pre code,
+        ._fsh_output pre code {
+             background-color: transparent !important; /* Ensure code tag doesn't override pre bg */
+             padding: 0;
+             color: inherit; /* Inherit text color from pre */
+             font-size: inherit; /* Inherit font size from pre */
+             display: block; /* Make code fill pre */
+        }
 
 
-/* Specific Action Buttons (Success, Danger, Warning, Info) */
-.btn-success { background-color: #198754; border-color: #198754; color: white; }
-.btn-success:hover { background-color: #157347; border-color: #146c43; }
-.btn-outline-success { color: #198754; border-color: #198754; }
-.btn-outline-success:hover { background-color: #198754; color: white; }
+        /* Dark Theme Override */
+        html[data-theme="dark"] #fsh-output pre,
+        html[data-theme="dark"] ._fsh_output pre
+         {
+            background-color: #495057; /* Dark theme background */
+            color: #f8f9fa; /* Dark theme text */
+            border-color: #6c757d;
+        }
 
-.btn-danger { background-color: #dc3545; border-color: #dc3545; color: white; }
-.btn-danger:hover { background-color: #bb2d3b; border-color: #b02a37; }
-.btn-outline-danger { color: #dc3545; border-color: #dc3545; }
-.btn-outline-danger:hover { background-color: #dc3545; color: white; }
+         html[data-theme="dark"] #fsh-output pre code,
+         html[data-theme="dark"] ._fsh_output pre code {
+             color: inherit;
+         }
 
-.btn-warning { background-color: #ffc107; border-color: #ffc107; color: #000; }
-.btn-warning:hover { background-color: #ffca2c; border-color: #ffc720; }
-.btn-outline-warning { color: #ffc107; border-color: #ffc107; }
-.btn-outline-warning:hover { background-color: #ffc107; color: #000; }
+        /* --- Theme Styles for FHIR UI Operations (fhir_ui_operations.html) --- */
 
-.btn-info { background-color: #0dcaf0; border-color: #0dcaf0; color: #000; }
-.btn-info:hover { background-color: #31d2f2; border-color: #25cff2; }
-.btn-outline-info { color: #0dcaf0; border-color: #0dcaf0; }
-.btn-outline-info:hover { background-color: #0dcaf0; color: #000; }
+        /* Operation Block Container */
+        .opblock {
+            border: 1px solid #dee2e6; /* Light theme border */
+            background: #ffffff; /* Light theme background */
+            color: #212529; /* Light theme text */
+        }
+        html[data-theme="dark"] .opblock {
+            border-color: #495057; /* Dark theme border */
+            background: #343a40; /* Dark theme background (card bg) */
+            color: #f8f9fa; /* Dark theme text */
+        }
 
-/* General Badge Theme */
-.badge {
-    padding: 0.4em 0.6em; /* Slightly larger padding */
-    font-size: 0.85em;
-    font-weight: 600;
-}
-/* Specific Badge Backgrounds (Add more as needed) */
-.badge.bg-primary { background-color: #007bff !important; color: white !important; }
-.badge.bg-secondary { background-color: #6c757d !important; color: white !important; }
-.badge.bg-success { background-color: #198754 !important; color: white !important; }
-.badge.bg-danger { background-color: #dc3545 !important; color: white !important; }
-.badge.bg-warning { background-color: #ffc107 !important; color: #000 !important; }
-.badge.bg-info { background-color: #0dcaf0 !important; color: #000 !important; }
-.badge.bg-light { background-color: #f8f9fa !important; color: #000 !important; border: 1px solid #dee2e6; }
-.badge.bg-dark { background-color: #343a40 !important; color: white !important; }
+        /* Operation Summary (Header) */
+        .opblock-summary {
+            background: #f8f9fa; /* Light theme summary bg */
+            border-bottom: 1px solid #dee2e6;
+            color: #212529; /* Default text color for summary */
+        }
+        .opblock-summary:hover {
+            background: #e9ecef;
+        }
+        html[data-theme="dark"] .opblock-summary {
+            background: #40464c; /* Darker summary bg */
+            border-bottom-color: #495057;
+            color: #f8f9fa;
+        }
+        html[data-theme="dark"] .opblock-summary:hover {
+            background: #495057;
+        }
+        /* Keep method badge colors fixed - DO NOT override .opblock-summary-method */
+        .opblock-summary-description {
+            color: #495057; /* Slightly muted description text */
+        }
+        html[data-theme="dark"] .opblock-summary-description {
+            color: #adb5bd; /* Lighter muted text for dark */
+        }
 
-/* Copy Button Specific Style */
-.btn-copy { /* Optional: Add a specific class if needed, or style .btn-outline-secondary directly */
-    padding: 0.25rem 0.5rem;
-    font-size: 0.875rem;
-    line-height: 1.5;
-}
+        /* Operation Body (Expanded Section) */
+        .opblock-body {
+            border-top: 1px solid #dee2e6;
+        }
+        html[data-theme="dark"] .opblock-body {
+            border-top-color: #495057;
+        }
 
-/* --- Dark Theme Overrides --- */
-html[data-theme="dark"] .btn-primary { background-color: #4dabf7; border-color: #4dabf7; color: #000; }
-html[data-theme="dark"] .btn-primary:hover { background-color: #68bcef; border-color: #5fb7ea; }
-html[data-theme="dark"] .btn-outline-primary { color: #4dabf7; border-color: #4dabf7; }
-html[data-theme="dark"] .btn-outline-primary:hover { background-color: #4dabf7; color: #000; }
+        /* Section Headers within Body */
+        .opblock-section-header {
+            border-bottom: 1px solid #eee;
+            color: inherit; /* Inherit from .opblock */
+        }
+        html[data-theme="dark"] .opblock-section-header {
+            border-bottom-color: #495057;
+        }
+        .opblock-title {
+             color: inherit; /* Inherit from .opblock */
+        }
 
-html[data-theme="dark"] .btn-secondary { background-color: #6c757d; border-color: #6c757d; color: white; }
-html[data-theme="dark"] .btn-secondary:hover { background-color: #5a6268; border-color: #545b62; }
-html[data-theme="dark"] .btn-outline-secondary { color: #adb5bd; border-color: #6c757d; } /* Lighter text/border */
-html[data-theme="dark"] .btn-outline-secondary:hover { background-color: #6c757d; color: white; }
+        /* Parameters Table */
+        .parameters-table th,
+        .parameters-table td {
+            border: 1px solid #dee2e6;
+            color: inherit; /* Inherit from .opblock */
+        }
+        html[data-theme="dark"] .parameters-table th,
+        html[data-theme="dark"] .parameters-table td {
+            border-color: #495057;
+        }
+        .parameter__type,
+        .parameter__in {
+            color: #6c757d; /* Use standard muted color */
+        }
+        html[data-theme="dark"] .parameter__type,
+        html[data-theme="dark"] .parameter__in {
+            color: #adb5bd; /* Use standard dark muted color */
+        }
+        .parameters-col_description input[type="text"],
+        .parameters-col_description input[type="number"] {
+            background-color: #fff; /* Match light form controls */
+            border: 1px solid #ced4da;
+            color: #212529;
+        }
+        html[data-theme="dark"] .parameters-col_description input[type="text"],
+        html[data-theme="dark"] .parameters-col_description input[type="number"] {
+            background-color: #495057; /* Match dark form controls */
+            border-color: #6c757d;
+            color: #f8f9fa;
+        }
 
-html[data-theme="dark"] .btn-success { background-color: #20c997; border-color: #20c997; color: #000; }
-html[data-theme="dark"] .btn-success:hover { background-color: #3ce0ac; border-color: #36d8a3; }
-html[data-theme="dark"] .btn-outline-success { color: #20c997; border-color: #20c997; }
-html[data-theme="dark"] .btn-outline-success:hover { background-color: #20c997; color: #000; }
+        /* Request Body Textarea */
+        .request-body-textarea {
+            background-color: #fff; /* Match light form controls */
+            border: 1px solid #ced4da;
+            color: #212529;
+        }
+        html[data-theme="dark"] .request-body-textarea {
+            background-color: #495057; /* Match dark form controls */
+            border-color: #6c757d;
+            color: #f8f9fa;
+        }
 
-/* Keep danger as is */
-html[data-theme="dark"] .btn-danger { background-color: #e63946; border-color: #e63946; color: white; }
-html[data-theme="dark"] .btn-danger:hover { background-color: #c82b39; border-color: #bd2130; }
-html[data-theme="dark"] .btn-outline-danger { color: #e63946; border-color: #e63946; }
-html[data-theme="dark"] .btn-outline-danger:hover { background-color: #e63946; color: white; }
+        /* Responses Table */
+        .responses-table th,
+        .responses-table td {
+            border: 1px solid #dee2e6;
+            color: inherit;
+        }
+        html[data-theme="dark"] .responses-table th,
+        html[data-theme="dark"] .responses-table td {
+            border-color: #495057;
+        }
 
-html[data-theme="dark"] .btn-warning { background-color: #ffca2c; border-color: #ffca2c; color: #000; }
-html[data-theme="dark"] .btn-warning:hover { background-color: #ffd24a; border-color: #ffce3d; }
-html[data-theme="dark"] .btn-outline-warning { color: #ffca2c; border-color: #ffca2c; }
-html[data-theme="dark"] .btn-outline-warning:hover { background-color: #ffca2c; color: #000; }
+        /* Example/Schema Tabs & Controls */
+        .response-control-media-type {
+            background-color: #f8f9fa;
+        }
+        html[data-theme="dark"] .response-control-media-type {
+            background-color: #40464c; /* Match summary header bg */
+        }
+        .tablinks.badge { /* Default inactive tab */
+            background: #dee2e6 !important; /* Light grey inactive */
+            color: #333 !important;
+        }
+        .tablinks.badge.active { /* Default active tab */
+            background: #007bff !important; /* Use primary color */
+            color: white !important;
+        }
+        html[data-theme="dark"] .tablinks.badge { /* Dark inactive tab */
+            background: #6c757d !important; /* Dark grey inactive */
+            color: white !important;
+        }
+        html[data-theme="dark"] .tablinks.badge.active { /* Dark active tab */
+            background: #4dabf7 !important; /* Use dark primary color */
+            color: #000 !important;
+        }
 
-html[data-theme="dark"] .btn-info { background-color: #22b8cf; border-color: #22b8cf; color: #000; }
-html[data-theme="dark"] .btn-info:hover { background-color: #44cee3; border-color: #38cae0; }
-html[data-theme="dark"] .btn-outline-info { color: #22b8cf; border-color: #22b8cf; }
-html[data-theme="dark"] .btn-outline-info:hover { background-color: #22b8cf; color: #000; }
+        /* Code/Output Blocks */
+        .highlight-code,
+        .request-url-output,
+        .curl-output,
+        .execute-wrapper pre.response-output-content {
+            background: #e9ecef; /* Light theme pre background */
+            color: #212529;
+            border: 1px solid #dee2e6;
+        }
+        html[data-theme="dark"] .highlight-code,
+        html[data-theme="dark"] .request-url-output,
+        html[data-theme="dark"] .curl-output,
+        html[data-theme="dark"] .execute-wrapper pre.response-output-content {
+            background: #495057; /* Dark theme pre background */
+            color: #f8f9fa;
+            border-color: #6c757d;
+        }
 
-/* Dark Theme Badges */
-html[data-theme="dark"] .badge.bg-primary { background-color: #4dabf7 !important; color: #000 !important; }
-html[data-theme="dark"] .badge.bg-secondary { background-color: #6c757d !important; color: white !important; }
-html[data-theme="dark"] .badge.bg-success { background-color: #20c997 !important; color: #000 !important; }
-html[data-theme="dark"] .badge.bg-danger { background-color: #e63946 !important; color: white !important; }
-html[data-theme="dark"] .badge.bg-warning { background-color: #ffca2c !important; color: #000 !important; }
-html[data-theme="dark"] .badge.bg-info { background-color: #22b8cf !important; color: #000 !important; }
-html[data-theme="dark"] .badge.bg-light { background-color: #495057 !important; color: #f8f9fa !important; border: 1px solid #6c757d; }
-html[data-theme="dark"] .badge.bg-dark { background-color: #adb5bd !important; color: #000 !important; }
+        /* Narrative Response Box */
+        .execute-wrapper div.response-output-narrative {
+             background: #ffffff;
+             color: #212529;
+             border: 1px solid #dee2e6;
+        }
+        html[data-theme="dark"] .execute-wrapper div.response-output-narrative {
+             background: #343a40; /* Match card body */
+             color: #f8f9fa;
+             border: 1px solid #495057;
+        }
 
-/* --- Themed Backgrounds for Code/Structure View (cp_view_processed_ig.html) --- */
+        /* Response Status Text */
+        .execute-wrapper .response-status[style*="color: green"] { color: #198754 !important; }
+        .execute-wrapper .response-status[style*="color: red"] { color: #dc3545 !important; }
+        html[data-theme="dark"] .execute-wrapper .response-status[style*="color: green"] { color: #20c997 !important; }
+        html[data-theme="dark"] .execute-wrapper .response-status[style*="color: red"] { color: #e63946 !important; }
 
-/* Styling for <pre> blocks containing code */
-#raw-structure-wrapper pre,
-#example-content-wrapper pre {
-    background-color: #e9ecef; /* Light theme background */
-    color: #212529; /* Light theme text */
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    padding: 10px;
-    max-height: 400px; /* Keep existing max-height */
-    overflow-y: auto; /* Keep existing overflow */
-    white-space: pre-wrap; /* Ensure wrapping */
-    word-break: break-all; /* Break long strings */
-}
 
-/* Ensure code tag inside inherits background and has appropriate font */
-#raw-structure-wrapper pre code,
-#example-content-wrapper pre code {
-    background-color: transparent !important; /* Let pre handle background */
-    padding: 0;
-    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    font-size: 0.875em;
-    color: inherit; /* Inherit text color from pre */
-    display: block; /* Make code block fill pre */
-    white-space: pre-wrap;
-    word-break: break-all;
-}
+        /* Specific Action Buttons (Success, Danger, Warning, Info) */
+        .btn-success { background-color: #198754; border-color: #198754; color: white; }
+        .btn-success:hover { background-color: #157347; border-color: #146c43; }
+        .btn-outline-success { color: #198754; border-color: #198754; }
+        .btn-outline-success:hover { background-color: #198754; color: white; }
 
-/* Styling for the Structure Definition tree list items */
-.structure-tree-root .list-group-item {
-    background-color: #ffffff; /* Light theme default background */
-    border-color: #dee2e6;
-    color: #212529;
-}
+        .btn-danger { background-color: #dc3545; border-color: #dc3545; color: white; }
+        .btn-danger:hover { background-color: #bb2d3b; border-color: #b02a37; }
+        .btn-outline-danger { color: #dc3545; border-color: #dc3545; }
+        .btn-outline-danger:hover { background-color: #dc3545; color: white; }
 
-.structure-tree-root .list-group-item-warning {
-    background-color: #fff3cd; /* Bootstrap light theme warning */
-    border-color: #ffeeba;
-    /*color: #856404;  Ensure text is readable */
-}
+        .btn-warning { background-color: #ffc107; border-color: #ffc107; color: #000; }
+        .btn-warning:hover { background-color: #ffca2c; border-color: #ffc720; }
+        .btn-outline-warning { color: #ffc107; border-color: #ffc107; }
+        .btn-outline-warning:hover { background-color: #ffc107; color: #000; }
 
-/* --- Dark Theme Overrides for Code/Structure View --- */
-html[data-theme="dark"] #raw-structure-wrapper pre,
-html[data-theme="dark"] #example-content-wrapper pre {
-    background-color: #495057; /* Dark theme background */
-    color: #f8f9fa; /* Dark theme text */
-    border-color: #6c757d;
-}
+        .btn-info { background-color: #0dcaf0; border-color: #0dcaf0; color: #000; }
+        .btn-info:hover { background-color: #31d2f2; border-color: #25cff2; }
+        .btn-outline-info { color: #0dcaf0; border-color: #0dcaf0; }
+        .btn-outline-info:hover { background-color: #0dcaf0; color: #000; }
 
-/* Dark theme code text color already inherited, but explicit doesn't hurt */
-html[data-theme="dark"] #raw-structure-wrapper pre code,
-html[data-theme="dark"] #example-content-wrapper pre code {
-     color: #f8f9fa;
-}
+        /* General Badge Theme */
+        .badge {
+            padding: 0.4em 0.6em; /* Slightly larger padding */
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        /* Specific Badge Backgrounds (Add more as needed) */
+        .badge.bg-primary { background-color: #007bff !important; color: white !important; }
+        .badge.bg-secondary { background-color: #6c757d !important; color: white !important; }
+        .badge.bg-success { background-color: #198754 !important; color: white !important; }
+        .badge.bg-danger { background-color: #dc3545 !important; color: white !important; }
+        .badge.bg-warning { background-color: #ffc107 !important; color: #000 !important; }
+        .badge.bg-info { background-color: #0dcaf0 !important; color: #000 !important; }
+        .badge.bg-light { background-color: #f8f9fa !important; color: #000 !important; border: 1px solid #dee2e6; }
+        .badge.bg-dark { background-color: #343a40 !important; color: white !important; }
 
-/* Dark theme structure list items */
-html[data-theme="dark"] .structure-tree-root .list-group-item {
-    background-color: #343a40; /* Dark theme card background */
-    border-color: #495057;
-    color: #f8f9fa;
-}
+        /* Copy Button Specific Style */
+        .btn-copy { /* Optional: Add a specific class if needed, or style .btn-outline-secondary directly */
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
 
-html[data-theme="dark"] .structure-tree-root .list-group-item-warning {
-    background-color: #664d03; /* Darker warning background */
-    border-color: #997404;
-    /*color: #ffecb5; Lighter text for contrast */
-}
+        /* --- Dark Theme Overrides --- */
+        html[data-theme="dark"] .btn-primary { background-color: #4dabf7; border-color: #4dabf7; color: #000; }
+        html[data-theme="dark"] .btn-primary:hover { background-color: #68bcef; border-color: #5fb7ea; }
+        html[data-theme="dark"] .btn-outline-primary { color: #4dabf7; border-color: #4dabf7; }
+        html[data-theme="dark"] .btn-outline-primary:hover { background-color: #4dabf7; color: #000; }
+
+        html[data-theme="dark"] .btn-secondary { background-color: #6c757d; border-color: #6c757d; color: white; }
+        html[data-theme="dark"] .btn-secondary:hover { background-color: #5a6268; border-color: #545b62; }
+        html[data-theme="dark"] .btn-outline-secondary { color: #adb5bd; border-color: #6c757d; } /* Lighter text/border */
+        html[data-theme="dark"] .btn-outline-secondary:hover { background-color: #6c757d; color: white; }
+
+        html[data-theme="dark"] .btn-success { background-color: #20c997; border-color: #20c997; color: #000; }
+        html[data-theme="dark"] .btn-success:hover { background-color: #3ce0ac; border-color: #36d8a3; }
+        html[data-theme="dark"] .btn-outline-success { color: #20c997; border-color: #20c997; }
+        html[data-theme="dark"] .btn-outline-success:hover { background-color: #20c997; color: #000; }
+
+        /* Keep danger as is */
+        html[data-theme="dark"] .btn-danger { background-color: #e63946; border-color: #e63946; color: white; }
+        html[data-theme="dark"] .btn-danger:hover { background-color: #c82b39; border-color: #bd2130; }
+        html[data-theme="dark"] .btn-outline-danger { color: #e63946; border-color: #e63946; }
+        html[data-theme="dark"] .btn-outline-danger:hover { background-color: #e63946; color: white; }
+
+        html[data-theme="dark"] .btn-warning { background-color: #ffca2c; border-color: #ffca2c; color: #000; }
+        html[data-theme="dark"] .btn-warning:hover { background-color: #ffd24a; border-color: #ffce3d; }
+        html[data-theme="dark"] .btn-outline-warning { color: #ffca2c; border-color: #ffca2c; }
+        html[data-theme="dark"] .btn-outline-warning:hover { background-color: #ffca2c; color: #000; }
+
+        html[data-theme="dark"] .btn-info { background-color: #22b8cf; border-color: #22b8cf; color: #000; }
+        html[data-theme="dark"] .btn-info:hover { background-color: #44cee3; border-color: #38cae0; }
+        html[data-theme="dark"] .btn-outline-info { color: #22b8cf; border-color: #22b8cf; }
+        html[data-theme="dark"] .btn-outline-info:hover { background-color: #22b8cf; color: #000; }
+
+        /* Dark Theme Badges */
+        html[data-theme="dark"] .badge.bg-primary { background-color: #4dabf7 !important; color: #000 !important; }
+        html[data-theme="dark"] .badge.bg-secondary { background-color: #6c757d !important; color: white !important; }
+        html[data-theme="dark"] .badge.bg-success { background-color: #20c997 !important; color: #000 !important; }
+        html[data-theme="dark"] .badge.bg-danger { background-color: #e63946 !important; color: white !important; }
+        html[data-theme="dark"] .badge.bg-warning { background-color: #ffca2c !important; color: #000 !important; }
+        html[data-theme="dark"] .badge.bg-info { background-color: #22b8cf !important; color: #000 !important; }
+        html[data-theme="dark"] .badge.bg-light { background-color: #495057 !important; color: #f8f9fa !important; border: 1px solid #6c757d; }
+        html[data-theme="dark"] .badge.bg-dark { background-color: #adb5bd !important; color: #000 !important; }
+
+        /* --- Themed Backgrounds for Code/Structure View (cp_view_processed_ig.html) --- */
+
+        /* Styling for <pre> blocks containing code */
+        #raw-structure-wrapper pre,
+        #example-content-wrapper pre {
+            background-color: #e9ecef; /* Light theme background */
+            color: #212529; /* Light theme text */
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 400px; /* Keep existing max-height */
+            overflow-y: auto; /* Keep existing overflow */
+            white-space: pre-wrap; /* Ensure wrapping */
+            word-break: break-all; /* Break long strings */
+        }
+
+        /* Ensure code tag inside inherits background and has appropriate font */
+        #raw-structure-wrapper pre code,
+        #example-content-wrapper pre code {
+            background-color: transparent !important; /* Let pre handle background */
+            padding: 0;
+            font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 0.875em;
+            color: inherit; /* Inherit text color from pre */
+            display: block; /* Make code block fill pre */
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* Styling for the Structure Definition tree list items */
+        .structure-tree-root .list-group-item {
+            background-color: #ffffff; /* Light theme default background */
+            border-color: #dee2e6;
+            color: #212529;
+        }
+
+        .structure-tree-root .list-group-item-warning {
+            background-color: #fff3cd; /* Bootstrap light theme warning */
+            border-color: #ffeeba;
+            /*color: #856404;  Ensure text is readable */
+        }
+
+        /* --- Dark Theme Overrides for Code/Structure View --- */
+        html[data-theme="dark"] #raw-structure-wrapper pre,
+        html[data-theme="dark"] #example-content-wrapper pre {
+            background-color: #495057; /* Dark theme background */
+            color: #f8f9fa; /* Dark theme text */
+            border-color: #6c757d;
+        }
+
+        /* Dark theme code text color already inherited, but explicit doesn't hurt */
+        html[data-theme="dark"] #raw-structure-wrapper pre code,
+        html[data-theme="dark"] #example-content-wrapper pre code {
+             color: #f8f9fa;
+        }
+
+        /* Dark theme structure list items */
+        html[data-theme="dark"] .structure-tree-root .list-group-item {
+            background-color: #343a40; /* Dark theme card background */
+            border-color: #495057;
+            color: #f8f9fa;
+        }
+
+        html[data-theme="dark"] .structure-tree-root .list-group-item-warning {
+            background-color: #664d03; /* Darker warning background */
+            border-color: #997404;
+            /*color: #ffecb5; Lighter text for contrast */
+        }
 
         /* Dark Theme Styles */
         html[data-theme="dark"] body {
@@ -780,7 +782,7 @@ html[data-theme="dark"] .structure-tree-root .list-group-item-warning {
                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.endpoint == 'fhir_ui' else '' }}" href="{{ url_for('fhir_ui') }}"><i class="fas fa-cloud-download-alt me-1"></i> FHIR API Explorer</a>
                     </li>
-			         <li class="nav-item">
+                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.endpoint == 'fhir_ui_operations' else '' }}" href="{{ url_for('fhir_ui_operations') }}"><i class="bi bi-gear me-1"></i> FHIR UI Operations</a>
                     </li>
                     <li class="nav-item">

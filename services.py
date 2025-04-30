@@ -1617,10 +1617,18 @@ def map_types_to_packages(used_types, all_dependencies, download_dir):
 
 def import_package_and_dependencies(initial_name, initial_version, dependency_mode='recursive'):
     """Orchestrates recursive download and dependency extraction."""
-    logger.info(f"Starting import for {initial_name}#{initial_version} with dependency_mode={dependency_mode}")
+    logger.info(f"Starting import of {initial_name}#{initial_version} with mode {dependency_mode}")
     download_dir = _get_download_dir()
     if not download_dir:
-        return {'requested': (initial_name, initial_version), 'processed': set(), 'downloaded': {}, 'all_dependencies': {}, 'dependencies': [], 'errors': ['Download directory not accessible']}
+        logger.error("Download directory not accessible")
+        return {
+            'requested': (initial_name, initial_version),
+            'processed': set(),
+            'downloaded': {},
+            'all_dependencies': {},
+            'dependencies': [],
+            'errors': ['Download directory not accessible']
+        }
 
     results = {
         'requested': (initial_name, initial_version),
@@ -1640,18 +1648,24 @@ def import_package_and_dependencies(initial_name, initial_version, dependency_mo
         if package_id_tuple in results['processed']:
             logger.debug(f"Skipping already processed package: {name}#{version}")
             continue
-        logger.info(f"Processing package from queue: {name}#{version}")
+        logger.info(f"Processing package {name}#{version}")
         save_path, dl_error = download_package(name, version)
         if dl_error:
+            logger.error(f"Download failed for {name}#{version}: {dl_error}")
             results['errors'].append(f"Download failed for {name}#{version}: {dl_error}")
             continue
+        tgz_filename = os.path.basename(save_path)
+        logger.info(f"Downloaded {tgz_filename}")
         results['downloaded'][package_id_tuple] = save_path
+        logger.info(f"Extracting dependencies from {tgz_filename}")
         dependencies, dep_error = extract_dependencies(save_path)
         if dep_error:
+            logger.error(f"Dependency extraction failed for {name}#{version}: {dep_error}")
             results['errors'].append(f"Dependency extraction failed for {name}#{version}: {dep_error}")
             results['processed'].add(package_id_tuple)
             continue
         elif dependencies is None:
+            logger.error(f"Critical error in dependency extraction for {name}#{version}")
             results['errors'].append(f"Dependency extraction returned critical error for {name}#{version}.")
             results['processed'].add(package_id_tuple)
             continue
@@ -1669,12 +1683,15 @@ def import_package_and_dependencies(initial_name, initial_version, dependency_mo
                     should_queue = False
                     if dependency_mode == 'recursive':
                         should_queue = True
+                        logger.info(f"Queueing dependency {dep_name}#{dep_version} (recursive mode)")
                     elif dependency_mode == 'patch-canonical' and dep_tuple == CANONICAL_PACKAGE:
                         should_queue = True
+                        logger.info(f"Queueing canonical dependency {dep_name}#{dep_version} (patch-canonical mode)")
                     if should_queue:
                         logger.debug(f"Adding dependency to queue ({dependency_mode}): {dep_name}#{dep_version}")
                         pending_queue.append(dep_tuple)
                         queued_or_processed_lookup.add(dep_tuple)
+        logger.info(f"Saving metadata for {name}#{version}")
         save_package_metadata(name, version, dependency_mode, current_package_deps)
         if dependency_mode == 'tree-shaking' and package_id_tuple == (initial_name, initial_version):
             logger.info(f"Performing tree-shaking for {initial_name}#{initial_version}")
@@ -1684,14 +1701,14 @@ def import_package_and_dependencies(initial_name, initial_version, dependency_mo
                 tree_shaken_deps = set(type_to_package.values()) - {package_id_tuple}
                 if CANONICAL_PACKAGE not in tree_shaken_deps:
                     tree_shaken_deps.add(CANONICAL_PACKAGE)
-                    logger.debug(f"Ensuring canonical package {CANONICAL_PACKAGE} for tree-shaking")
+                    logger.info(f"Ensuring canonical package {CANONICAL_PACKAGE[0]}#{CANONICAL_PACKAGE[1]} for tree-shaking")
                 for dep_tuple in tree_shaken_deps:
                     if dep_tuple not in queued_or_processed_lookup:
-                        logger.info(f"Queueing tree-shaken dependency: {dep_tuple[0]}#{dep_tuple[1]}")
+                        logger.info(f"Queueing tree-shaken dependency {dep_tuple[0]}#{dep_tuple[1]}")
                         pending_queue.append(dep_tuple)
                         queued_or_processed_lookup.add(dep_tuple)
     results['dependencies'] = [{"name": d[0], "version": d[1]} for d in all_found_dependencies]
-    logger.info(f"Import finished for {initial_name}#{initial_version}. Processed: {len(results['processed'])}, Downloaded: {len(results['downloaded'])}, Errors: {len(results['errors'])}")
+    logger.info(f"Completed import of {initial_name}#{initial_version}. Processed {len(results['processed'])} packages, downloaded {len(results['downloaded'])}, with {len(results['errors'])} errors")
     return results
 
 # --- Validation Route ---
