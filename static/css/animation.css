@@ -380,8 +380,7 @@ body {
 .smoke .s-8 { animation: smokeLeft 7s 5.6s infinite; }
 .smoke .s-9 { animation: smokeRight 7s 6.3s infinite; }
 
-/* Dark Theme (fire-off) */
-html[data-theme="dark"] .fire-on { opacity: 0; }
-html[data-theme="dark"] .section-center { box-shadow: 0 0 50px 5px rgba(200,200,200,.2); }
-html[data-theme="dark"] .smoke { opacity: 1; transition-delay: 0.8s; }
-html[data-theme="dark"] .fire span { bottom: -26px; transform: scale(0.15, 0.15) rotate(45deg); }
+/* Fire-off state (light theme) */
+body:not(.fire-on) .section-center { box-shadow: 0 0 50px 5px rgba(200,200,200,.2); }
+body:not(.fire-on) .smoke { opacity: 1; transition-delay: 0.8s; }
+body:not(.fire-on) .fire span { bottom: -26px; transform: scale(0.15, 0.15) rotate(45deg); }
