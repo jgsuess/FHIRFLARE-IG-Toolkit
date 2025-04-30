@@ -128,10 +128,11 @@ document.addEventListener('DOMContentLoaded', () => {
         animationContainer.style.opacity = '1';
     }, 30000);
 
-    // Sync animation with theme (inverted: light = fire-off, dark = fire-on)
+    // Sync animation with theme (reversed: dark = fire-on, light = fire-off)
     const updateAnimationState = () => {
-        const isDark = htmlElement.getAttribute('data-theme') === 'dark';
-        document.body.classList.toggle('fire-off', !isDark); // Light theme: fire-off, Dark theme: fire-on
+        const savedTheme = localStorage.getItem('theme') || (document.cookie.includes('theme=dark') ? 'dark' : 'light');
+        const isDark = savedTheme === 'dark';
+        document.body.classList.toggle('fire-on', isDark); // Dark theme: fire-on, Light theme: fire-off
     };
 
     // Initial state
