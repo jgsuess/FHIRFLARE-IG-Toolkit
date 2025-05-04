@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block body_class %}fire-animation-page{% endblock %}
+
 {% block content %}
 <div class="px-4 py-5 my-5 text-center">
     <div id="logo-container" class="mb-4">
@@ -59,7 +61,8 @@
                     <h5 class="card-title">IG Management</h5>
                     <p class="card-text">Import and manage FHIR Implementation Guides.</p>
                     <div class="d-grid gap-2">
-                        <a href="{{ url_for('import_ig') }}" class="btn btn-primary">Import FHIR IG</a>
+                        <!-- <a href="{{ url_for('import_ig') }}" class="btn btn-primary">Import FHIR IG</a> -->
+                        <a href="{{ url_for('search_and_import') }}" class="btn btn-primary">Search & Import IGs</a>
                         <a href="{{ url_for('view_igs') }}" class="btn btn-outline-secondary">Manage FHIR Packages</a>
                         <a href="{{ url_for('push_igs') }}" class="btn btn-outline-secondary">Push IGs</a>
                     </div>
@@ -75,6 +78,7 @@
                     <div class="d-grid gap-2">
                         <a href="{{ url_for('upload_test_data') }}" class="btn btn-outline-secondary">Upload Test Data</a>
                         <a href="{{ url_for('validate_sample') }}" class="btn btn-outline-secondary">Validate FHIR Sample</a>
+                        <a href="{{ url_for('retrieve_split_data') }}" class="btn btn-outline-secondary">Retrieve & Split Data</a>
                     </div>
                 </div>
             </div>

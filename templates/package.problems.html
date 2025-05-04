@@ -1,0 +1,16 @@
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Package</th>
+            <th>Dependency</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for problem in problems %}
+        <tr>
+            <td>{{ problem.package }}</td>
+            <td class="text-danger">{{ problem.dependency }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

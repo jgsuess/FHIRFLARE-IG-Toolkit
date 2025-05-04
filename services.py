@@ -6,11 +6,13 @@ import re
 import logging
 import shutil
 import sqlite3
+import feedparser
 from flask import current_app, Blueprint, request, jsonify
 from fhirpathpy import evaluate
 from collections import defaultdict, deque
 from pathlib import Path
 from urllib.parse import quote, urlparse
+from types import SimpleNamespace
 import datetime
 import subprocess
 import tempfile
@@ -29,17 +31,43 @@ logger = logging.getLogger(__name__)
 
 # --- ADD fhir.resources imports ---
 try:
-    from fhir.resources import construct
-    from fhir.resources.core.exceptions import FHIRValidationError
+    from fhir.resources import get_fhir_model_class
+    from fhir.resources.fhirtypesvalidators import FHIRValidationError  # Updated import path
     FHIR_RESOURCES_AVAILABLE = True
     logger.info("fhir.resources library found. XML parsing will use this.")
-except ImportError:
+except ImportError as e:
     FHIR_RESOURCES_AVAILABLE = False
-    logger.warning("fhir.resources library not found. XML parsing will be basic and dependency analysis for XML may be incomplete.")
+    logger.warning(f"fhir.resources library failed to import. XML parsing will be basic and dependency analysis for XML may be incomplete. Error: {str(e)}")
     # Define dummy classes if library not found to avoid NameErrors later
     class FHIRValidationError(Exception): pass
-    def construct(resource_type, data): raise NotImplementedError("fhir.resources not installed")
+    def get_fhir_model_class(resource_type): raise NotImplementedError("fhir.resources not installed")
+except Exception as e:
+    FHIR_RESOURCES_AVAILABLE = False
+    logger.error(f"Unexpected error importing fhir.resources library: {str(e)}")
+    class FHIRValidationError(Exception): pass
+    def get_fhir_model_class(resource_type): raise NotImplementedError("fhir.resources not installed")
 # --- END fhir.resources imports ---
+
+# --- Check for optional 'packaging' library ---
+try:
+    import packaging.version as pkg_version
+    HAS_PACKAGING_LIB = True
+    logger.info("Optional 'packaging' library found. Using for robust version comparison.")
+except ImportError:
+    HAS_PACKAGING_LIB = False
+    logger.warning("Optional 'packaging' library not found. Using basic string comparison for versions.")
+    # Define a simple fallback class if packaging is missing
+    class BasicVersion:
+        def __init__(self, v_str): self.v_str = str(v_str)
+        # Define comparison methods for sorting compatibility
+        def __lt__(self, other): return self.v_str < str(other)
+        def __gt__(self, other): return self.v_str > str(other)
+        def __eq__(self, other): return self.v_str == str(other)
+        def __le__(self, other): return self.v_str <= str(other)
+        def __ge__(self, other): return self.v_str >= str(other)
+        def __ne__(self, other): return self.v_str != str(other)
+        def __str__(self): return self.v_str
+    pkg_version = SimpleNamespace(parse=BasicVersion, InvalidVersion=ValueError) # Mock parse and InvalidVersion
 
 # --- Constants ---
 FHIR_REGISTRY_BASE_URL = "https://packages.fhir.org"
@@ -88,6 +116,469 @@ FHIR_R4_BASE_TYPES = {
     "TerminologyCapabilities", "TestReport", "TestScript", "ValueSet", "VerificationResult", "VisionPrescription"
 }
 
+
+# -------------------------------------------------------------------
+#Helper function to support normalize:
+
+def safe_parse_version(v_str):
+    """
+    Attempts to parse a version string using packaging.version.
+    Handles common FHIR suffixes like -dev, -ballot, -draft, -preview
+    by treating them as standard pre-releases (-a0, -b0, -rc0) for comparison.
+    Returns a comparable Version object or a fallback for unparseable strings.
+    """
+    if not v_str or not isinstance(v_str, str):
+        # Handle None or non-string input, treat as lowest possible version
+        return pkg_version.parse("0.0.0a0") # Use alpha pre-release
+
+    # Try standard parsing first
+    try:
+        return pkg_version.parse(v_str)
+    except pkg_version.InvalidVersion:
+        # Handle common FHIR suffixes if standard parsing fails
+        original_v_str = v_str # Keep original for logging
+        v_str_norm = v_str.lower()
+        # Split into base version and suffix
+        base_part = v_str_norm
+        suffix = None
+        if '-' in v_str_norm:
+            parts = v_str_norm.split('-', 1)
+            base_part = parts[0]
+            suffix = parts[1]
+
+        # Check if base looks like a version number
+        if re.match(r'^\d+(\.\d+)*$', base_part):
+            try:
+                # Map FHIR suffixes to PEP 440 pre-release types for sorting
+                if suffix in ['dev', 'snapshot', 'ci-build']:
+                    # Treat as alpha (earliest pre-release)
+                    return pkg_version.parse(f"{base_part}a0")
+                elif suffix in ['draft', 'ballot', 'preview']:
+                    # Treat as beta (after alpha)
+                    return pkg_version.parse(f"{base_part}b0")
+                # Add more mappings if needed (e.g., -rc -> rc0)
+                elif suffix and suffix.startswith('rc'):
+                     rc_num = ''.join(filter(str.isdigit, suffix)) or '0'
+                     return pkg_version.parse(f"{base_part}rc{rc_num}")
+
+                # If suffix isn't recognized, still try parsing base as final/post
+                # This might happen for odd suffixes like -final (though unlikely)
+                # If base itself parses, use that (treats unknown suffix as > pre-release)
+                return pkg_version.parse(base_part)
+
+            except pkg_version.InvalidVersion:
+                # If base_part itself is invalid after splitting
+                 logger.warning(f"Invalid base version '{base_part}' after splitting '{original_v_str}'. Treating as alpha.")
+                 return pkg_version.parse("0.0.0a0")
+            except Exception as e:
+                 logger.error(f"Unexpected error parsing FHIR-suffixed version '{original_v_str}': {e}")
+                 return pkg_version.parse("0.0.0a0")
+        else:
+            # Base part doesn't look like numbers/dots (e.g., "current", "dev")
+            logger.warning(f"Unparseable version '{original_v_str}' (base '{base_part}' not standard). Treating as alpha.")
+            return pkg_version.parse("0.0.0a0") # Treat fully non-standard versions as very early
+
+    except Exception as e:
+         # Catch any other unexpected parsing errors
+         logger.error(f"Unexpected error in safe_parse_version for '{v_str}': {e}")
+         return pkg_version.parse("0.0.0a0") # Fallback
+
+# --- MODIFIED FUNCTION with Enhanced Logging ---
+def get_additional_registries():
+    """Fetches the list of additional FHIR IG registries from the master feed."""
+    logger.debug("Entering get_additional_registries function")
+    feed_registry_url = 'https://raw.githubusercontent.com/FHIR/ig-registry/master/package-feeds.json'
+    feeds = [] # Default to empty list
+    try:
+        logger.info(f"Attempting to fetch feed registry from {feed_registry_url}")
+        # Use a reasonable timeout
+        response = requests.get(feed_registry_url, timeout=15)
+        logger.debug(f"Feed registry request to {feed_registry_url} returned status code: {response.status_code}")
+        # Raise HTTPError for bad responses (4xx or 5xx)
+        response.raise_for_status()
+
+        # Log successful fetch
+        logger.debug(f"Successfully fetched feed registry. Response text (first 500 chars): {response.text[:500]}...")
+
+        try:
+            # Attempt to parse JSON
+            data = json.loads(response.text)
+            feeds_raw = data.get('feeds', [])
+            # Ensure structure is as expected before adding
+            feeds = [{'name': feed['name'], 'url': feed['url']}
+                     for feed in feeds_raw
+                     if isinstance(feed, dict) and 'name' in feed and 'url' in feed]
+            logger.info(f"Successfully parsed {len(feeds)} valid feeds from {feed_registry_url}")
+
+        except json.JSONDecodeError as e:
+            # Log JSON parsing errors specifically
+            logger.error(f"JSON decoding error for feed registry from {feed_registry_url}: {e}")
+            # Log the problematic text snippet to help diagnose
+            logger.error(f"Problematic JSON text snippet: {response.text[:500]}...")
+            # feeds remains []
+
+    # --- Specific Exception Handling ---
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"HTTP error fetching feed registry from {feed_registry_url}: {e}", exc_info=True)
+        # feeds remains []
+    except requests.exceptions.ConnectionError as e:
+        logger.error(f"Connection error fetching feed registry from {feed_registry_url}: {e}", exc_info=True)
+        # feeds remains []
+    except requests.exceptions.Timeout as e:
+        logger.error(f"Timeout fetching feed registry from {feed_registry_url}: {e}", exc_info=True)
+        # feeds remains []
+    except requests.exceptions.RequestException as e:
+        # Catch other potential request-related errors
+        logger.error(f"General request error fetching feed registry from {feed_registry_url}: {e}", exc_info=True)
+        # feeds remains []
+    except Exception as e:
+        # Catch any other unexpected errors during the process
+        logger.error(f"Unexpected error fetching feed registry from {feed_registry_url}: {e}", exc_info=True)
+        # feeds remains []
+
+    logger.debug(f"Exiting get_additional_registries function, returning {len(feeds)} feeds.")
+    return feeds
+# --- END MODIFIED FUNCTION ---
+
+def fetch_packages_from_registries(search_term=''):
+    logger.debug("Entering fetch_packages_from_registries function with search_term: %s", search_term)
+    packages_dict = defaultdict(list)
+    
+    try:
+        logger.debug("Calling get_additional_registries")
+        feed_registries = get_additional_registries()
+        logger.debug("Returned from get_additional_registries with %d registries: %s", len(feed_registries), feed_registries)
+        
+        if not feed_registries:
+            logger.warning("No feed registries available. Cannot fetch packages.")
+            return []
+        
+        logger.info(f"Processing {len(feed_registries)} feed registries")
+        for feed in feed_registries:
+            try:
+                logger.info(f"Fetching feed: {feed['name']} from {feed['url']}")
+                response = requests.get(feed['url'], timeout=30)
+                response.raise_for_status()
+                
+                # Log the raw response content for debugging
+                response_text = response.text[:500]  # Limit to first 500 chars for logging
+                logger.debug(f"Raw response from {feed['url']}: {response_text}")
+                
+                try:
+                    data = json.loads(response.text)
+                    num_feed_packages = len(data.get('packages', []))
+                    logger.info(f"Fetched from feed {feed['name']}: {num_feed_packages} packages (JSON)")
+                    for pkg in data.get('packages', []):
+                        if not isinstance(pkg, dict):
+                            continue
+                        pkg_name = pkg.get('name', '')
+                        if not pkg_name:
+                            continue
+                        packages_dict[pkg_name].append(pkg)
+                except json.JSONDecodeError:
+                    feed_data = feedparser.parse(response.text)
+                    if not feed_data.entries:
+                        logger.warning(f"No entries found in feed {feed['name']}")
+                        continue
+                    num_rss_packages = len(feed_data.entries)
+                    logger.info(f"Fetched from feed {feed['name']}: {num_rss_packages} packages (Atom/RSS)")
+                    logger.info(f"Sample feed entries from {feed['name']}: {feed_data.entries[:2]}")
+                    for entry in feed_data.entries:
+                        try:
+                            # Extract package name and version from title (e.g., "hl7.fhir.au.ereq#0.3.0-preview")
+                            title = entry.get('title', '')
+                            if '#' in title:
+                                pkg_name, version = title.split('#', 1)
+                            else:
+                                pkg_name = title
+                                version = entry.get('version', '')
+                            if not pkg_name:
+                                pkg_name = entry.get('id', '') or entry.get('summary', '')
+                            if not pkg_name:
+                                continue
+                            
+                            package = {
+                                'name': pkg_name,
+                                'version': version,
+                                'author': entry.get('author', ''),
+                                'fhirVersion': entry.get('fhir_version', [''])[0] or '',
+                                'url': entry.get('link', ''),
+                                'canonical': entry.get('canonical', ''),
+                                'dependencies': entry.get('dependencies', []),
+                                'pubDate': entry.get('published', entry.get('pubdate', '')),
+                                'registry': feed['url']
+                            }
+                            if search_term and package['name'] and search_term.lower() not in package['name'].lower():
+                                continue
+                            packages_dict[pkg_name].append(package)
+                        except Exception as entry_error:
+                            logger.error(f"Error processing entry in feed {feed['name']}: {entry_error}")
+                            logger.info(f"Problematic entry: {entry}")
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 404:
+                    logger.warning(f"Feed endpoint not found for {feed['name']}: {feed['url']} - 404 Not Found")
+                else:
+                    logger.error(f"HTTP error fetching from feed {feed['name']}: {e}")
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Request error fetching from feed {feed['name']}: {e}")
+            except Exception as error:
+                logger.error(f"Unexpected error fetching from feed {feed['name']}: {error}")
+    except Exception as e:
+        logger.error(f"Unexpected error in fetch_packages_from_registries: {e}")
+    
+    # Convert packages_dict to a list of packages with aggregated versions
+    packages = []
+    for pkg_name, entries in packages_dict.items():
+        # Aggregate versions with their publication dates
+        versions = [
+            {
+                "version": entry.get('version', ''),
+                "pubDate": entry.get('pubDate', '')
+            }
+            for entry in entries
+            if entry.get('version', '')
+        ]
+        # Sort versions by pubDate (newest first)
+        versions.sort(key=lambda x: x.get('pubDate', ''), reverse=True)
+        if not versions:
+            continue
+        
+        # Take the latest entry for the main package fields
+        latest_entry = entries[0]
+        package = {
+            'name': pkg_name,
+            'version': latest_entry.get('version', ''),
+            'latestVersion': latest_entry.get('version', ''),
+            'author': latest_entry.get('author', ''),
+            'fhirVersion': latest_entry.get('fhirVersion', ''),
+            'url': latest_entry.get('url', ''),
+            'canonical': latest_entry.get('canonical', ''),
+            'dependencies': latest_entry.get('dependencies', []),
+            'versions': versions,  # List of versions with pubDate
+            'registry': latest_entry.get('registry', '')
+        }
+        packages.append(package)
+    
+    logger.info(f"Total packages fetched: {len(packages)}")
+    return packages
+
+def normalize_package_data(raw_packages):
+    """
+    Normalizes package data, identifying latest absolute and latest official versions.
+    Uses safe_parse_version for robust comparison.
+    """
+    packages_grouped = defaultdict(list)
+    skipped_raw_count = 0
+    for entry in raw_packages:
+        if not isinstance(entry, dict):
+            skipped_raw_count += 1
+            logger.warning(f"Skipping raw package entry, not a dict: {entry}")
+            continue
+        raw_name = entry.get('name') or entry.get('title') or ''
+        if not isinstance(raw_name, str):
+            raw_name = str(raw_name)
+        name_part = raw_name.split('#', 1)[0].strip().lower()
+        if name_part:
+            packages_grouped[name_part].append(entry)
+        else:
+            if not entry.get('id'):
+                skipped_raw_count += 1
+                logger.warning(f"Skipping raw package entry, no name or id: {entry}")
+    logger.info(f"Initial grouping: {len(packages_grouped)} unique package names found. Skipped {skipped_raw_count} raw entries.")
+
+    normalized_list = []
+    skipped_norm_count = 0
+    total_entries_considered = 0
+
+    for name_key, entries in packages_grouped.items():
+        total_entries_considered += len(entries)
+        latest_absolute_data = None
+        latest_official_data = None
+        latest_absolute_ver_for_comp = safe_parse_version("0.0.0a0")
+        latest_official_ver_for_comp = safe_parse_version("0.0.0a0")
+        all_versions = []
+        package_name_display = name_key
+
+        # Aggregate all versions from entries
+        processed_versions = set()
+        for package_entry in entries:
+            versions_list = package_entry.get('versions', [])
+            for version_info in versions_list:
+                if isinstance(version_info, dict) and 'version' in version_info:
+                    version_str = version_info.get('version', '')
+                    if version_str and version_str not in processed_versions:
+                        all_versions.append(version_info)
+                        processed_versions.add(version_str)
+
+        processed_entries = []
+        for package_entry in entries:
+            version_str = None
+            raw_name_entry = package_entry.get('name') or package_entry.get('title') or ''
+            if not isinstance(raw_name_entry, str):
+                raw_name_entry = str(raw_name_entry)
+            version_keys = ['version', 'latestVersion']
+            for key in version_keys:
+                val = package_entry.get(key)
+                if isinstance(val, str) and val:
+                    version_str = val.strip()
+                    break
+                elif isinstance(val, list) and val and isinstance(val[0], str) and val[0]:
+                    version_str = val[0].strip()
+                    break
+            if not version_str and '#' in raw_name_entry:
+                parts = raw_name_entry.split('#', 1)
+                if len(parts) == 2 and parts[1]:
+                    version_str = parts[1].strip()
+
+            if not version_str:
+                logger.warning(f"Skipping entry for {raw_name_entry}: no valid version found. Entry: {package_entry}")
+                skipped_norm_count += 1
+                continue
+
+            version_str = version_str.strip()
+            current_display_name = str(raw_name_entry).split('#')[0].strip()
+            if current_display_name and current_display_name != name_key:
+                package_name_display = current_display_name
+
+            entry_with_version = package_entry.copy()
+            entry_with_version['version'] = version_str
+            processed_entries.append(entry_with_version)
+
+            try:
+                current_ver_obj_for_comp = safe_parse_version(version_str)
+                if latest_absolute_data is None or current_ver_obj_for_comp > latest_absolute_ver_for_comp:
+                    latest_absolute_ver_for_comp = current_ver_obj_for_comp
+                    latest_absolute_data = entry_with_version
+
+                if re.match(r'^\d+\.\d+\.\d+(?:-[a-zA-Z0-9\.]+)?$', version_str):
+                    if latest_official_data is None or current_ver_obj_for_comp > latest_official_ver_for_comp:
+                        latest_official_ver_for_comp = current_ver_obj_for_comp
+                        latest_official_data = entry_with_version
+            except Exception as comp_err:
+                logger.error(f"Error comparing version '{version_str}' for package '{package_name_display}': {comp_err}", exc_info=True)
+
+        if latest_absolute_data:
+            final_absolute_version = latest_absolute_data.get('version', 'unknown')
+            final_official_version = latest_official_data.get('version') if latest_official_data else None
+
+            author_raw = latest_absolute_data.get('author') or latest_absolute_data.get('publisher') or ''
+            if isinstance(author_raw, dict):
+                author = author_raw.get('name', str(author_raw))
+            elif not isinstance(author_raw, str):
+                author = str(author_raw)
+            else:
+                author = author_raw
+
+            fhir_version_str = None
+            fhir_keys = ['fhirVersion', 'fhirVersions', 'fhir_version']
+            for key in fhir_keys:
+                val = latest_absolute_data.get(key)
+                if isinstance(val, list) and val and isinstance(val[0], str):
+                    fhir_version_str = val[0]
+                    break
+                elif isinstance(val, str) and val:
+                    fhir_version_str = val
+                    break
+            fhir_version_str = fhir_version_str or 'unknown'
+
+            url_raw = latest_absolute_data.get('url') or latest_absolute_data.get('link') or ''
+            url = str(url_raw) if not isinstance(url_raw, str) else url_raw
+            canonical_raw = latest_absolute_data.get('canonical') or url
+            canonical = str(canonical_raw) if not isinstance(canonical_raw, str) else canonical_raw
+
+            dependencies_raw = latest_absolute_data.get('dependencies', [])
+            dependencies = []
+            if isinstance(dependencies_raw, dict):
+                dependencies = [{"name": str(dn), "version": str(dv)} for dn, dv in dependencies_raw.items()]
+            elif isinstance(dependencies_raw, list):
+                for dep in dependencies_raw:
+                    if isinstance(dep, str):
+                        if '@' in dep:
+                            dep_name, dep_version = dep.split('@', 1)
+                            dependencies.append({"name": dep_name, "version": dep_version})
+                        else:
+                            dependencies.append({"name": dep, "version": "N/A"})
+                    elif isinstance(dep, dict) and 'name' in dep and 'version' in dep:
+                        dependencies.append(dep)
+
+            # Sort all_versions by pubDate (newest first)
+            all_versions.sort(key=lambda x: x.get('pubDate', ''), reverse=True)
+
+            normalized_entry = {
+                'name': package_name_display,
+                'version': final_absolute_version,
+                'latest_absolute_version': final_absolute_version,
+                'latest_official_version': final_official_version,
+                'author': author.strip(),
+                'fhir_version': fhir_version_str.strip(),
+                'url': url.strip(),
+                'canonical': canonical.strip(),
+                'dependencies': dependencies,
+                'version_count': len(all_versions),
+                'all_versions': all_versions,  # Preserve the full versions list with pubDate
+                'versions_data': processed_entries,
+                'registry': latest_absolute_data.get('registry', '')
+            }
+            normalized_list.append(normalized_entry)
+            if not final_official_version:
+                logger.warning(f"No official version found for package '{package_name_display}'. Versions: {[v['version'] for v in all_versions]}")
+        else:
+            logger.warning(f"No valid entries found to determine details for package name key '{name_key}'. Entries: {entries}")
+            skipped_norm_count += len(entries)
+
+    logger.info(f"Normalization complete. Entries considered: {total_entries_considered}, Skipped during norm: {skipped_norm_count}, Unique Packages Found: {len(normalized_list)}")
+    normalized_list.sort(key=lambda x: x.get('name', '').lower())
+    return normalized_list
+
+def cache_packages(normalized_packages, db, CachedPackage):
+    """
+    Cache normalized FHIR Implementation Guide packages in the CachedPackage database.
+    Updates existing records or adds new ones to improve performance for other routes.
+    
+    Args:
+        normalized_packages (list): List of normalized package dictionaries.
+        db: The SQLAlchemy database instance.
+        CachedPackage: The CachedPackage model class.
+    """
+    try:
+        for package in normalized_packages:
+            existing = CachedPackage.query.filter_by(package_name=package['name'], version=package['version']).first()
+            if existing:
+                existing.author = package['author']
+                existing.fhir_version = package['fhir_version']
+                existing.version_count = package['version_count']
+                existing.url = package['url']
+                existing.all_versions = package['all_versions']
+                existing.dependencies = package['dependencies']
+                existing.latest_absolute_version = package['latest_absolute_version']
+                existing.latest_official_version = package['latest_official_version']
+                existing.canonical = package['canonical']
+                existing.registry = package.get('registry', '')
+            else:
+                new_package = CachedPackage(
+                    package_name=package['name'],
+                    version=package['version'],
+                    author=package['author'],
+                    fhir_version=package['fhir_version'],
+                    version_count=package['version_count'],
+                    url=package['url'],
+                    all_versions=package['all_versions'],
+                    dependencies=package['dependencies'],
+                    latest_absolute_version=package['latest_absolute_version'],
+                    latest_official_version=package['latest_official_version'],
+                    canonical=package['canonical'],
+                    registry=package.get('registry', '')
+                )
+                db.session.add(new_package)
+        db.session.commit()
+        logger.info(f"Cached {len(normalized_packages)} packages in CachedPackage.")
+    except Exception as error:
+        db.session.rollback()
+        logger.error(f"Error caching packages: {error}")
+        raise
+
+#-----------------------------------------------------------------------
+
 # --- Helper Functions ---
 
 def _get_download_dir():
@@ -120,6 +611,28 @@ def _get_download_dir():
     except Exception as e:
         logger.error(f"Unexpected error getting/creating packages directory {packages_dir}: {e}", exc_info=True)
         return None
+
+# --- Helper to get description (Add this to services.py) ---
+def get_package_description(package_name, package_version, packages_dir):
+    """Reads package.json from a tgz and returns the description."""
+    tgz_filename = construct_tgz_filename(package_name, package_version)
+    if not tgz_filename: return "Error: Could not construct filename."
+    tgz_path = os.path.join(packages_dir, tgz_filename)
+    if not os.path.exists(tgz_path):
+        return f"Error: Package file not found ({tgz_filename})."
+
+    try:
+        with tarfile.open(tgz_path, "r:gz") as tar:
+            pkg_json_member = next((m for m in tar if m.name == 'package/package.json'), None)
+            if pkg_json_member:
+                with tar.extractfile(pkg_json_member) as f:
+                    pkg_data = json.load(f)
+                    return pkg_data.get('description', 'No description found in package.json.')
+            else:
+                return "Error: package.json not found in archive."
+    except (tarfile.TarError, json.JSONDecodeError, KeyError, IOError, Exception) as e:
+        logger.error(f"Error reading description from {tgz_filename}: {e}")
+        return f"Error reading package details: {e}"
 
 def sanitize_filename_part(text):
     """Basic sanitization for name/version parts of filename."""
@@ -2785,7 +3298,8 @@ def process_and_upload_test_data(server_info, options, temp_file_dir):
                                 raise ValueError("XML root tag missing.")
                             temp_dict = basic_fhir_xml_to_dict(content)
                             if temp_dict:
-                                fhir_resource = construct(resource_type, temp_dict)
+                                model_class = get_fhir_model_class(resource_type)
+                                fhir_resource = model_class(**temp_dict)
                                 resource_dict = fhir_resource.dict(exclude_none=True)
                                 if 'id' in resource_dict:
                                     parsed_content_list.append(resource_dict)
@@ -3227,6 +3741,367 @@ def process_and_upload_test_data(server_info, options, temp_file_dir):
     logger.info(f"[Upload Test Data] Completed. Status: {final_status}. {summary_message}")
 
 # --- END Service Function ---
+
+# --- CORRECTED retrieve_bundles function with NEW logic ---
+def retrieve_bundles(fhir_server_url, resources, output_zip, validate_references=False, fetch_reference_bundles=False):
+    """
+    Retrieve FHIR bundles and save to a ZIP file.
+    Optionally fetches referenced resources, either individually by ID or as full bundles by type.
+    Yields NDJSON progress updates.
+    """
+    temp_dir = None
+    try:
+        total_initial_bundles = 0
+        fetched_individual_references = 0
+        fetched_type_bundles = 0
+        retrieved_references_or_types = set() # Track fetched items to avoid duplicates
+
+        temp_dir = tempfile.mkdtemp(prefix="fhir_retrieve_")
+        logger.debug(f"Created temporary directory for bundle retrieval: {temp_dir}")
+        yield json.dumps({"type": "progress", "message": f"Starting bundle retrieval for {len(resources)} resource types"}) + "\n"
+        if validate_references:
+             yield json.dumps({"type": "info", "message": f"Reference fetching ON (Mode: {'Full Type Bundles' if fetch_reference_bundles else 'Individual Resources'})"}) + "\n"
+        else:
+             yield json.dumps({"type": "info", "message": "Reference fetching OFF"}) + "\n"
+
+
+        # --- Determine Base URL and Headers for Proxy ---
+        base_proxy_url = 'http://localhost:5000/fhir' # Always target the proxy endpoint
+        headers = {'Accept': 'application/fhir+json, application/fhir+xml;q=0.9, */*;q=0.8'}
+        is_custom_url = fhir_server_url != '/fhir' and fhir_server_url is not None and fhir_server_url.startswith('http')
+        if is_custom_url:
+            headers['X-Target-FHIR-Server'] = fhir_server_url.rstrip('/')
+            logger.debug(f"Will use proxy with X-Target-FHIR-Server: {headers['X-Target-FHIR-Server']}")
+        else:
+            logger.debug("Will use proxy targeting local HAPI server")
+
+        # --- Fetch Initial Bundles ---
+        initial_bundle_files = [] # Store paths for reference scanning
+        for resource_type in resources:
+            url = f"{base_proxy_url}/{quote(resource_type)}"
+            yield json.dumps({"type": "progress", "message": f"Fetching bundle for {resource_type} via proxy..."}) + "\n"
+            logger.debug(f"Sending GET request to proxy {url} with headers: {json.dumps(headers)}")
+            try:
+                response = requests.get(url, headers=headers, timeout=60)
+                logger.debug(f"Proxy response for {resource_type}: HTTP {response.status_code}")
+                if response.status_code != 200:
+                     # ... (keep existing error handling for initial fetch) ...
+                     error_detail = f"Proxy returned HTTP {response.status_code}."
+                     try: error_detail += f" Body: {response.text[:200]}..."
+                     except: pass
+                     yield json.dumps({"type": "error", "message": f"Failed to fetch {resource_type}: {error_detail}"}) + "\n"
+                     logger.error(f"Failed to fetch {resource_type} via proxy {url}: {error_detail}")
+                     continue
+                try: bundle = response.json()
+                except ValueError as e:
+                     yield json.dumps({"type": "error", "message": f"Invalid JSON response for {resource_type}: {str(e)}"}) + "\n"
+                     logger.error(f"Invalid JSON from proxy for {resource_type} at {url}: {e}, Response: {response.text[:500]}")
+                     continue
+                if not isinstance(bundle, dict) or bundle.get('resourceType') != 'Bundle':
+                    yield json.dumps({"type": "error", "message": f"Expected Bundle for {resource_type}, got {bundle.get('resourceType', 'unknown')}"}) + "\n"
+                    logger.error(f"Expected Bundle for {resource_type}, got {bundle.get('resourceType', 'unknown')}")
+                    continue
+                if not bundle.get('entry'):
+                    yield json.dumps({"type": "warning", "message": f"No entries found in bundle for {resource_type}"}) + "\n"
+
+                # Save the bundle
+                output_file = os.path.join(temp_dir, f"{resource_type}_bundle.json")
+                try:
+                    with open(output_file, 'w', encoding='utf-8') as f: json.dump(bundle, f, indent=2)
+                    logger.debug(f"Wrote bundle to {output_file}")
+                    initial_bundle_files.append(output_file) # Add for scanning
+                    total_initial_bundles += 1
+                    yield json.dumps({"type": "success", "message": f"Saved bundle for {resource_type}"}) + "\n"
+                except IOError as e:
+                    yield json.dumps({"type": "error", "message": f"Failed to save bundle file for {resource_type}: {e}"}) + "\n"
+                    logger.error(f"Failed to write bundle file {output_file}: {e}")
+                    continue
+            except requests.RequestException as e:
+                yield json.dumps({"type": "error", "message": f"Error connecting to proxy for {resource_type}: {str(e)}"}) + "\n"
+                logger.error(f"Error retrieving bundle for {resource_type} via proxy {url}: {e}")
+                continue
+            except Exception as e:
+                 yield json.dumps({"type": "error", "message": f"Unexpected error fetching {resource_type}: {str(e)}"}) + "\n"
+                 logger.error(f"Unexpected error during initial fetch for {resource_type} at {url}: {e}", exc_info=True)
+                 continue
+
+        # --- Fetch Referenced Resources (Conditionally) ---
+        if validate_references and initial_bundle_files:
+            yield json.dumps({"type": "progress", "message": "Scanning retrieved bundles for references..."}) + "\n"
+            all_references = set()
+            references_by_type = defaultdict(set) # To store { 'Patient': {'id1', 'id2'}, ... }
+
+            # --- Scan for References ---
+            for bundle_file_path in initial_bundle_files:
+                try:
+                    with open(bundle_file_path, 'r', encoding='utf-8') as f: bundle = json.load(f)
+                    for entry in bundle.get('entry', []):
+                        resource = entry.get('resource')
+                        if resource:
+                            current_refs = []
+                            find_references(resource, current_refs)
+                            for ref_str in current_refs:
+                                if isinstance(ref_str, str) and '/' in ref_str and not ref_str.startswith('#'):
+                                    all_references.add(ref_str)
+                                    # Group by type for bundle fetch mode
+                                    try:
+                                        ref_type = ref_str.split('/')[0]
+                                        if ref_type: references_by_type[ref_type].add(ref_str)
+                                    except Exception: pass # Ignore parsing errors here
+                except Exception as e:
+                     yield json.dumps({"type": "warning", "message": f"Could not scan references in {os.path.basename(bundle_file_path)}: {e}"}) + "\n"
+                     logger.warning(f"Error processing references in {bundle_file_path}: {e}")
+
+            # --- Fetch Logic ---
+            if not all_references:
+                yield json.dumps({"type": "info", "message": "No references found to fetch."}) + "\n"
+            else:
+                if fetch_reference_bundles:
+                    # --- Fetch Full Bundles by Type ---
+                    unique_ref_types = sorted(list(references_by_type.keys()))
+                    yield json.dumps({"type": "progress", "message": f"Fetching full bundles for {len(unique_ref_types)} referenced types..."}) + "\n"
+                    logger.info(f"Fetching full bundles for referenced types: {unique_ref_types}")
+
+                    for ref_type in unique_ref_types:
+                        if ref_type in retrieved_references_or_types: continue # Skip if type bundle already fetched
+
+                        url = f"{base_proxy_url}/{quote(ref_type)}" # Fetch all of this type
+                        yield json.dumps({"type": "progress", "message": f"Fetching full bundle for type {ref_type} via proxy..."}) + "\n"
+                        logger.debug(f"Sending GET request for full type bundle {ref_type} to proxy {url} with headers: {json.dumps(headers)}")
+                        try:
+                            response = requests.get(url, headers=headers, timeout=180) # Longer timeout for full bundles
+                            logger.debug(f"Proxy response for {ref_type} bundle: HTTP {response.status_code}")
+                            if response.status_code != 200:
+                                 error_detail = f"Proxy returned HTTP {response.status_code}."
+                                 try: error_detail += f" Body: {response.text[:200]}..."
+                                 except: pass
+                                 yield json.dumps({"type": "warning", "message": f"Failed to fetch full bundle for {ref_type}: {error_detail}"}) + "\n"
+                                 logger.warning(f"Failed to fetch full bundle {ref_type} via proxy {url}: {error_detail}")
+                                 retrieved_references_or_types.add(ref_type) # Mark type as attempted
+                                 continue
+
+                            try: bundle = response.json()
+                            except ValueError as e:
+                                 yield json.dumps({"type": "warning", "message": f"Invalid JSON for full {ref_type} bundle: {str(e)}"}) + "\n"
+                                 logger.warning(f"Invalid JSON response from proxy for full {ref_type} bundle at {url}: {e}")
+                                 retrieved_references_or_types.add(ref_type)
+                                 continue
+
+                            if not isinstance(bundle, dict) or bundle.get('resourceType') != 'Bundle':
+                                yield json.dumps({"type": "warning", "message": f"Expected Bundle for full {ref_type} fetch, got {bundle.get('resourceType', 'unknown')}"}) + "\n"
+                                logger.warning(f"Expected Bundle for full {ref_type} fetch, got {bundle.get('resourceType', 'unknown')}")
+                                retrieved_references_or_types.add(ref_type)
+                                continue
+
+                            # Save the full type bundle
+                            output_file = os.path.join(temp_dir, f"ref_{ref_type}_BUNDLE.json")
+                            try:
+                                 with open(output_file, 'w', encoding='utf-8') as f: json.dump(bundle, f, indent=2)
+                                 logger.debug(f"Wrote full type bundle to {output_file}")
+                                 fetched_type_bundles += 1
+                                 retrieved_references_or_types.add(ref_type)
+                                 yield json.dumps({"type": "success", "message": f"Saved full bundle for type {ref_type}"}) + "\n"
+                            except IOError as e:
+                                  yield json.dumps({"type": "warning", "message": f"Failed to save full bundle file for {ref_type}: {e}"}) + "\n"
+                                  logger.error(f"Failed to write full bundle file {output_file}: {e}")
+                                  retrieved_references_or_types.add(ref_type) # Still mark as attempted
+
+                        except requests.RequestException as e:
+                            yield json.dumps({"type": "warning", "message": f"Error connecting to proxy for full {ref_type} bundle: {str(e)}"}) + "\n"
+                            logger.warning(f"Error retrieving full {ref_type} bundle via proxy: {e}")
+                            retrieved_references_or_types.add(ref_type)
+                        except Exception as e:
+                             yield json.dumps({"type": "warning", "message": f"Unexpected error fetching full {ref_type} bundle: {str(e)}"}) + "\n"
+                             logger.warning(f"Unexpected error during full {ref_type} bundle fetch: {e}", exc_info=True)
+                             retrieved_references_or_types.add(ref_type)
+                    # End loop through ref_types
+                else:
+                    # --- Fetch Individual Referenced Resources ---
+                    yield json.dumps({"type": "progress", "message": f"Fetching {len(all_references)} unique referenced resources individually..."}) + "\n"
+                    logger.info(f"Fetching {len(all_references)} unique referenced resources by ID.")
+                    for ref in sorted(list(all_references)): # Sort for consistent order
+                        if ref in retrieved_references_or_types: continue # Skip already fetched
+
+                        try:
+                            # Parse reference
+                            ref_parts = ref.split('/')
+                            if len(ref_parts) != 2 or not ref_parts[0] or not ref_parts[1]:
+                                logger.warning(f"Skipping invalid reference format: {ref}")
+                                continue
+                            ref_type, ref_id = ref_parts
+
+                            # Fetch individual resource using _id search
+                            search_param = quote(f"_id={ref_id}")
+                            url = f"{base_proxy_url}/{quote(ref_type)}?{search_param}"
+
+                            yield json.dumps({"type": "progress", "message": f"Fetching referenced {ref_type}/{ref_id} via proxy..."}) + "\n"
+                            logger.debug(f"Sending GET request for referenced {ref} to proxy {url} with headers: {json.dumps(headers)}")
+
+                            response = requests.get(url, headers=headers, timeout=60)
+                            logger.debug(f"Proxy response for referenced {ref}: HTTP {response.status_code}")
+
+                            if response.status_code != 200:
+                                 error_detail = f"Proxy returned HTTP {response.status_code}."
+                                 try: error_detail += f" Body: {response.text[:200]}..."
+                                 except: pass
+                                 yield json.dumps({"type": "warning", "message": f"Failed to fetch referenced {ref}: {error_detail}"}) + "\n"
+                                 logger.warning(f"Failed to fetch referenced {ref} via proxy {url}: {error_detail}")
+                                 retrieved_references_or_types.add(ref)
+                                 continue
+
+                            try: bundle = response.json()
+                            except ValueError as e:
+                                 yield json.dumps({"type": "warning", "message": f"Invalid JSON for referenced {ref}: {str(e)}"}) + "\n"
+                                 logger.warning(f"Invalid JSON from proxy for ref {ref} at {url}: {e}")
+                                 retrieved_references_or_types.add(ref)
+                                 continue
+
+                            if not isinstance(bundle, dict) or bundle.get('resourceType') != 'Bundle':
+                                yield json.dumps({"type": "warning", "message": f"Expected Bundle for referenced {ref}, got {bundle.get('resourceType', 'unknown')}"}) + "\n"
+                                retrieved_references_or_types.add(ref)
+                                continue
+
+                            if not bundle.get('entry'):
+                                yield json.dumps({"type": "info", "message": f"Referenced resource {ref} not found on server." }) + "\n"
+                                logger.info(f"Referenced resource {ref} not found via search {url}")
+                                retrieved_references_or_types.add(ref)
+                                continue
+
+                            # Save the bundle containing the single referenced resource
+                            # Use a filename indicating it's an individual reference fetch
+                            output_file = os.path.join(temp_dir, f"ref_{ref_type}_{ref_id}.json")
+                            try:
+                                 with open(output_file, 'w', encoding='utf-8') as f: json.dump(bundle, f, indent=2)
+                                 logger.debug(f"Wrote referenced resource bundle to {output_file}")
+                                 fetched_individual_references += 1
+                                 retrieved_references_or_types.add(ref)
+                                 yield json.dumps({"type": "success", "message": f"Saved referenced resource {ref}"}) + "\n"
+                            except IOError as e:
+                                  yield json.dumps({"type": "warning", "message": f"Failed to save file for referenced {ref}: {e}"}) + "\n"
+                                  logger.error(f"Failed to write file {output_file}: {e}")
+                                  retrieved_references_or_types.add(ref)
+
+                        except requests.RequestException as e:
+                            yield json.dumps({"type": "warning", "message": f"Network error fetching referenced {ref}: {str(e)}"}) + "\n"
+                            logger.warning(f"Network error retrieving referenced {ref} via proxy: {e}")
+                            retrieved_references_or_types.add(ref)
+                        except Exception as e:
+                            yield json.dumps({"type": "warning", "message": f"Unexpected error fetching referenced {ref}: {str(e)}"}) + "\n"
+                            logger.warning(f"Unexpected error during reference fetch for {ref}: {e}", exc_info=True)
+                            retrieved_references_or_types.add(ref)
+                     # End loop through individual references
+        # --- End Reference Fetching Logic ---
+
+        # --- Create Final ZIP File ---
+        yield json.dumps({"type": "progress", "message": f"Creating ZIP file {os.path.basename(output_zip)}..."}) + "\n"
+        files_to_zip = [f for f in os.listdir(temp_dir) if f.endswith('.json')]
+        if not files_to_zip:
+            yield json.dumps({"type": "warning", "message": "No bundle files were successfully retrieved to include in ZIP."}) + "\n"
+            logger.warning(f"No JSON files found in {temp_dir} to include in ZIP.")
+        else:
+            logger.debug(f"Found {len(files_to_zip)} JSON files to include in ZIP: {files_to_zip}")
+            try:
+                 with zipfile.ZipFile(output_zip, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    for filename in files_to_zip:
+                        file_path = os.path.join(temp_dir, filename)
+                        if os.path.exists(file_path): zipf.write(file_path, filename)
+                        else: logger.error(f"File {file_path} disappeared before adding to ZIP.")
+                 yield json.dumps({"type": "success", "message": f"ZIP file created: {os.path.basename(output_zip)} with {len(files_to_zip)} files."}) + "\n"
+            except Exception as e:
+                 yield json.dumps({"type": "error", "message": f"Failed to create ZIP file: {e}"}) + "\n"
+                 logger.error(f"Error creating ZIP file {output_zip}: {e}", exc_info=True)
+
+        # --- Final Completion Message ---
+        completion_message = (
+            f"Bundle retrieval finished. Initial bundles: {total_initial_bundles}, "
+            f"Referenced items fetched: {fetched_individual_references if not fetch_reference_bundles else fetched_type_bundles} "
+            f"({ 'individual resources' if not fetch_reference_bundles else 'full type bundles' })."
+        )
+        yield json.dumps({
+            "type": "complete",
+            "message": completion_message,
+            "data": {
+                "total_initial_bundles": total_initial_bundles,
+                "fetched_individual_references": fetched_individual_references,
+                "fetched_type_bundles": fetched_type_bundles,
+                "reference_mode": "individual" if validate_references and not fetch_reference_bundles else "type_bundle" if validate_references and fetch_reference_bundles else "off"
+                }
+        }) + "\n"
+
+    except Exception as e:
+        # Catch errors during setup (like temp dir creation)
+        yield json.dumps({"type": "error", "message": f"Critical error during retrieval setup: {str(e)}"}) + "\n"
+        logger.error(f"Unexpected error in retrieve_bundles setup: {e}", exc_info=True)
+        yield json.dumps({ "type": "complete", "message": f"Retrieval failed: {str(e)}", "data": {"total_initial_bundles": 0, "fetched_individual_references": 0, "fetched_type_bundles": 0} }) + "\n"
+    finally:
+        # --- Cleanup Temporary Directory ---
+        if temp_dir and os.path.exists(temp_dir):
+            try:
+                shutil.rmtree(temp_dir)
+                logger.debug(f"Successfully removed temporary directory: {temp_dir}")
+            except Exception as cleanup_e:
+                logger.error(f"Error removing temporary directory {temp_dir}: {cleanup_e}", exc_info=True)
+# --- End corrected retrieve_bundles function ---
+
+def split_bundles(input_zip_path, output_zip):
+    """Split FHIR bundles from a ZIP file into individual resource JSON files and save to a ZIP."""
+    try:
+        total_resources = 0
+        temp_dir = tempfile.mkdtemp()
+        yield json.dumps({"type": "progress", "message": f"Starting bundle splitting from ZIP"}) + "\n"
+
+        # Extract input ZIP
+        with zipfile.ZipFile(input_zip_path, 'r') as zip_ref:
+            zip_ref.extractall(temp_dir)
+        yield json.dumps({"type": "progress", "message": f"Extracted input ZIP to temporary directory"}) + "\n"
+
+        # Process JSON files
+        for filename in os.listdir(temp_dir):
+            if not filename.endswith('.json'):
+                continue
+            input_file = os.path.join(temp_dir, filename)
+            try:
+                with open(input_file, 'r', encoding='utf-8') as f:
+                    bundle = json.load(f)
+                if bundle.get('resourceType') != 'Bundle':
+                    yield json.dumps({"type": "error", "message": f"Skipping {filename}: Not a Bundle"}) + "\n"
+                    continue
+                yield json.dumps({"type": "progress", "message": f"Processing bundle {filename}"}) + "\n"
+                index = 1
+                for entry in bundle.get('entry', []):
+                    resource = entry.get('resource')
+                    if not resource or not resource.get('resourceType'):
+                        yield json.dumps({"type": "error", "message": f"Invalid resource in {filename} at entry {index}"}) + "\n"
+                        continue
+                    resource_type = resource['resourceType']
+                    output_file = os.path.join(temp_dir, f"{resource_type}-{index}.json")
+                    with open(output_file, 'w', encoding='utf-8') as f:
+                        json.dump(resource, f, indent=2)
+                    total_resources += 1
+                    yield json.dumps({"type": "success", "message": f"Saved {resource_type}-{index}.json"}) + "\n"
+                    index += 1
+            except Exception as e:
+                yield json.dumps({"type": "error", "message": f"Error processing {filename}: {str(e)}"}) + "\n"
+                logger.error(f"Error splitting bundle {filename}: {e}", exc_info=True)
+
+        # Create output ZIP
+        with zipfile.ZipFile(output_zip, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for filename in os.listdir(temp_dir):
+                if filename.endswith('.json') and '-' in filename:
+                    zipf.write(os.path.join(temp_dir, filename), filename)
+        yield json.dumps({
+            "type": "complete",
+            "message": f"Bundle splitting completed. Extracted {total_resources} resources.",
+            "data": {"total_resources": total_resources}
+        }) + "\n"
+    except Exception as e:
+        yield json.dumps({"type": "error", "message": f"Unexpected error during splitting: {str(e)}"}) + "\n"
+        logger.error(f"Unexpected error in split_bundles: {e}", exc_info=True)
+    finally:
+        if os.path.exists(temp_dir):
+            for filename in os.listdir(temp_dir):
+                os.remove(os.path.join(temp_dir, filename))
+            os.rmdir(temp_dir)
 
 
 # --- Standalone Test ---

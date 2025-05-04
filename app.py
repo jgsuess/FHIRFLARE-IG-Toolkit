@@ -4,7 +4,7 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 import datetime
 import shutil
 import queue
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response, current_app, session, send_file, make_response
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response, current_app, session, send_file, make_response, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_wtf import FlaskForm
@@ -12,22 +12,40 @@ from flask_wtf.csrf import CSRFProtect
 from werkzeug.utils import secure_filename
 from werkzeug.formparser import FormDataParser
 from werkzeug.exceptions import RequestEntityTooLarge
+from urllib.parse import urlparse
+from cachetools import TTLCache
+from types import SimpleNamespace
 import tarfile
 import json
 import logging
 import requests
 import re
-import services  # Restore full module import
-from services import services_bp, construct_tgz_filename, parse_package_filename, import_package_and_dependencies  # Keep Blueprint import
-from forms import IgImportForm, ValidationForm, FSHConverterForm, TestDataUploadForm
+import yaml
+import threading
+import time # Add time import
+import services
+from services import (
+    services_bp,
+    construct_tgz_filename,
+    parse_package_filename,
+    import_package_and_dependencies,
+    retrieve_bundles,
+    split_bundles,
+    fetch_packages_from_registries,
+    normalize_package_data,
+    cache_packages,
+    HAS_PACKAGING_LIB,
+    pkg_version,
+    get_package_description,
+    safe_parse_version
+)
+from forms import IgImportForm, ValidationForm, FSHConverterForm, TestDataUploadForm, RetrieveSplitDataForm
 from wtforms import SubmitField
-#from models import ProcessedIg
+from package import package_bp
 import tempfile
+from logging.handlers import RotatingFileHandler
 
-# Set up logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-
+#app setup
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-fallback-secret-key-here')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:////app/instance/fhir_ig.db')
@@ -37,12 +55,78 @@ app.config['API_KEY'] = os.environ.get('API_KEY', 'your-fallback-api-key-here')
 app.config['VALIDATE_IMPOSED_PROFILES'] = True
 app.config['DISPLAY_PROFILE_RELATIONSHIPS'] = True
 app.config['UPLOAD_FOLDER'] = '/app/static/uploads'  # For GoFSH output
+CONFIG_PATH = '/usr/local/tomcat/conf/application.yaml'
+
+# Register blueprints immediately after app setup
+app.register_blueprint(services_bp, url_prefix='/api')
+app.register_blueprint(package_bp)
+logging.getLogger(__name__).info("Registered package_bp blueprint")
 
 # Set max upload size (e.g., 12 MB, adjust as needed)
 app.config['MAX_CONTENT_LENGTH'] = 6 * 1024 * 1024
 
+# In-memory cache with 5-minute TTL
+package_cache = TTLCache(maxsize=100, ttl=300)
+
 # Increase max number of form parts (default is often 1000)
 #app.config['MAX_FORM_PARTS'] = 1000 # Allow up to 1000 parts this is a hard coded stop limit in MAX_FORM_PARTS of werkzeug
+
+
+#-----------------------------------------------------------------------------------------------------------------------
+# --- Basic Logging Setup (adjust level and format as needed) ---
+# Configure root logger first - This sets the foundation
+# Set level to DEBUG initially to capture everything, handlers can filter later
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    # Force=True might be needed if basicConfig was called elsewhere implicitly
+                    # force=True
+                   )
+
+# Get the application logger (for app-specific logs)
+logger = logging.getLogger(__name__)
+# Explicitly set the app logger's level (can be different from root)
+logger.setLevel(logging.DEBUG)
+
+# --- Optional: Add File Handler for Debugging ---
+# Ensure the instance path exists before setting up the file handler
+# Note: This assumes app.instance_path is correctly configured later
+#       If running this setup *before* app = Flask(), define instance path manually.
+instance_folder_path_for_log = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'instance')
+os.makedirs(instance_folder_path_for_log, exist_ok=True)
+log_file_path = os.path.join(instance_folder_path_for_log, 'fhirflare_debug.log')
+
+file_handler = None # Initialize file_handler to None
+try:
+    # Rotate logs: 5 files, 5MB each
+    file_handler = RotatingFileHandler(log_file_path, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    # Set the file handler level - DEBUG will capture everything
+    file_handler.setLevel(logging.DEBUG)
+    # Add handler to the *root* logger to capture logs from all modules (like services)
+    logging.getLogger().addHandler(file_handler)
+    logger.info(f"--- File logging initialized to {log_file_path} (Level: DEBUG) ---")
+except Exception as e:
+    # Log error if file handler setup fails, but continue execution
+    logger.error(f"Failed to set up file logging to {log_file_path}: {e}", exc_info=True)
+# --- End File Handler Setup ---
+
+#-----------------------------------------------------------------------------------------------------------------------
+
+try:
+    import packaging.version as pkg_version
+    HAS_PACKAGING_LIB = True
+except ImportError:
+    HAS_PACKAGING_LIB = False
+    # Define a simple fallback parser if needed
+    class BasicVersion:
+         def __init__(self, v_str): self.v_str = str(v_str) # Ensure string
+         def __gt__(self, other): return self.v_str > str(other)
+         def __lt__(self, other): return self.v_str < str(other)
+         def __eq__(self, other): return self.v_str == str(other)
+         def __str__(self): return self.v_str
+    pkg_version = SimpleNamespace(parse=BasicVersion, InvalidVersion=ValueError)
+# --- End Imports ---
+
 
 # --- NEW: Define Custom Form Parser ---
 class CustomFormDataParser(FormDataParser):
@@ -104,8 +188,54 @@ db = SQLAlchemy(app)
 csrf = CSRFProtect(app)
 migrate = Migrate(app, db)
 
-# Register Blueprint
-app.register_blueprint(services_bp, url_prefix='/api')
+# @app.route('/clear-cache')
+# def clear_cache():
+#     """Clears the in-memory package cache, the DB timestamp, and the CachedPackage table."""
+#     # Clear in-memory cache
+#     app.config['MANUAL_PACKAGE_CACHE'] = None
+#     app.config['MANUAL_CACHE_TIMESTAMP'] = None
+#     logger.info("In-memory package cache cleared.")
+
+#     # Clear DB timestamp and CachedPackage table
+#     try:
+#         # Clear the timestamp
+#         timestamp_info = RegistryCacheInfo.query.first()
+#         if timestamp_info:
+#             timestamp_info.last_fetch_timestamp = None
+#             db.session.commit()
+#             logger.info("Database timestamp cleared.")
+#         else:
+#             logger.info("No database timestamp found to clear.")
+
+#         # Clear the CachedPackage table
+#         num_deleted = db.session.query(CachedPackage).delete()
+#         db.session.commit()
+#         logger.info(f"Cleared {num_deleted} entries from CachedPackage table.")
+#     except Exception as db_err:
+#         db.session.rollback()
+#         logger.error(f"Failed to clear DB timestamp or CachedPackage table: {db_err}", exc_info=True)
+#         flash("Failed to clear database cache.", "warning")
+
+#     flash("Package cache cleared. Fetching fresh list from registries...", "info")
+#     # Redirect back to the search page to force a reload and fetch
+#     return redirect(url_for('search_and_import'))
+
+# Remove logic from /clear-cache route - it's now handled by the API + background task
+@app.route('/clear-cache')
+def clear_cache():
+    """
+    This route is now effectively deprecated if the button uses the API.
+    If accessed directly, it could just redirect or show a message.
+    For safety, let it clear only the in-memory part and redirect.
+    """
+    app.config['MANUAL_PACKAGE_CACHE'] = None
+    app.config['MANUAL_CACHE_TIMESTAMP'] = None
+    session['fetch_failed'] = False # Reset flag
+    logger.info("Direct /clear-cache access: Cleared in-memory cache only.")
+    flash("Cache refresh must be initiated via the 'Clear & Refresh Cache' button.", "info")
+    return redirect(url_for('search_and_import'))
+
+# No changes needed in search_and_import logic itself for this fix.
 
 class ProcessedIg(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -122,6 +252,29 @@ class ProcessedIg(db.Model):
     search_param_conformance = db.Column(db.JSON, nullable=True) # Stores the extracted conformance map
     # --- END ADD ---
     __table_args__ = (db.UniqueConstraint('package_name', 'version', name='uq_package_version'),)
+
+class CachedPackage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    package_name = db.Column(db.String(128), nullable=False)
+    version = db.Column(db.String(64), nullable=False)
+    author = db.Column(db.String(128))
+    fhir_version = db.Column(db.String(64))
+    version_count = db.Column(db.Integer)
+    url = db.Column(db.String(256))
+    all_versions = db.Column(db.JSON, nullable=True)
+    dependencies = db.Column(db.JSON, nullable=True)
+    latest_absolute_version = db.Column(db.String(64))
+    latest_official_version = db.Column(db.String(64))
+    canonical = db.Column(db.String(256))
+    registry = db.Column(db.String(256))
+    __table_args__ = (db.UniqueConstraint('package_name', 'version', name='uq_cached_package_version'),)
+
+class RegistryCacheInfo(db.Model):
+    id = db.Column(db.Integer, primary_key=True) # Simple primary key
+    last_fetch_timestamp = db.Column(db.DateTime(timezone=True), nullable=True) # Store UTC timestamp
+
+    def __repr__(self):
+        return f'<RegistryCacheInfo id={self.id} last_fetch={self.last_fetch_timestamp}>'
 
 # --- Make sure to handle database migration if you use Flask-Migrate ---
 # (e.g., flask db migrate -m "Add search_param_conformance to ProcessedIg", flask db upgrade)
@@ -163,32 +316,42 @@ def list_downloaded_packages(packages_dir):
                 errors.append(f"Could not parse {filename}")
             try:
                 with tarfile.open(full_path, "r:gz") as tar:
-                    pkg_json_member = tar.getmember("package/package.json")
-                    fileobj = tar.extractfile(pkg_json_member)
-                    if fileobj:
-                        pkg_data = json.loads(fileobj.read().decode('utf-8-sig'))
-                        name = pkg_data.get('name', name)
-                        version = pkg_data.get('version', version)
-                        fileobj.close()
-            except (KeyError, tarfile.TarError, json.JSONDecodeError, UnicodeDecodeError) as e:
+                    # Ensure correct path within tarfile
+                    pkg_json_member_path = "package/package.json"
+                    try:
+                        pkg_json_member = tar.getmember(pkg_json_member_path)
+                        fileobj = tar.extractfile(pkg_json_member)
+                        if fileobj:
+                            pkg_data = json.loads(fileobj.read().decode('utf-8-sig'))
+                            name = pkg_data.get('name', name)
+                            version = pkg_data.get('version', version)
+                            fileobj.close()
+                    except KeyError:
+                        logger.warning(f"{pkg_json_member_path} not found in {filename}")
+                        # Keep parsed name/version if package.json is missing
+            except (tarfile.TarError, json.JSONDecodeError, UnicodeDecodeError) as e:
                 logger.warning(f"Could not read package.json from {filename}: {e}")
                 errors.append(f"Error reading {filename}: {str(e)}")
             except Exception as e:
                 logger.error(f"Unexpected error reading package.json from {filename}: {e}", exc_info=True)
                 errors.append(f"Unexpected error for {filename}: {str(e)}")
-            if name and version:
+
+            if name and version: # Only add if both name and version are valid
                 packages.append({'name': name, 'version': version, 'filename': filename})
             else:
                 logger.warning(f"Skipping package {filename} due to invalid name ('{name}') or version ('{version}')")
                 errors.append(f"Invalid package {filename}: name='{name}', version='{version}'")
+
+    # Group duplicates
     name_counts = {}
     for pkg in packages:
-        name = pkg['name']
-        name_counts[name] = name_counts.get(name, 0) + 1
-    for name, count in name_counts.items():
+        name_val = pkg['name']
+        name_counts[name_val] = name_counts.get(name_val, 0) + 1
+    for name_val, count in name_counts.items():
         if count > 1:
-            duplicate_groups[name] = sorted([p['version'] for p in packages if p['name'] == name])
-    logger.debug(f"Found packages: {packages}")
+            duplicate_groups[name_val] = sorted([p['version'] for p in packages if p['name'] == name_val])
+
+    logger.debug(f"Found packages: {len(packages)}")
     logger.debug(f"Errors during package listing: {errors}")
     logger.debug(f"Duplicate groups: {duplicate_groups}")
     return packages, errors, duplicate_groups
@@ -197,10 +360,64 @@ def list_downloaded_packages(packages_dir):
 def index():
     return render_template('index.html', site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
 
+@app.route('/debug-routes')
+def debug_routes():
+    """
+    Debug endpoint to list all registered routes and their endpoints.
+    """
+    routes = []
+    for rule in app.url_map.iter_rules():
+        routes.append(f"Endpoint: {rule.endpoint}, URL: {rule}")
+    return jsonify(routes)
+
+@app.route('/api/config', methods=['GET'])
+@csrf.exempt
+def get_config():
+    try:
+        with open(CONFIG_PATH, 'r') as file:
+            config = yaml.safe_load(file)
+        return jsonify(config)
+    except Exception as e:
+        logger.error(f"Error reading config file: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/config', methods=['POST'])
+@csrf.exempt
+def save_config():
+    try:
+        config = request.get_json()
+        with open(CONFIG_PATH, 'w') as file:
+            yaml.safe_dump(config, file, default_flow_style=False)
+        logger.info("Configuration saved successfully")
+        return jsonify({'message': 'Configuration saved'})
+    except Exception as e:
+        logger.error(f"Error saving config file: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/restart-tomcat', methods=['POST'])
+@csrf.exempt
+def restart_tomcat():
+    try:
+        result = subprocess.run(['supervisorctl', 'restart', 'tomcat'], capture_output=True, text=True)
+        if result.returncode == 0:
+            logger.info("Tomcat restarted successfully")
+            return jsonify({'message': 'Tomcat restarted'})
+        else:
+            logger.error(f"Failed to restart Tomcat: {result.stderr}")
+            return jsonify({'error': result.stderr}), 500
+    except Exception as e:
+        logger.error(f"Error restarting Tomcat: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/config-hapi')
+def config_hapi():
+    return render_template('config_hapi.html', site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+
 @app.route('/import-ig', methods=['GET', 'POST'])
 def import_ig():
     form = IgImportForm()
-    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+    # Check for HTMX request using both X-Requested-With and HX-Request headers
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.headers.get('HX-Request') == 'true'
 
     if form.validate_on_submit():
         name = form.package_name.data
@@ -226,6 +443,7 @@ def import_ig():
                 logger.error(f"Import failed critically for {name}#{version}: {error_msg}")
                 if is_ajax:
                     return jsonify({"status": "error", "message": simplified_msg}), 400
+                return render_template('import_ig.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
             else:
                 if result['errors']:
                     flash(f"Partially imported {name}#{version} with errors during dependency processing. Check logs.", "warning")
@@ -234,38 +452,182 @@ def import_ig():
                 else:
                     flash(f"Successfully downloaded {name}#{version} and dependencies! Mode: {dependency_mode}", "success")
                 if is_ajax:
-                    return jsonify({"status": "success", "message": f"Imported {name}#{version}", "redirect": url_for('view_igs')})
+                    return jsonify({"status": "success", "message": f"Imported {name}#{version}", "redirect": url_for('view_igs')}), 200
                 return redirect(url_for('view_igs'))
         except Exception as e:
             logger.error(f"Unexpected error during IG import: {str(e)}", exc_info=True)
             flash(f"An unexpected error occurred downloading the IG: {str(e)}", "error")
             if is_ajax:
                 return jsonify({"status": "error", "message": str(e)}), 500
+            return render_template('import_ig.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
     else:
         for field, errors in form.errors.items():
             for error in errors:
                 flash(f"Error in {getattr(form, field).label.text}: {error}", "danger")
         if is_ajax:
             return jsonify({"status": "error", "message": "Form validation failed", "errors": form.errors}), 400
+        return render_template('import_ig.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
 
-    return render_template('import_ig.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+# Function to perform the actual refresh logic in the background
+def perform_cache_refresh_and_log():
+    """Clears caches, fetches, normalizes, and caches packages, logging progress."""
+    # Ensure this runs within an app context to access db, config etc.
+    with app.app_context():
+        logger.info("--- Starting Background Cache Refresh ---")
+        try:
+            # 1. Clear In-Memory Cache
+            app.config['MANUAL_PACKAGE_CACHE'] = None
+            app.config['MANUAL_CACHE_TIMESTAMP'] = None
+            logger.info("In-memory cache cleared.")
 
+            # 2. Clear DB Timestamp and CachedPackage Table
+            try:
+                timestamp_info = RegistryCacheInfo.query.first()
+                if timestamp_info:
+                    timestamp_info.last_fetch_timestamp = None
+                    # Don't commit yet, commit at the end
+                num_deleted = db.session.query(CachedPackage).delete()
+                db.session.flush() # Apply delete within transaction
+                logger.info(f"Cleared {num_deleted} entries from CachedPackage table (DB).")
+            except Exception as db_clear_err:
+                db.session.rollback()
+                logger.error(f"Failed to clear DB cache tables: {db_clear_err}", exc_info=True)
+                log_queue.put(f"ERROR: Failed to clear DB - {db_clear_err}")
+                log_queue.put("[DONE]") # Signal completion even on error
+                return # Stop processing
+
+            # 3. Fetch from Registries
+            logger.info("Fetching fresh package list from registries...")
+            fetch_failed = False
+            try:
+                raw_packages = fetch_packages_from_registries(search_term='') # Uses services logger internally
+                if not raw_packages:
+                    logger.warning("No packages returned from registries during refresh.")
+                    fetch_failed = True
+                    normalized_packages = []
+                else:
+                    # 4. Normalize Data
+                    logger.info("Normalizing fetched package data...")
+                    normalized_packages = normalize_package_data(raw_packages) # Uses services logger
+
+            except Exception as fetch_norm_err:
+                 logger.error(f"Error during fetch/normalization: {fetch_norm_err}", exc_info=True)
+                 fetch_failed = True
+                 normalized_packages = []
+                 log_queue.put(f"ERROR: Failed during fetch/normalization - {fetch_norm_err}")
+
+
+            # 5. Update In-Memory Cache (always update, even if empty on failure)
+            now_ts = datetime.datetime.now(datetime.timezone.utc)
+            app.config['MANUAL_PACKAGE_CACHE'] = normalized_packages
+            app.config['MANUAL_CACHE_TIMESTAMP'] = now_ts
+            session['fetch_failed'] = fetch_failed # Update session flag reflecting fetch outcome
+            logger.info(f"Updated in-memory cache with {len(normalized_packages)} packages. Fetch failed: {fetch_failed}")
+
+            # 6. Cache in Database (if successful fetch)
+            if not fetch_failed and normalized_packages:
+                try:
+                    logger.info("Caching packages in database...")
+                    cache_packages(normalized_packages, db, CachedPackage) # Uses services logger
+                except Exception as cache_err:
+                    db.session.rollback() # Rollback DB changes on caching error
+                    logger.error(f"Failed to cache packages in database: {cache_err}", exc_info=True)
+                    log_queue.put(f"ERROR: Failed to cache packages in DB - {cache_err}")
+                    log_queue.put("[DONE]") # Signal completion
+                    return # Stop processing
+            elif fetch_failed:
+                 logger.warning("Skipping database caching due to fetch failure.")
+            else: # No packages but fetch didn't fail (edge case?)
+                 logger.info("No packages to cache in database.")
+
+
+            # 7. Update DB Timestamp (only if fetch didn't fail)
+            if not fetch_failed:
+                if timestamp_info:
+                    timestamp_info.last_fetch_timestamp = now_ts
+                else:
+                    timestamp_info = RegistryCacheInfo(last_fetch_timestamp=now_ts)
+                    db.session.add(timestamp_info)
+                logger.info(f"Set DB timestamp to {now_ts}.")
+            else:
+                 # Ensure timestamp_info is not added if fetch failed and it was new
+                 if timestamp_info and timestamp_info in db.new:
+                     db.session.expunge(timestamp_info)
+                 logger.warning("Skipping DB timestamp update due to fetch failure.")
+
+
+            # 8. Commit all DB changes (only commit if successful)
+            if not fetch_failed:
+                db.session.commit()
+                logger.info("Database changes committed.")
+            else:
+                # Rollback any potential flushed changes if fetch failed
+                db.session.rollback()
+                logger.info("Rolled back DB changes due to fetch failure.")
+
+        except Exception as e:
+            db.session.rollback() # Rollback on any other unexpected error
+            logger.error(f"Critical error during background cache refresh: {e}", exc_info=True)
+            log_queue.put(f"CRITICAL ERROR: {e}")
+        finally:
+            logger.info("--- Background Cache Refresh Finished ---")
+            log_queue.put("[DONE]") # Signal completion
+
+
+@app.route('/api/refresh-cache-task', methods=['POST'])
+@csrf.exempt # Ensure CSRF is handled if needed, or keep exempt
+def refresh_cache_task():
+    """API endpoint to trigger the background cache refresh."""
+    # Note: Clearing queue here might interfere if multiple users click concurrently.
+    # A more robust solution uses per-request queues or task IDs.
+    # For simplicity, we clear it assuming low concurrency for this action.
+    while not log_queue.empty():
+        try: log_queue.get_nowait()
+        except queue.Empty: break
+
+    logger.info("Received API request to refresh cache.")
+    thread = threading.Thread(target=perform_cache_refresh_and_log, daemon=True)
+    thread.start()
+    logger.info("Background cache refresh thread started.")
+    # Return 202 Accepted: Request accepted, processing in background.
+    return jsonify({"status": "accepted", "message": "Cache refresh process started in the background."}), 202
+
+
+# Modify stream_import_logs - Simpler version: relies on thread putting [DONE]
 @app.route('/stream-import-logs')
 def stream_import_logs():
-    logger.debug("Accessing stream-import-logs endpoint")
+    logger.debug("SSE connection established to stream-import-logs")
     def generate():
+        # Directly consume from the shared queue
         while True:
             try:
-                msg = log_queue.get(timeout=1)
-                if 'Downloaded' in msg or 'Processing' in msg:
-                    clean_msg = msg.replace('INFO:services:', '').strip()
-                    yield f"data: {clean_msg}\n\n"
+                # Block-wait on the shared queue with a timeout
+                msg = log_queue.get(timeout=300) # 5 min timeout on get
+                clean_msg = str(msg).replace('INFO:services:', '').replace('INFO:app:', '').strip()
+                yield f"data: {clean_msg}\n\n"
+
+                if msg == '[DONE]':
+                    logger.debug("SSE stream received [DONE] from queue, closing stream.")
+                    break # Exit the generate loop
             except queue.Empty:
-                yield ": keepalive\n\n"
-            except GeneratorExit:
+                # Timeout occurred waiting for message or [DONE]
+                logger.warning("SSE stream timed out waiting for logs. Closing.")
+                yield "data: ERROR: Timeout waiting for logs.\n\n"
+                yield "data: [DONE]\n\n" # Still send DONE to signal client closure
                 break
-        yield "data: [DONE]\n\n"
-    return Response(generate(), mimetype='text/event-stream')
+            except GeneratorExit:
+                 logger.debug("SSE client disconnected.")
+                 break # Exit loop if client disconnects
+            except Exception as e:
+                 logger.error(f"Error in SSE generate loop: {e}", exc_info=True)
+                 yield f"data: ERROR: Server error in log stream - {e}\n\n"
+                 yield "data: [DONE]\n\n" # Send DONE to signal client closure on error
+                 break
+
+    response = Response(generate(), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no' # Useful for Nginx proxying
+    return response
 
 @app.route('/view-igs')
 def view_igs():
@@ -493,150 +855,6 @@ def view_ig(processed_ig_id):
                            imposed_profiles=imposed_profiles,
                            optional_usage_elements=optional_usage_elements,
                            config=current_app.config)
-
-#---------------------------------------------------------------------------------------OLD backup-----------------------------------
-#@app.route('/get-structure')
-# def get_structure():
-#     package_name = request.args.get('package_name')
-#     package_version = request.args.get('package_version')
-#     resource_type = request.args.get('resource_type') # This is the StructureDefinition ID/Name
-#     view = request.args.get('view', 'snapshot') # Keep for potential future use
-
-#     if not all([package_name, package_version, resource_type]):
-#         logger.warning("get_structure: Missing query parameters: package_name=%s, package_version=%s, resource_type=%s", package_name, package_version, resource_type)
-#         return jsonify({"error": "Missing required query parameters: package_name, package_version, resource_type"}), 400
-
-#     packages_dir = current_app.config.get('FHIR_PACKAGES_DIR')
-#     if not packages_dir:
-#         logger.error("FHIR_PACKAGES_DIR not configured.")
-#         return jsonify({"error": "Server configuration error: Package directory not set."}), 500
-
-#     # Paths for primary and core packages
-#     tgz_filename = services.construct_tgz_filename(package_name, package_version)
-#     tgz_path = os.path.join(packages_dir, tgz_filename)
-#     core_package_name, core_package_version = services.CANONICAL_PACKAGE
-#     core_tgz_filename = services.construct_tgz_filename(core_package_name, core_package_version)
-#     core_tgz_path = os.path.join(packages_dir, core_tgz_filename)
-
-#     sd_data = None
-#     search_params_data = [] # Initialize search params list
-#     fallback_used = False
-#     source_package_id = f"{package_name}#{package_version}"
-#     base_resource_type_for_sp = None # Variable to store the base type for SP search
-
-#     logger.debug(f"Attempting to find SD for '{resource_type}' in {tgz_filename}")
-
-#     # --- Fetch SD Data (Primary Package) ---
-#     primary_package_exists = os.path.exists(tgz_path)
-#     core_package_exists = os.path.exists(core_tgz_path)
-
-#     if primary_package_exists:
-#         try:
-#             sd_data, _ = services.find_and_extract_sd(tgz_path, resource_type)
-#             if sd_data:
-#                 base_resource_type_for_sp = sd_data.get('type')
-#                 logger.debug(f"Determined base resource type '{base_resource_type_for_sp}' from primary SD '{resource_type}'")
-#         except Exception as e:
-#             logger.error(f"Unexpected error extracting SD '{resource_type}' from primary package {tgz_path}: {e}", exc_info=True)
-#             sd_data = None # Ensure sd_data is None if extraction failed
-
-#     # --- Fallback SD Check (if primary failed or file didn't exist) ---
-#     if sd_data is None:
-#         logger.info(f"SD for '{resource_type}' not found or failed to load from {source_package_id}. Attempting fallback to {services.CANONICAL_PACKAGE_ID}.")
-#         if not core_package_exists:
-#             logger.error(f"Core package {services.CANONICAL_PACKAGE_ID} not found locally at {core_tgz_path}.")
-#             error_message = f"SD for '{resource_type}' not found in primary package, and core package is missing." if primary_package_exists else f"Primary package {package_name}#{package_version} and core package are missing."
-#             return jsonify({"error": error_message}), 500 if primary_package_exists else 404
-
-#         try:
-#             sd_data, _ = services.find_and_extract_sd(core_tgz_path, resource_type)
-#             if sd_data is not None:
-#                 fallback_used = True
-#                 source_package_id = services.CANONICAL_PACKAGE_ID
-#                 base_resource_type_for_sp = sd_data.get('type') # Store base type from fallback SD
-#                 logger.info(f"Found SD for '{resource_type}' in fallback package {source_package_id}. Base type: '{base_resource_type_for_sp}'")
-#         except Exception as e:
-#              logger.error(f"Unexpected error extracting SD '{resource_type}' from fallback {core_tgz_path}: {e}", exc_info=True)
-#              return jsonify({"error": f"Unexpected error reading fallback StructureDefinition: {str(e)}"}), 500
-
-#     # --- Check if SD data was ultimately found ---
-#     if not sd_data:
-#         # This case should ideally be covered by the checks above, but as a final safety net:
-#         logger.error(f"SD for '{resource_type}' could not be found in primary or fallback packages.")
-#         return jsonify({"error": f"StructureDefinition for '{resource_type}' not found."}), 404
-
-#     # --- Fetch Search Parameters (Primary Package First) ---
-#     if base_resource_type_for_sp and primary_package_exists:
-#          try:
-#               logger.info(f"Fetching SearchParameters for base type '{base_resource_type_for_sp}' from primary package {tgz_path}")
-#               search_params_data = services.find_and_extract_search_params(tgz_path, base_resource_type_for_sp)
-#          except Exception as e:
-#               logger.error(f"Error extracting SearchParameters for '{base_resource_type_for_sp}' from primary package {tgz_path}: {e}", exc_info=True)
-#               search_params_data = [] # Continue with empty list on error
-#     elif not primary_package_exists:
-#          logger.warning(f"Original package {tgz_path} not found, cannot search it for specific SearchParameters.")
-#     elif not base_resource_type_for_sp:
-#          logger.warning(f"Base resource type could not be determined for '{resource_type}', cannot search for SearchParameters.")
-
-#     # --- Fetch Search Parameters (Fallback to Core Package if needed) ---
-#     if not search_params_data and base_resource_type_for_sp and core_package_exists:
-#          logger.info(f"No relevant SearchParameters found in primary package for '{base_resource_type_for_sp}'. Searching core package {core_tgz_path}.")
-#          try:
-#               search_params_data = services.find_and_extract_search_params(core_tgz_path, base_resource_type_for_sp)
-#               if search_params_data:
-#                    logger.info(f"Found {len(search_params_data)} SearchParameters for '{base_resource_type_for_sp}' in core package.")
-#          except Exception as e:
-#               logger.error(f"Error extracting SearchParameters for '{base_resource_type_for_sp}' from core package {core_tgz_path}: {e}", exc_info=True)
-#               search_params_data = [] # Continue with empty list on error
-#     elif not search_params_data and not core_package_exists:
-#          logger.warning(f"Core package {core_tgz_path} not found, cannot perform fallback search for SearchParameters.")
-
-
-#     # --- Prepare Snapshot/Differential Elements (Existing Logic) ---
-#     snapshot_elements = sd_data.get('snapshot', {}).get('element', [])
-#     differential_elements = sd_data.get('differential', {}).get('element', [])
-#     differential_ids = {el.get('id') for el in differential_elements if el.get('id')}
-#     logger.debug(f"Found {len(differential_ids)} unique IDs in differential.")
-#     enriched_elements = []
-#     if snapshot_elements:
-#         logger.debug(f"Processing {len(snapshot_elements)} snapshot elements to add isInDifferential flag.")
-#         for element in snapshot_elements:
-#             element_id = element.get('id')
-#             element['isInDifferential'] = bool(element_id and element_id in differential_ids)
-#             enriched_elements.append(element)
-#         enriched_elements = [services.remove_narrative(el) for el in enriched_elements]
-#     else:
-#         logger.warning(f"No snapshot found for {resource_type} in {source_package_id}. Returning empty element list.")
-#         enriched_elements = []
-
-#     # --- Retrieve Must Support Paths from DB (Existing Logic - slightly refined key lookup) ---
-#     must_support_paths = []
-#     processed_ig = ProcessedIg.query.filter_by(package_name=package_name, version=package_version).first()
-#     if processed_ig and processed_ig.must_support_elements:
-#         ms_elements_dict = processed_ig.must_support_elements
-#         if resource_type in ms_elements_dict:
-#              must_support_paths = ms_elements_dict[resource_type]
-#              logger.debug(f"Retrieved {len(must_support_paths)} Must Support paths using profile key '{resource_type}' from processed IG DB record.")
-#         elif base_resource_type_for_sp and base_resource_type_for_sp in ms_elements_dict:
-#              must_support_paths = ms_elements_dict[base_resource_type_for_sp]
-#              logger.debug(f"Retrieved {len(must_support_paths)} Must Support paths using base type key '{base_resource_type_for_sp}' from processed IG DB record.")
-#         else:
-#              logger.debug(f"No specific Must Support paths found for keys '{resource_type}' or '{base_resource_type_for_sp}' in processed IG DB.")
-#     else:
-#          logger.debug(f"No processed IG record or no must_support_elements found in DB for {package_name}#{package_version}")
-
-#     # --- Construct the final response ---
-#     response_data = {
-#         'elements': enriched_elements,
-#         'must_support_paths': must_support_paths,
-#         'search_parameters': search_params_data, # Include potentially populated list
-#         'fallback_used': fallback_used,
-#         'source_package': source_package_id
-#     }
-
-#     # Use Response object for consistent JSON formatting and smaller payload
-#     return Response(json.dumps(response_data, indent=None, separators=(',', ':')), mimetype='application/json')
-#-----------------------------------------------------------------------------------------------------------------------------------
 
 @app.route('/get-example')
 def get_example():
@@ -1036,10 +1254,18 @@ csrf.exempt(services_bp) # Keep this line for routes defined in the blueprint
 def create_db():
     logger.debug(f"Attempting to create database tables for URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
     try:
-        db.create_all()
-        logger.info("Database tables created successfully (if they didn't exist).")
+        db.create_all() # This will create RegistryCacheInfo if it doesn't exist
+        # Optionally initialize the timestamp row if it's missing
+        with app.app_context():
+             if RegistryCacheInfo.query.first() is None:
+                  initial_info = RegistryCacheInfo(last_fetch_timestamp=None)
+                  db.session.add(initial_info)
+                  db.session.commit()
+                  logger.info("Initialized RegistryCacheInfo table.")
+        logger.info("Database tables created/verified successfully.")
     except Exception as e:
         logger.error(f"Failed to initialize database tables: {e}", exc_info=True)
+        #db.session.rollback() # Rollback in case of error during init
         raise
 
 with app.app_context():
@@ -1059,42 +1285,126 @@ def fhir_ui_operations():
     form = FhirRequestForm()
     return render_template('fhir_ui_operations.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now(), app_mode=app.config['APP_MODE'])
 
+# --- CORRECTED PROXY FUNCTION DEFINITION (Simplified Decorator) ---
+
+# Use a single route to capture everything after /fhir/
+# The 'path' converter handles slashes. 'subpath' can be empty.
+@app.route('/fhir/', defaults={'subpath': ''}, methods=['GET', 'POST', 'PUT', 'DELETE'])
 @app.route('/fhir/<path:subpath>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy_hapi(subpath):
-    # Clean subpath to remove r4/, fhir/, leading/trailing slashes
-    clean_subpath = subpath.replace('r4/', '').replace('fhir/', '').strip('/')
-    hapi_url = f"http://localhost:8080/fhir/{clean_subpath}" if clean_subpath else "http://localhost:8080/fhir"
-    headers = {k: v for k, v in request.headers.items() if k != 'Host'}
-    logger.debug(f"Proxying request: {request.method} {hapi_url}")
+    """
+    Proxies FHIR requests to either the local HAPI server or a custom
+    target server specified by the 'X-Target-FHIR-Server' header.
+    Handles requests to /fhir/ (base, subpath='') and /fhir/<subpath>.
+    The route '/fhir' (no trailing slash) is handled separately for the UI.
+    """
+    # Clean subpath just in case prefixes were somehow included
+    clean_subpath = subpath.replace('r4/', '', 1).replace('fhir/', '', 1).strip('/')
+    logger.debug(f"Proxy received request for path: '/fhir/{subpath}', cleaned subpath: '{clean_subpath}'")
+
+    # Determine the target FHIR server base URL
+    target_server_header = request.headers.get('X-Target-FHIR-Server')
+    final_base_url = None
+    is_custom_target = False
+
+    if target_server_header:
+        try:
+             parsed_url = urlparse(target_server_header)
+             if not parsed_url.scheme or not parsed_url.netloc:
+                  raise ValueError("Invalid URL format in X-Target-FHIR-Server header")
+             final_base_url = target_server_header.rstrip('/')
+             is_custom_target = True
+             logger.info(f"Proxy target identified from header: {final_base_url}")
+        except ValueError as e:
+             logger.warning(f"Invalid URL in X-Target-FHIR-Server header: '{target_server_header}'. Falling back. Error: {e}")
+             final_base_url = "http://localhost:8080/fhir"
+             logger.debug(f"Falling back to default local HAPI due to invalid header: {final_base_url}")
+    else:
+        final_base_url = "http://localhost:8080/fhir"
+        logger.debug(f"No target header found, proxying to default local HAPI: {final_base_url}")
+
+    # Construct the final URL for the target server request
+    # Append the cleaned subpath only if it's not empty
+    final_url = f"{final_base_url}/{clean_subpath}" if clean_subpath else final_base_url
+
+    # Prepare headers to forward
+    headers_to_forward = {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in [
+            'host', 'x-target-fhir-server', 'content-length', 'connection',
+            'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te',
+            'trailers', 'transfer-encoding', 'upgrade'
+            ]
+    }
+    if 'Content-Type' in request.headers:
+        headers_to_forward['Content-Type'] = request.headers['Content-Type']
+    if 'Accept' in request.headers:
+         headers_to_forward['Accept'] = request.headers['Accept']
+    elif 'Accept' not in headers_to_forward:
+         headers_to_forward['Accept'] = 'application/fhir+json, application/fhir+xml;q=0.9, */*;q=0.8'
+
+    logger.info(f"Proxying request: {request.method} {final_url}")
+    request_data = request.get_data()
+
     try:
+        # Make the request
         response = requests.request(
             method=request.method,
-            url=hapi_url,
-            headers=headers,
-            data=request.get_data(),
+            url=final_url,
+            headers=headers_to_forward,
+            data=request_data,
             cookies=request.cookies,
             allow_redirects=False,
-            timeout=5
+            timeout=60
         )
+        logger.info(f"Target server '{final_base_url}' responded with status: {response.status_code}")
         response.raise_for_status()
-        # Strip hop-by-hop headers to avoid chunked encoding issues
-        response_headers = {
-            k: v for k, v in response.headers.items()
-            if k.lower() not in (
-                'transfer-encoding', 'connection', 'content-encoding',
-                'content-length', 'keep-alive', 'proxy-authenticate',
-                'proxy-authorization', 'te', 'trailers', 'upgrade'
-            )
-        }
-        response_headers['Content-Length'] = str(len(response.content))
-        logger.debug(f"HAPI response: {response.status_code} {response.reason}")
-        return response.content, response.status_code, response_headers.items()
-    except requests.RequestException as e:
-        logger.error(f"HAPI proxy error for {subpath}: {str(e)}")
-        error_message = "HAPI FHIR server is unavailable. Please check server status."
-        if clean_subpath == 'metadata':
-            error_message = "Unable to connect to HAPI FHIR server for status check. Local validation will be used."
-        return jsonify({'error': error_message, 'details': str(e)}), 503
+
+        # Filter hop-by-hop headers
+        response_headers = { k: v for k, v in response.headers.items() if k.lower() not in ('transfer-encoding', 'connection', 'content-encoding', 'content-length', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailers', 'upgrade', 'server', 'date', 'x-powered-by', 'via', 'x-forwarded-for', 'x-forwarded-proto', 'x-request-id') }
+        response_content = response.content
+        response_headers['Content-Length'] = str(len(response_content))
+
+        # Create Flask response
+        resp = make_response(response_content)
+        resp.status_code = response.status_code
+        for key, value in response_headers.items(): resp.headers[key] = value
+        if 'Content-Type' in response.headers: resp.headers['Content-Type'] = response.headers['Content-Type']
+        return resp
+
+    # --- Exception Handling (same as previous version) ---
+    except requests.exceptions.Timeout:
+         error_msg = f"Request to the target FHIR server timed out: {final_url}"
+         logger.error(f"Proxy timeout error: {error_msg}")
+         return jsonify({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'timeout', 'diagnostics': error_msg}]}), 504
+    except requests.exceptions.ConnectionError as e:
+         target_name = 'custom server' if is_custom_target else 'local HAPI'
+         error_message = f"Could not connect to the target FHIR server ({target_name} at {final_base_url}). Please check the URL and server status."
+         logger.error(f"Proxy connection error: {error_message} - {str(e)}")
+         return jsonify({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'exception', 'diagnostics': error_message, 'details': {'text': str(e)}}]}), 503
+    except requests.exceptions.HTTPError as e:
+         logger.warning(f"Proxy received HTTP error from target {final_url}: {e.response.status_code}")
+         try:
+             error_response_headers = { k: v for k, v in e.response.headers.items() if k.lower() not in ('transfer-encoding', 'connection', 'content-encoding','content-length', 'keep-alive', 'proxy-authenticate','proxy-authorization', 'te', 'trailers', 'upgrade','server', 'date', 'x-powered-by', 'via', 'x-forwarded-for','x-forwarded-proto', 'x-request-id') }
+             error_content = e.response.content
+             error_response_headers['Content-Length'] = str(len(error_content))
+             error_resp = make_response(error_content)
+             error_resp.status_code = e.response.status_code
+             for key, value in error_response_headers.items(): error_resp.headers[key] = value
+             if 'Content-Type' in e.response.headers: error_resp.headers['Content-Type'] = e.response.headers['Content-Type']
+             return error_resp
+         except Exception as inner_e:
+              logger.error(f"Failed to process target server's error response: {inner_e}")
+              diag_text = f'Target server returned status {e.response.status_code}, but failed to forward its error details.'
+              return jsonify({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'exception', 'diagnostics': diag_text, 'details': {'text': str(e)}}]}), e.response.status_code or 502
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Proxy request error for {final_url}: {str(e)}")
+        return jsonify({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'exception', 'diagnostics': 'Error communicating with the target FHIR server.', 'details': {'text': str(e)}}]}), 502
+    except Exception as e:
+         logger.error(f"Unexpected proxy error for {final_url}: {str(e)}", exc_info=True)
+         return jsonify({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'exception', 'diagnostics': 'An unexpected error occurred within the FHIR proxy.', 'details': {'text': str(e)}}]}), 500
+
+# --- End of corrected proxy_hapi function ---
 
 
 @app.route('/api/load-ig-to-hapi', methods=['POST'])
@@ -1428,6 +1738,670 @@ def api_upload_test_data():
              try: shutil.rmtree(temp_dir)
              except Exception as cleanup_e: logger.error(f"Error cleaning up temp dir during exception: {cleanup_e}")
         return jsonify({"status": "error", "message": f"Unexpected server error: {str(e)}"}), 500
+
+@app.route('/retrieve-split-data', methods=['GET', 'POST'])
+def retrieve_split_data():
+    form = RetrieveSplitDataForm()
+    if form.validate_on_submit():
+        if form.submit_retrieve.data:
+            session['retrieve_params'] = {
+                'fhir_server_url': form.fhir_server_url.data,
+                'validate_references': form.validate_references.data,
+                'resources': request.form.getlist('resources')
+            }
+            if form.bundle_zip.data:
+                # Save uploaded ZIP to temporary file
+                temp_dir = tempfile.gettempdir()
+                zip_path = os.path.join(temp_dir, 'uploaded_bundles.zip')
+                form.bundle_zip.data.save(zip_path)
+                session['retrieve_params']['bundle_zip_path'] = zip_path
+            flash('Bundle retrieval initiated. Download will start after processing.', 'info')
+        elif form.submit_split.data:
+            # Save uploaded ZIP to temporary file
+            temp_dir = tempfile.gettempdir()
+            zip_path = os.path.join(temp_dir, 'split_bundles.zip')
+            form.split_bundle_zip.data.save(zip_path)
+            session['split_params'] = {'split_bundle_zip_path': zip_path}
+            flash('Bundle splitting initiated. Download will start after processing.', 'info')
+    return render_template('retrieve_split_data.html', form=form, site_name='FHIRFLARE IG Toolkit',
+                          now=datetime.datetime.now(), app_mode=app.config['APP_MODE'],
+                          api_key=app.config['API_KEY'])
+
+@app.route('/api/retrieve-bundles', methods=['POST'])
+def api_retrieve_bundles():
+    auth_error = check_api_key()
+    if auth_error:
+        return auth_error
+
+    # Use request.form for standard form data
+    params = request.form.to_dict()
+    resources = request.form.getlist('resources') # Get list of selected resources
+
+    # Get boolean flags, converting string 'true' to boolean True
+    validate_references = params.get('validate_references', 'false').lower() == 'true'
+    # --- Get NEW flag ---
+    fetch_reference_bundles = params.get('fetch_reference_bundles', 'false').lower() == 'true'
+    # --- End NEW flag ---
+
+    # Basic validation
+    if not resources:
+        return jsonify({"status": "error", "message": "No resources selected."}), 400
+
+    # Get FHIR server URL, default to '/fhir' (which targets local proxy)
+    fhir_server_url = params.get('fhir_server_url', '/fhir').strip()
+    if not fhir_server_url: # Handle empty string case
+         fhir_server_url = '/fhir'
+
+    logger.info(f"Retrieve API: Server='{fhir_server_url}', Resources={resources}, ValidateRefs={validate_references}, FetchRefBundles={fetch_reference_bundles}")
+
+    # Ensure the temp directory exists (use Flask's configured upload folder or system temp)
+    # Using system temp is generally safer for transient data
+    temp_dir = tempfile.gettempdir()
+    # Generate a unique filename for the zip in the temp dir
+    zip_filename = f"retrieved_bundles_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.zip"
+    output_zip = os.path.join(temp_dir, zip_filename)
+
+    def generate():
+        # Pass the NEW flag to the service function
+        yield from retrieve_bundles(
+            fhir_server_url=fhir_server_url,
+            resources=resources,
+            output_zip=output_zip,
+            validate_references=validate_references,
+            fetch_reference_bundles=fetch_reference_bundles # Pass new flag
+        )
+
+    # Create the response *before* starting the generator
+    response = Response(generate(), mimetype='application/x-ndjson')
+    # Send back the *relative* path within the temp dir for download
+    response.headers['X-Zip-Path'] = os.path.join('/tmp', zip_filename) # Path for the /tmp/<filename> route
+
+    return response
+
+@app.route('/api/split-bundles', methods=['POST'])
+def api_split_bundles():
+    auth_error = check_api_key()
+    if auth_error:
+        return auth_error
+    params = request.form.to_dict()
+    input_zip_path = params.get('split_bundle_zip_path')
+    if not input_zip_path:
+        return jsonify({"status": "error", "message": "Missing input ZIP file."}), 400
+    temp_dir = tempfile.gettempdir()
+    output_zip = os.path.join(temp_dir, 'split_resources.zip')
+    def generate():
+        for message in split_bundles(input_zip_path, output_zip):
+            yield message
+    response = Response(generate(), mimetype='application/x-ndjson')
+    response.headers['X-Zip-Path'] = output_zip
+    return response
+
+@app.route('/tmp/<filename>', methods=['GET'])
+def serve_zip(filename):
+    file_path = os.path.join('/tmp', filename)
+    if not os.path.exists(file_path):
+        logger.error(f"ZIP file not found: {file_path}")
+        return jsonify({'error': 'File not found'}), 404
+    try:
+        return send_file(file_path, as_attachment=True, download_name=filename)
+    except Exception as e:
+        logger.error(f"Error serving ZIP file {file_path}: {str(e)}")
+        return jsonify({'error': 'Error serving file', 'details': str(e)}), 500
+
+@app.route('/clear-session', methods=['POST'])
+def clear_session():
+    session.pop('retrieve_params', None)
+    session.pop('split_params', None)
+    return jsonify({"status": "success", "message": "Session cleared"})
+
+
+@app.route('/api/package/<name>', methods=['GET'])
+def package_details(name):
+    """
+    Retrieve details for a specific FHIR Implementation Guide package by name.
+    Fetches from ProcessedIg or CachedPackage if not found in the database.
+    
+    Args:
+        name (str): The name of the package (e.g., 'hl7.fhir.us.core').
+    
+    Returns:
+        JSON with package details (name, latest version, author, FHIR version, version count, URL)
+        or a 404 error if the package is not found.
+    """
+    from services import fetch_packages_from_registries, normalize_package_data
+    
+    # Check ProcessedIg first (processed IGs)
+    package = ProcessedIg.query.filter_by(package_name=name).first()
+    if package:
+        return jsonify({
+            'name': package.package_name,
+            'latest': package.version,
+            'author': package.author,
+            'fhir_version': package.fhir_version,
+            'version_count': package.version_count,
+            'url': package.url
+        })
+    
+    # Check CachedPackage (cached packages)
+    package = CachedPackage.query.filter_by(package_name=name).first()
+    if package:
+        return jsonify({
+            'name': package.package_name,
+            'latest': package.version,
+            'author': package.author,
+            'fhir_version': package.fhir_version,
+            'version_count': package.version_count,
+            'url': package.url
+        })
+    
+    # Fetch from registries if not in database
+    logger.info(f"Package {name} not found in database. Fetching from registries.")
+    raw_packages = fetch_packages_from_registries(search_term=name)
+    normalized_packages = normalize_package_data(raw_packages)
+    package = next((pkg for pkg in normalized_packages if pkg['name'].lower() == name.lower()), None)
+    
+    if not package:
+        return jsonify({'error': 'Package not found'}), 404
+    
+    return jsonify({
+        'name': package['name'],
+        'latest': package['version'],
+        'author': package['author'],
+        'fhir_version': package['fhir_version'],
+        'version_count': package['version_count'],
+        'url': package['url']
+    })
+
+@app.route('/search-and-import')
+def search_and_import():
+    """
+    Render the Search and Import page. Uses the database (CachedPackage) to load the package cache if available.
+    If not available, fetches from registries and caches the result. Displays latest official version if available,
+    otherwise falls back to latest absolute version. Shows fire animation and logs during cache loading.
+    """
+    logger.debug("--- Entering search_and_import route (DB Cache Logic) ---")
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+
+    in_memory_packages = app.config.get('MANUAL_PACKAGE_CACHE')
+    in_memory_timestamp = app.config.get('MANUAL_CACHE_TIMESTAMP')
+    db_timestamp_info = RegistryCacheInfo.query.first()
+    db_timestamp = db_timestamp_info.last_fetch_timestamp if db_timestamp_info else None
+    logger.debug(f"DB Timestamp: {db_timestamp}, In-Memory Timestamp: {in_memory_timestamp}")
+
+    normalized_packages = None
+    fetch_failed_flag = False
+    display_timestamp = None
+    is_fetching = False
+
+    # Check if a fetch is in progress (stored in session)
+    fetch_in_progress = session.get('fetch_in_progress', False)
+
+    if fetch_in_progress and in_memory_packages is not None:
+        # Fetch has completed, clear the session flag and proceed
+        session['fetch_in_progress'] = False
+        logger.info("Fetch completed, clearing fetch_in_progress flag.")
+        normalized_packages = in_memory_packages
+        display_timestamp = in_memory_timestamp
+        fetch_failed_flag = session.get('fetch_failed', False)
+    elif in_memory_packages is not None:
+        logger.info(f"Using in-memory cached package list from {in_memory_timestamp}.")
+        normalized_packages = in_memory_packages
+        display_timestamp = in_memory_timestamp
+        fetch_failed_flag = session.get('fetch_failed', False)
+    else:
+        # Check if there are cached packages in the database
+        try:
+            cached_packages = CachedPackage.query.all()
+            if cached_packages:
+                logger.info(f"Loading {len(cached_packages)} packages from CachedPackage table.")
+                # Reconstruct the normalized package format from the database entries
+                normalized_packages = []
+                packages_by_name = {}
+                for pkg in cached_packages:
+                    # Use getattr to provide defaults for potentially missing fields
+                    pkg_data = {
+                        'name': pkg.package_name,
+                        'version': pkg.version,
+                        'latest_absolute_version': getattr(pkg, 'latest_absolute_version', pkg.version),
+                        'latest_official_version': getattr(pkg, 'latest_official_version', None),
+                        'author': getattr(pkg, 'author', ''),
+                        'fhir_version': getattr(pkg, 'fhir_version', ''),
+                        'url': getattr(pkg, 'url', ''),
+                        'canonical': getattr(pkg, 'canonical', ''),
+                        'dependencies': getattr(pkg, 'dependencies', []) or [],
+                        'version_count': getattr(pkg, 'version_count', 1),
+                        'all_versions': getattr(pkg, 'all_versions', [{'version': pkg.version, 'pubDate': ''}]) or [],
+                        'versions_data': [],
+                        'registry': getattr(pkg, 'registry', '')
+                    }
+                    # Group by package name to handle version aggregation
+                    if pkg_data['name'] not in packages_by_name:
+                        packages_by_name[pkg_data['name']] = pkg_data
+                        normalized_packages.append(pkg_data)
+                    else:
+                        # Update all_versions for the existing package
+                        existing_pkg = packages_by_name[pkg_data['name']]
+                        if pkg_data['all_versions']:
+                            existing_pkg['all_versions'].extend(pkg_data['all_versions'])
+                        # Update version_count
+                        existing_pkg['version_count'] = len(existing_pkg['all_versions'])
+
+                # Sort all_versions within each package
+                for pkg in normalized_packages:
+                    pkg['all_versions'].sort(key=lambda x: safe_parse_version(x.get('version', '0.0.0a0')), reverse=True)
+
+                app.config['MANUAL_PACKAGE_CACHE'] = normalized_packages
+                app.config['MANUAL_CACHE_TIMESTAMP'] = db_timestamp or datetime.datetime.now(datetime.timezone.utc)
+                display_timestamp = app.config['MANUAL_CACHE_TIMESTAMP']
+                fetch_failed_flag = session.get('fetch_failed', False)
+                logger.info(f"Loaded {len(normalized_packages)} packages into in-memory cache from database.")
+            else:
+                logger.info("No packages found in CachedPackage table. Fetching from registries...")
+                is_fetching = True
+        except Exception as db_err:
+            logger.error(f"Error loading packages from CachedPackage table: {db_err}", exc_info=True)
+            flash("Error loading package cache from database. Fetching from registries...", "warning")
+            is_fetching = True
+
+    # If no packages were loaded from the database, fetch from registries
+    if normalized_packages is None:
+        logger.info("Fetching package list from registries...")
+        try:
+            # Clear the log queue to capture fetch logs
+            while not log_queue.empty():
+                log_queue.get()
+
+            # Set session flag to indicate fetch is in progress
+            session['fetch_in_progress'] = True
+
+            raw_packages = fetch_packages_from_registries(search_term='')
+            logger.debug(f"fetch_packages_from_registries returned {len(raw_packages)} raw packages.")
+            if not raw_packages:
+                logger.warning("fetch_packages_from_registries returned no packages. Handling fallback or empty list.")
+                normalized_packages = []
+                fetch_failed_flag = True
+                session['fetch_failed'] = True
+                app.config['MANUAL_PACKAGE_CACHE'] = []
+                app.config['MANUAL_CACHE_TIMESTAMP'] = None
+                display_timestamp = db_timestamp
+            else:
+                logger.debug("Normalizing fetched packages...")
+                normalized_packages = normalize_package_data(raw_packages)
+                logger.debug(f"Normalization resulted in {len(normalized_packages)} unique packages.")
+                now_ts = datetime.datetime.now(datetime.timezone.utc)
+                app.config['MANUAL_PACKAGE_CACHE'] = normalized_packages
+                app.config['MANUAL_CACHE_TIMESTAMP'] = now_ts
+                logger.info(f"Stored {len(normalized_packages)} packages in manual cache (memory).")
+
+                # Save to CachedPackage table
+                try:
+                    cache_packages(normalized_packages, db, CachedPackage)
+                except Exception as cache_err:
+                    logger.error(f"Failed to cache packages in database: {cache_err}", exc_info=True)
+                    flash("Error saving package cache to database.", "warning")
+
+                if db_timestamp_info:
+                    db_timestamp_info.last_fetch_timestamp = now_ts
+                else:
+                    db_timestamp_info = RegistryCacheInfo(last_fetch_timestamp=now_ts)
+                    db.session.add(db_timestamp_info)
+                try:
+                    db.session.commit()
+                    logger.info(f"Updated DB timestamp to {now_ts}")
+                except Exception as db_err:
+                    db.session.rollback()
+                    logger.error(f"Failed to update DB timestamp: {db_err}", exc_info=True)
+                    flash("Failed to save cache timestamp to database.", "warning")
+                session['fetch_failed'] = False
+                fetch_failed_flag = False
+                display_timestamp = now_ts
+
+                # Do not redirect here; let the template render with is_fetching=True
+        except Exception as fetch_err:
+            logger.error(f"Error during package fetch/normalization: {fetch_err}", exc_info=True)
+            normalized_packages = []
+            fetch_failed_flag = True
+            session['fetch_failed'] = True
+            app.config['MANUAL_PACKAGE_CACHE'] = []
+            app.config['MANUAL_CACHE_TIMESTAMP'] = None
+            display_timestamp = db_timestamp
+            flash("Error fetching package list from registries.", "error")
+
+    if not isinstance(normalized_packages, list):
+        logger.error(f"normalized_packages is not a list (type: {type(normalized_packages)}). Using empty list.")
+        normalized_packages = []
+        fetch_failed_flag = True
+        session['fetch_failed'] = True
+        display_timestamp = None
+
+    total_packages = len(normalized_packages) if normalized_packages else 0
+    start = (page - 1) * per_page
+    end = start + per_page
+    packages_processed_for_page = []
+    if normalized_packages:
+        for pkg_data in normalized_packages:
+            # Fall back to latest_absolute_version if latest_official_version is None
+            display_version = pkg_data.get('latest_official_version') or pkg_data.get('latest_absolute_version') or 'N/A'
+            pkg_data['display_version'] = display_version
+            packages_processed_for_page.append(pkg_data)
+
+    packages_on_page = packages_processed_for_page[start:end]
+    total_pages_calc = max(1, (total_packages + per_page - 1) // per_page)
+
+    def iter_pages(left_edge=1, left_current=1, right_current=2, right_edge=1):
+        pages = []
+        last_page = 0
+        for i in range(1, min(left_edge + 1, total_pages_calc + 1)):
+            pages.append(i)
+            last_page = i
+        if last_page < page - left_current - 1:
+            pages.append(None)
+        for i in range(max(last_page + 1, page - left_current), min(page + right_current + 1, total_pages_calc + 1)):
+            pages.append(i)
+            last_page = i
+        if last_page < total_pages_calc - right_edge:
+            pages.append(None)
+        for i in range(max(last_page + 1, total_pages_calc - right_edge + 1), total_pages_calc + 1):
+            pages.append(i)
+        return pages
+
+    pagination = SimpleNamespace(
+        items=packages_on_page,
+        page=page,
+        pages=total_pages_calc,
+        total=total_packages,
+        per_page=per_page,
+        has_prev=(page > 1),
+        has_next=(page < total_pages_calc),
+        prev_num=(page - 1 if page > 1 else None),
+        next_num=(page + 1 if page < total_pages_calc else None),
+        iter_pages=iter_pages()
+    )
+
+    form = IgImportForm()
+    logger.debug(f"--- Rendering search_and_import template (Page: {page}, Total: {total_packages}, Failed Fetch: {fetch_failed_flag}, Display TS: {display_timestamp}) ---")
+
+    return render_template('search_and_import_ig.html',
+                           packages=packages_on_page,
+                           pagination=pagination,
+                           form=form,
+                           fetch_failed=fetch_failed_flag,
+                           last_cached_timestamp=display_timestamp,
+                           is_fetching=is_fetching)
+
+@app.route('/api/search-packages', methods=['GET'], endpoint='api_search_packages')
+def api_search_packages():
+    """
+    Handles HTMX search requests. Filters packages from the in-memory cache.
+    Returns an HTML fragment (_search_results_table.html) displaying the
+    latest official version if available, otherwise falls back to latest absolute version.
+    """
+    search_term = request.args.get('search', '').lower()
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    logger.debug(f"API search request: term='{search_term}', page={page}")
+
+    all_cached_packages = app.config.get('MANUAL_PACKAGE_CACHE')
+    if all_cached_packages is None:
+        logger.warning("API search called but in-memory cache is empty. Returning no results.")
+        return render_template('_search_results_table.html', packages=[], pagination=None)
+
+    if search_term:
+        filtered_packages_raw = [
+            pkg for pkg in all_cached_packages
+            if isinstance(pkg, dict) and (
+                search_term in pkg.get('name', '').lower() or
+                search_term in pkg.get('author', '').lower()
+            )
+        ]
+        logger.debug(f"Filtered {len(all_cached_packages)} cached packages down to {len(filtered_packages_raw)} for term '{search_term}'")
+    else:
+        filtered_packages_raw = all_cached_packages
+        logger.debug(f"No search term provided, using all {len(filtered_packages_raw)} cached packages.")
+
+    filtered_packages_processed = []
+    for pkg_data in filtered_packages_raw:
+        # Fall back to latest_absolute_version if latest_official_version is None
+        display_version = pkg_data.get('latest_official_version') or pkg_data.get('latest_absolute_version') or 'N/A'
+        pkg_data['display_version'] = display_version
+        filtered_packages_processed.append(pkg_data)
+
+    total_filtered = len(filtered_packages_processed)
+    start = (page - 1) * per_page
+    end = start + per_page
+    packages_on_page = filtered_packages_processed[start:end]
+    total_pages_calc = max(1, (total_filtered + per_page - 1) // per_page)
+
+    def iter_pages(left_edge=1, left_current=1, right_current=2, right_edge=1):
+        pages = []
+        last_page = 0
+        for i in range(1, min(left_edge + 1, total_pages_calc + 1)):
+            pages.append(i)
+            last_page = i
+        if last_page < page - left_current - 1:
+            pages.append(None)
+        for i in range(max(last_page + 1, page - left_current), min(page + right_current + 1, total_pages_calc + 1)):
+            pages.append(i)
+            last_page = i
+        if last_page < total_pages_calc - right_edge:
+            pages.append(None)
+        for i in range(max(last_page + 1, total_pages_calc - right_edge + 1), total_pages_calc + 1):
+            pages.append(i)
+        return pages
+
+    pagination = SimpleNamespace(
+        items=packages_on_page,
+        page=page,
+        pages=total_pages_calc,
+        total=total_filtered,
+        per_page=per_page,
+        has_prev=(page > 1),
+        has_next=(page < total_pages_calc),
+        prev_num=(page - 1 if page > 1 else None),
+        next_num=(page + 1 if page < total_pages_calc else None),
+        iter_pages=iter_pages()
+    )
+
+    logger.debug(f"Rendering _search_results_table.html for API response (found {len(packages_on_page)} packages for page {page})")
+    html_response = render_template('_search_results_table.html',
+                                    packages=packages_on_page,
+                                    pagination=pagination)
+    return html_response
+
+def safe_parse_version_local(v_str): # Use different name
+    """
+    Local copy of safe version parser for package_details_view.
+    """
+    if not v_str or not isinstance(v_str, str):
+        return pkg_version_local.parse("0.0.0a0")
+    try:
+        return pkg_version_local.parse(v_str)
+    except pkg_version_local.InvalidVersion:
+        original_v_str = v_str
+        v_str_norm = v_str.lower()
+        base_part = v_str_norm.split('-', 1)[0] if '-' in v_str_norm else v_str_norm
+        suffix = v_str_norm.split('-', 1)[1] if '-' in v_str_norm else None
+        if re.match(r'^\d+(\.\d+)*$', base_part):
+            try:
+                if suffix in ['dev', 'snapshot', 'ci-build']: return pkg_version_local.parse(f"{base_part}a0")
+                elif suffix in ['draft', 'ballot', 'preview']: return pkg_version_local.parse(f"{base_part}b0")
+                elif suffix and suffix.startswith('rc'): return pkg_version_local.parse(f"{base_part}rc{ ''.join(filter(str.isdigit, suffix)) or '0'}")
+                return pkg_version_local.parse(base_part)
+            except pkg_version_local.InvalidVersion: logger_details.warning(f"[DetailsView] Invalid base version '{base_part}' after splitting '{original_v_str}'. Treating as alpha."); return pkg_version_local.parse("0.0.0a0")
+            except Exception as e: logger_details.error(f"[DetailsView] Unexpected error parsing FHIR-suffixed version '{original_v_str}': {e}"); return pkg_version_local.parse("0.0.0a0")
+        else: logger_details.warning(f"[DetailsView] Unparseable version '{original_v_str}' (base '{base_part}' not standard). Treating as alpha."); return pkg_version_local.parse("0.0.0a0")
+    except Exception as e: logger_details.error(f"[DetailsView] Unexpected error in safe_parse_version_local for '{v_str}': {e}"); return pkg_version_local.parse("0.0.0a0")
+# --- End Local Helper Definition ---
+
+@app.route('/package-details/<name>')
+def package_details_view(name):
+    """Renders package details, using cache/db/fetch."""
+    from services import get_package_description
+    packages = None
+    source = "Not Found"
+
+    def safe_parse_version_local(v_str):
+        """
+        Local version parser to handle FHIR package versions.
+        Uses pkg_version from services or falls back to basic comparison.
+        """
+        if not v_str or not isinstance(v_str, str):
+            logger.warning(f"Invalid version string: {v_str}. Treating as 0.0.0a0.")
+            return pkg_version.parse("0.0.0a0")
+        try:
+            return pkg_version.parse(v_str)
+        except pkg_version.InvalidVersion:
+            original_v_str = v_str
+            v_str_norm = v_str.lower()
+            base_part = v_str_norm.split('-', 1)[0] if '-' in v_str_norm else v_str_norm
+            suffix = v_str_norm.split('-', 1)[1] if '-' in v_str_norm else None
+            if re.match(r'^\d+(\.\d+)+$', base_part):
+                try:
+                    if suffix in ['dev', 'snapshot', 'ci-build']:
+                        return pkg_version.parse(f"{base_part}a0")
+                    elif suffix in ['draft', 'ballot', 'preview']:
+                        return pkg_version.parse(f"{base_part}b0")
+                    elif suffix and suffix.startswith('rc'):
+                        rc_num = ''.join(filter(str.isdigit, suffix)) or '0'
+                        return pkg_version.parse(f"{base_part}rc{rc_num}")
+                    return pkg_version.parse(base_part)
+                except pkg_version.InvalidVersion:
+                    logger.warning(f"Invalid base version '{base_part}' after splitting '{original_v_str}'. Treating as alpha.")
+                    return pkg_version.parse("0.0.0a0")
+                except Exception as e:
+                    logger.error(f"Unexpected error parsing FHIR-suffixed version '{original_v_str}': {e}")
+                    return pkg_version.parse("0.0.0a0")
+            else:
+                logger.warning(f"Unparseable version '{original_v_str}' (base '{base_part}' not standard). Treating as alpha.")
+                return pkg_version.parse("0.0.0a0")
+        except Exception as e:
+            logger.error(f"Unexpected error in safe_parse_version_local for '{v_str}': {e}")
+            return pkg_version.parse("0.0.0a0")
+
+    in_memory_cache = app.config.get('MANUAL_PACKAGE_CACHE')
+    if in_memory_cache:
+        cached_data = [pkg for pkg in in_memory_cache if isinstance(pkg, dict) and pkg.get('name', '').lower() == name.lower()]
+        if cached_data:
+            packages = cached_data
+            source = "In-Memory Cache"
+            logger.debug(f"Package '{name}' found in in-memory cache.")
+
+    if packages is None:
+        logger.debug(f"Package '{name}' not in memory cache. Checking database.")
+        try:
+            db_packages = CachedPackage.query.filter(CachedPackage.package_name.ilike(name)).all()
+            if db_packages:
+                packages = db_packages
+                source = "Database (CachedPackage)"
+                logger.debug(f"Package '{name}' found in CachedPackage DB.")
+        except Exception as db_err:
+            logger.error(f"Database error querying package '{name}': {db_err}", exc_info=True)
+
+    if packages is None:
+        logger.info(f"Package '{name}' not found in cache or DB. Fetching from registries.")
+        source = "Fetched from Registries"
+        try:
+            raw_packages = fetch_packages_from_registries(search_term=name)
+            normalized_packages = normalize_package_data(raw_packages)
+            packages = [pkg for pkg in normalized_packages if pkg.get('name', '').lower() == name.lower()]
+            if not packages:
+                logger.warning(f"Fetch/Normalization for '{name}' resulted in zero packages.")
+            else:
+                logger.debug(f"Fetch/Normalization successful for '{name}'. Found {len(packages)} versions.")
+        except Exception as fetch_err:
+            logger.error(f"Error fetching/normalizing from registries for '{name}': {fetch_err}", exc_info=True)
+            flash(f"Error fetching package details for {name} from registries.", "error")
+            return redirect(url_for('search_and_import'))
+
+    if not packages:
+        logger.warning(f"Package '{name}' could not be found from any source ({source}).")
+        flash(f"Package {name} not found.", "error")
+        return redirect(url_for('search_and_import'))
+
+    is_dict_list = bool(isinstance(packages[0], dict))
+    latest_absolute_version_str = None
+    latest_official_version_str = None
+    latest_absolute_data = None
+    all_versions = []
+    dependencies = []
+
+    try:
+        if is_dict_list:
+            package = packages[0]
+            latest_absolute_version_str = package.get('latest_absolute_version')
+            latest_official_version_str = package.get('latest_official_version')
+            latest_absolute_data = package
+            all_versions = package.get('all_versions', [])
+            dependencies = package.get('dependencies', [])
+        else:
+            package = packages[0]
+            latest_absolute_version_str = getattr(package, 'version', None)
+            latest_official_version_str = getattr(package, 'latest_official_version', None)
+            latest_absolute_data = package
+            all_versions = getattr(package, 'all_versions', [])
+            dependencies = getattr(package, 'dependencies', [])
+
+        if not all_versions:
+            logger.error(f"No versions found for package '{name}'. Package data: {package}")
+            flash(f"No versions found for package {name}.", "error")
+            return redirect(url_for('search_and_import'))
+
+    except Exception as e:
+        logger.error(f"Error processing versions for {name}: {e}", exc_info=True)
+        flash(f"Error determining latest versions for {name}.", "error")
+        return redirect(url_for('search_and_import'))
+
+    if not latest_absolute_data or not latest_absolute_version_str:
+        logger.error(f"Failed to determine latest version for '{name}'. Latest data: {latest_absolute_data}, Version: {latest_absolute_version_str}")
+        flash(f"Could not determine latest version details for {name}.", "error")
+        return redirect(url_for('search_and_import'))
+
+    actual_package_name = None
+    package_json = {}
+    if isinstance(latest_absolute_data, dict):
+        actual_package_name = latest_absolute_data.get('name', name)
+        package_json = {
+            'name': actual_package_name,
+            'version': latest_absolute_version_str,
+            'author': latest_absolute_data.get('author'),
+            'fhir_version': latest_absolute_data.get('fhir_version'),
+            'canonical': latest_absolute_data.get('canonical', ''),
+            'dependencies': latest_absolute_data.get('dependencies', []),
+            'url': latest_absolute_data.get('url'),
+            'registry': latest_absolute_data.get('registry', 'https://packages.simplifier.net'),
+            'description': get_package_description(actual_package_name, latest_absolute_version_str, app.config['FHIR_PACKAGES_DIR'])
+        }
+    else:
+        actual_package_name = getattr(latest_absolute_data, 'package_name', getattr(latest_absolute_data, 'name', name))
+        package_json = {
+            'name': actual_package_name,
+            'version': latest_absolute_version_str,
+            'author': getattr(latest_absolute_data, 'author', None),
+            'fhir_version': getattr(latest_absolute_data, 'fhir_version', None),
+            'canonical': getattr(latest_absolute_data, 'canonical', ''),
+            'dependencies': getattr(latest_absolute_data, 'dependencies', []),
+            'url': getattr(latest_absolute_data, 'url', None),
+            'registry': getattr(latest_absolute_data, 'registry', 'https://packages.simplifier.net'),
+            'description': get_package_description(actual_package_name, latest_absolute_version_str, app.config['FHIR_PACKAGES_DIR'])
+        }
+
+    # Since all_versions now contains dictionaries with version and pubDate, extract just the version for display
+    versions_sorted = []
+    try:
+        versions_sorted = sorted(all_versions, key=lambda x: safe_parse_version_local(x['version']), reverse=True)
+    except Exception as sort_err:
+        logger.warning(f"Version sorting failed for {name}: {sort_err}. Using basic reverse sort.")
+        versions_sorted = sorted(all_versions, key=lambda x: x['pubDate'], reverse=True)
+
+    logger.info(f"Rendering details for package '{package_json.get('name')}' (Source: {source}). Latest: {latest_absolute_version_str}, Official: {latest_official_version_str}")
+    return render_template('package_details.html',
+                           package_json=package_json,
+                           dependencies=dependencies,
+                           versions=[v['version'] for v in versions_sorted],
+                           package_name=actual_package_name,
+                           latest_official_version=latest_official_version_str)
+
 
 
 @app.route('/favicon.ico')
