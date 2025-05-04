@@ -1,8 +1,12 @@
 body {
     width: 100%;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Apply overflow and height constraints only for fire animation page */
+body.fire-animation-page {
     overflow: hidden;
     height: 100vh;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 /* Fire animation overlay */

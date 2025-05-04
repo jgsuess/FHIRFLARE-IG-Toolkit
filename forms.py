@@ -1,14 +1,67 @@
 # forms.py
 from flask_wtf import FlaskForm
-from wtforms import StringField, SelectField, TextAreaField, BooleanField, SubmitField, FileField
+from wtforms import StringField, SelectField, TextAreaField, BooleanField, SubmitField, FileField 
 from wtforms.validators import DataRequired, Regexp, ValidationError, URL, Optional, InputRequired
 from flask import request # Import request for file validation in FSHConverterForm
 import json
 import xml.etree.ElementTree as ET
 import re
 import logging # Import logging
+import os
 
 logger = logging.getLogger(__name__) # Setup logger if needed elsewhere
+
+# Existing form classes (IgImportForm, ValidationForm, FSHConverterForm, TestDataUploadForm) remain unchanged
+# Only providing RetrieveSplitDataForm
+class RetrieveSplitDataForm(FlaskForm):
+    """Form for retrieving FHIR bundles and splitting them into individual resources."""
+    fhir_server_url = StringField('FHIR Server URL', validators=[URL(), Optional()],
+                                 render_kw={'placeholder': 'e.g., https://hapi.fhir.org/baseR4'})
+
+    validate_references = BooleanField('Fetch Referenced Resources', default=False, # Changed label slightly
+                                      description="If checked, fetches resources referenced by the initial bundles.")
+
+    # --- NEW FIELD ---
+    fetch_reference_bundles = BooleanField('Fetch Full Reference Bundles (instead of individual resources)', default=False,
+                                           description="Requires 'Fetch Referenced Resources'. Fetches e.g. /Patient instead of Patient/id for each reference.",
+                                           render_kw={'data-dependency': 'validate_references'}) # Add data attribute for JS
+    # --- END NEW FIELD ---
+
+    split_bundle_zip = FileField('Upload Bundles to Split (ZIP)', validators=[Optional()],
+                                render_kw={'accept': '.zip'})
+    submit_retrieve = SubmitField('Retrieve Bundles')
+    submit_split = SubmitField('Split Bundles')
+
+    def validate(self, extra_validators=None):
+        """Custom validation for RetrieveSplitDataForm."""
+        if not super().validate(extra_validators):
+            return False
+
+        # --- NEW VALIDATION LOGIC ---
+        # Ensure fetch_reference_bundles is only checked if validate_references is also checked
+        if self.fetch_reference_bundles.data and not self.validate_references.data:
+             self.fetch_reference_bundles.errors.append('Cannot fetch full reference bundles unless "Fetch Referenced Resources" is also checked.')
+             return False
+        # --- END NEW VALIDATION LOGIC ---
+
+        # Validate based on which submit button was pressed
+        if self.submit_retrieve.data:
+            # No specific validation needed here now, handled by URL validator and JS
+            pass
+        elif self.submit_split.data:
+            # Need to check bundle source radio button selection in backend/JS,
+            # but validate file if 'upload' is selected.
+            # This validation might need refinement based on how source is handled.
+            # Assuming 'split_bundle_zip' is only required if 'upload' source is chosen.
+             pass # Basic validation done by Optional() and file type checks below
+
+        # Validate file uploads (keep existing)
+        if self.split_bundle_zip.data:
+            if not self.split_bundle_zip.data.filename.lower().endswith('.zip'):
+                self.split_bundle_zip.errors.append('File must be a ZIP file.')
+                return False
+
+        return True
 
 # Existing forms (IgImportForm, ValidationForm) remain unchanged
 class IgImportForm(FlaskForm):
