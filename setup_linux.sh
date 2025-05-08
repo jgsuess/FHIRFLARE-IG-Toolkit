@@ -3,7 +3,7 @@
 # --- Configuration ---
 REPO_URL="https://github.com/hapifhir/hapi-fhir-jpaserver-starter.git"
 CLONE_DIR="hapi-fhir-jpaserver"
-SOURCE_CONFIG_DIR="hapi-fhir-setup" # Assuming this is relative to the script's parent
+SOURCE_CONFIG_DIR="hapi-fhir-Setup" # Assuming this is relative to the script's parent
 CONFIG_FILE="application.yaml"
 
 # --- Define Paths ---
