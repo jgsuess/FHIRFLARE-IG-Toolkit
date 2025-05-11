@@ -4,9 +4,10 @@ Werkzeug==2.3.7
 requests==2.31.0
 Flask-WTF==1.2.1
 WTForms==3.1.2
-email-validator==2.2.0
-Flask-Login==0.6.3
-Flask-OAuthlib==0.9.6
-python-dotenv==1.0.1
-bcrypt==4.2.0
-flask-migrate==4.0.7
+Pytest
+pyyaml==6.0.1
+fhir.resources==8.0.0
+Flask-Migrate==4.1.0
+cachetools
+beautifulsoup4
+feedparser==6.0.11
