@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Gallery{% endblock %}
+{% macro generate_filter_url(endpoint, filter_key, filter_value, filter_params, search) %}
+    {% set params = {} %}
+    {% for key, values in filter_params.items() %}
+        {% if key != filter_key %}
+            {% for value in values %}
+                {% if params[key] is not defined %}
+                    {% set _ = params.update({key: [value]}) %}
+                {% else %}
+                    {% set _ = params[key].append(value) %}
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+    {% endfor %}
+    {% set _ = params.update({filter_key: filter_value}) %}
+    {% if search %}
+        {% set _ = params.update({'search': search}) %}
+    {% endif %}
+    {{ url_for(endpoint, **params) }}
+{% endmacro %}
+{% block content %}
+<div class="container-fluid">
+    <nav class="navbar navbar-expand-lg navbar-light sticky-top shadow-sm mb-4">
+        <div class="container-fluid">
+            <span class="navbar-brand d-flex align-items-center">
+                <img src="{{ url_for('static', filename='fhirpad.png') }}" alt="FHIRPAD" height="40" class="me-2" onerror="this.style.display='none';">
+                Filter Apps
+            </span>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#filterNavbar" aria-controls="filterNavbar" aria-expanded="false" aria-label="Toggle filters">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="filterNavbar">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link {% if not filter_params and not request.args.get('search') %}active{% endif %}" href="{{ url_for('gallery.gallery') }}">All Apps</a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle {% if filter_params.get('category') %}active{% endif %}" href="#" id="categoryDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            Categories
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="categoryDropdown">
+                            {% for category in categories %}
+                                <li>
+                                    <a class="dropdown-item {% if category.id in filter_params.get('category', []) %}active{% endif %}" href="{{ generate_filter_url('gallery.gallery', 'category', category.id, filter_params, request.args.get('search', '')) }}">{{ category.name }}</a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle {% if filter_params.get('os_support') %}active{% endif %}" href="#" id="osSupportDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            OS Support
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="osSupportDropdown">
+                            {% for os in os_supports %}
+                                <li>
+                                    <a class="dropdown-item {% if os.id in filter_params.get('os_support', []) %}active{% endif %}" href="{{ generate_filter_url('gallery.gallery', 'os_support', os.id, filter_params, request.args.get('search', '')) }}">{{ os.name }}</a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle {% if filter_params.get('fhir_support') %}active{% endif %}" href="#" id="fhirSupportDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            FHIR Support
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="fhirSupportDropdown">
+                            {% for fhir in fhir_supports %}
+                                <li>
+                                    <a class="dropdown-item {% if fhir.id in filter_params.get('fhir_support', []) %}active{% endif %}" href="{{ generate_filter_url('gallery.gallery', 'fhir_support', fhir.id, filter_params, request.args.get('search', '')) }}">{{ fhir.name }}</a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle {% if filter_params.get('pricing_license') %}active{% endif %}" href="#" id="pricingDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            Pricing/License
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="pricingDropdown">
+                            {% for pricing in pricing_licenses %}
+                                <li>
+                                    <a class="dropdown-item {% if pricing.id in filter_params.get('pricing_license', []) %}active{% endif %}" href="{{ generate_filter_url('gallery.gallery', 'pricing_license', pricing.id, filter_params, request.args.get('search', '')) }}">{{ pricing.name }}</a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle {% if filter_params.get('designed_for') %}active{% endif %}" href="#" id="designedForDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            Designed For
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="designedForDropdown">
+                            {% for designed in designed_fors %}
+                                <li>
+                                    <a class="dropdown-item {% if designed.id in filter_params.get('designed_for', []) %}active{% endif %}" href="{{ generate_filter_url('gallery.gallery', 'designed_for', designed.id, filter_params, request.args.get('search', '')) }}">{{ designed.name }}</a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    <div class="container mt-4">
+        <p>Explore FHIR-based apps. Filter to find the perfect app.</p>
+        {% if filter_params or request.args.get('search') %}
+            <div class="mb-3">
+                <h5>Active Filters:</h5>
+                {% for key, values in filter_params.items() %}
+                    {% for value in values %}
+                        {% set item = {'category': categories, 'os_support': os_supports, 'fhir_support': fhir_supports, 'pricing_license': pricing_licenses, 'designed_for': designed_fors}[key] | selectattr('id', 'equalto', value) | first %}
+                        {% if item %}
+                            <span class="badge bg-primary me-1 filter-chip" data-key="{{ key }}" data-value="{{ value }}" data-bs-toggle="tooltip" title="Click to remove filter">{{ item.name }} <i class="fas fa-times ms-1" onclick="removeFilter('{{ key }}', {{ value }})"></i></span>
+                        {% endif %}
+                    {% endfor %}
+                {% endfor %}
+                {% if request.args.get('search') %}
+                    <span class="badge bg-primary me-1 filter-chip" data-key="search" data-value="{{ request.args.get('search') | urlencode }}" data-bs-toggle="tooltip" title="Click to clear search">Search: {{ request.args.get('search') }} <i class="fas fa-times ms-1" onclick="removeFilter('search', '{{ request.args.get('search') | urlencode }}')"></i></span>
+                {% endif %}
+                <a href="{{ url_for('gallery.gallery') }}" class="btn btn-sm btn-outline-danger ms-2">Clear All</a>
+            </div>
+        {% endif %}
+        {% if apps %}
+            <div id="appContainer" class="row">
+                {% for app in apps %}
+                    <div class="app-item col-md-4 mb-3" style="animation: fadeIn 0.5s;">
+                        <div class="card app-card shadow-sm h-100">
+                            {% if app.logo_url %}
+                                <img src="{{ app.logo_url }}" class="card-img-top" alt="{{ app.name }} logo" style="max-height: 150px; object-fit: contain; padding: 1rem;" onerror="this.src='https://via.placeholder.com/150?text=No+Logo';">
+                            {% else %}
+                                <img src="https://via.placeholder.com/150?text=No+Logo" class="card-img-top" alt="No Logo" style="max-height: 150px; object-fit: contain; padding: 1rem;">
+                            {% endif %}
+                            <div class="card-body d-flex flex-column">
+                                <h5 class="card-title">{{ app.name }}</h5>
+                                <p class="card-text flex-grow-1">{{ app.description | truncate(100) }}</p>
+                                <p class="card-text"><small class="text-muted">By {{ app.developer }}</small></p>
+                                <div class="d-flex flex-wrap gap-2 mb-2">
+                                    {% if app.website %}
+                                        <a href="{{ app.website }}" class="btn btn-primary btn-sm" target="_blank" rel="noopener noreferrer" aria-label="Visit {{ app.name }} website">Website</a>
+                                    {% endif %}
+                                    {% if app.launch_url %}
+                                        <a href="{{ app.launch_url }}" class="btn btn-outline-primary btn-sm" target="_blank" rel="noopener noreferrer" aria-label="Try {{ app.name }} with sandbox data">Try App</a>
+                                    {% endif %}
+                                </div>
+                                <a href="{{ url_for('gallery.app_detail', app_id=app.id) }}" class="btn btn-primary mt-auto">View Details</a>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+            <div id="appTable" class="d-none">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>Developer</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for app in apps %}
+                            <tr style="animation: fadeIn 0.5s;">
+                                <td>{{ app.name }}</td>
+                                <td>{{ app.description | truncate(100) }}</td>
+                                <td>{{ app.developer }}</td>
+                                <td>
+                                    <a href="{{ url_for('gallery.app_detail', app_id=app.id) }}" class="btn btn-primary btn-sm">View</a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="text-muted">No apps match your filters or search. Try adjusting the criteria.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

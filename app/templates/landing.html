@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}FHIRPAD Home{% endblock %}
+{% block content %}
+<div class="container mt-4">
+    <div class="text-center mb-5">
+        <img src="{{ url_for('static', filename='fhirpad.png') }}" alt="FHIRPAD" height="60" class="mb-3" onerror="this.style.display='none';">
+        <h1>Welcome to FHIRPAD</h1>
+        <p class="lead">Discover and share FHIR-based applications to enhance healthcare interoperability.</p>
+        <a href="{{ url_for('gallery.register') }}" class="btn btn-primary btn-lg">Submit Your App</a>
+        <a href="{{ url_for('gallery.gallery') }}" class="btn btn-outline-primary btn-lg">Browse Apps</a>
+    </div>
+
+    <!-- Featured Apps -->
+    <h2 class="mb-4">Featured Apps</h2>
+    {% if featured_apps %}
+        <div class="row">
+            {% for app in featured_apps %}
+                <div class="col-md-4 mb-3">
+                    <div class="card app-card shadow-sm h-100">
+                        {% if app.logo_url %}
+                            <img src="{{ app.logo_url }}" class="card-img-top" alt="{{ app.name }} logo" style="max-height: 150px; object-fit: contain; padding: 1rem;" onerror="this.src='https://via.placeholder.com/150?text=No+Logo';">
+                        {% else %}
+                            <img src="https://via.placeholder.com/150?text=No+Logo" class="card-img-top" alt="No Logo" style="max-height: 150px; object-fit: contain; padding: 1rem;">
+                        {% endif %}
+                        <div class="card-body d-flex flex-column">
+                            <h5 class="card-title">{{ app.name }}</h5>
+                            <p class="card-text flex-grow-1">{{ app.description | truncate(100) }}</p>
+                            <p class="card-text"><small class="text-muted">By {{ app.developer }}</small></p>
+                            <div class="d-flex flex-wrap gap-2 mb-2">
+                                {% if app.website %}
+                                    <a href="{{ app.website }}" class="btn btn-primary btn-sm" target="_blank" rel="noopener noreferrer" aria-label="Visit {{ app.name }} website">Website</a>
+                                {% endif %}
+                                {% if app.launch_url %}
+                                    <a href="{{ app.launch_url }}" class="btn btn-outline-primary btn-sm" target="_blank" rel="noopener noreferrer" aria-label="Try {{ app.name }} with sandbox data">Try App</a>
+                                {% endif %}
+                            </div>
+                            <a href="{{ url_for('gallery.app_detail', app_id=app.id) }}" class="btn btn-primary mt-auto">View Details</a>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="text-muted">No featured apps yet. Be the first to submit one!</p>
+    {% endif %}
+
+    <!-- Categories -->
+    <h2 class="mt-5 mb-4">Explore by Category</h2>
+    {% if categories %}
+        <div class="row">
+            {% for category in categories %}
+                <div class="col-md-3 mb-3">
+                    <a href="{{ url_for('gallery.gallery', category=category.id) }}" class="btn btn-outline-secondary w-100">{{ category.name }}</a>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="text-muted">No categories defined yet.</p>
+    {% endif %}
+</div>
+{% endblock %}
