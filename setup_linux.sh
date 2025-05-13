@@ -195,8 +195,8 @@ services:
       - FLASK_ENV=development
       - NODE_PATH=/usr/lib/node_modules
       - APP_MODE=${APP_MODE}
-      - APP_BASE_URL=https://localhost:5000
-      - HAPI_FHIR_URL=https://localhost:8080/fhir
+      - APP_BASE_URL=http://localhost:5000
+      - HAPI_FHIR_URL=http://localhost:8080/fhir
     command: supervisord -c /etc/supervisord.conf
 EOF
 
