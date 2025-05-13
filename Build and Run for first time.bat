@@ -158,7 +158,7 @@ echo Updating docker-compose.yml with APP_MODE=%APP_MODE%...
   echo       - NODE_PATH=/usr/lib/node_modules
   echo       - APP_MODE=%APP_MODE%
   echo       - APP_BASE_URL=https://localhost:5000
-  echo       - HAPI_FHIR_URL=https://loclhost:8080/fhir 
+  echo       - HAPI_FHIR_URL=https://localhost:8080/fhir 
   echo     command: supervisord -c /etc/supervisord.conf
 ) > docker-compose.yml.tmp
 
