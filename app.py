@@ -1277,7 +1277,7 @@ with app.app_context():
 class FhirRequestForm(FlaskForm):
     submit = SubmitField('Send Request')
 
-@app.route('/fhir')
+@app.route('/fhir-ui')
 def fhir_ui():
     form = FhirRequestForm()
     return render_template('fhir_ui.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now(), app_mode=app.config['APP_MODE'])
@@ -1291,6 +1291,7 @@ def fhir_ui_operations():
 
 # Use a single route to capture everything after /fhir/
 # The 'path' converter handles slashes. 'subpath' can be empty.
+@app.route('/fhir', defaults={'subpath': ''}, methods=['GET', 'POST', 'PUT', 'DELETE'])
 @app.route('/fhir/', defaults={'subpath': ''}, methods=['GET', 'POST', 'PUT', 'DELETE'])
 @app.route('/fhir/<path:subpath>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy_hapi(subpath):
