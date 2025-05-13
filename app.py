@@ -55,6 +55,8 @@ app.config['API_KEY'] = os.environ.get('API_KEY', 'your-fallback-api-key-here')
 app.config['VALIDATE_IMPOSED_PROFILES'] = True
 app.config['DISPLAY_PROFILE_RELATIONSHIPS'] = True
 app.config['UPLOAD_FOLDER'] = '/app/static/uploads'  # For GoFSH output
+app.config['APP_BASE_URL'] = os.environ.get('APP_BASE_URL', 'http://localhost:5000')
+app.config['HAPI_FHIR_URL'] = os.environ.get('HAPI_FHIR_URL', 'http://localhost:8080/fhir')
 CONFIG_PATH = '/usr/local/tomcat/conf/application.yaml'
 
 # Register blueprints immediately after app setup
@@ -1317,10 +1319,10 @@ def proxy_hapi(subpath):
              logger.info(f"Proxy target identified from header: {final_base_url}")
         except ValueError as e:
              logger.warning(f"Invalid URL in X-Target-FHIR-Server header: '{target_server_header}'. Falling back. Error: {e}")
-             final_base_url = "http://localhost:8080/fhir"
+             final_base_url = current_app.config['HAPI_FHIR_URL'].rstrip('/')
              logger.debug(f"Falling back to default local HAPI due to invalid header: {final_base_url}")
     else:
-        final_base_url = "http://localhost:8080/fhir"
+        final_base_url = current_app.config['HAPI_FHIR_URL'].rstrip('/')
         logger.debug(f"No target header found, proxying to default local HAPI: {final_base_url}")
 
     # Construct the final URL for the target server request
@@ -1424,7 +1426,7 @@ def load_ig_to_hapi():
                     resource_id = resource.get('id')
                     if resource_type and resource_id:
                         response = requests.put(
-                            f"http://localhost:8080/fhir/{resource_type}/{resource_id}",
+                            f"{current_app.config['HAPI_FHIR_URL'].rstrip('/')}/{resource_type}/{resource_id}",
                             json=resource,
                             headers={'Content-Type': 'application/fhir+json'}
                         )

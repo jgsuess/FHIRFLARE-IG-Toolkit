@@ -1616,7 +1616,7 @@ def validate_resource_against_profile(package_name, version, resource, include_d
     # Attempt HAPI validation if a profile is specified
     if result['profile']:
         try:
-            hapi_url = f"http://localhost:8080/fhir/{resource['resourceType']}/$validate?profile={result['profile']}"
+            hapi_url = f"{current_app.config['HAPI_FHIR_URL'].rstrip('/')}/{resource['resourceType']}/$validate?profile={result['profile']}"
             response = requests.post(
                 hapi_url,
                 json=resource,
@@ -3766,7 +3766,7 @@ def retrieve_bundles(fhir_server_url, resources, output_zip, validate_references
 
 
         # --- Determine Base URL and Headers for Proxy ---
-        base_proxy_url = 'http://localhost:5000/fhir' # Always target the proxy endpoint
+        base_proxy_url = f"{current_app.config['APP_BASE_URL'].rstrip('/')}/fhir"
         headers = {'Accept': 'application/fhir+json, application/fhir+xml;q=0.9, */*;q=0.8'}
         is_custom_url = fhir_server_url != '/fhir' and fhir_server_url is not None and fhir_server_url.startswith('http')
         if is_custom_url:
