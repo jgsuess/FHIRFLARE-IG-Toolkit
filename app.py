@@ -42,6 +42,7 @@ from services import (
 from forms import IgImportForm, ValidationForm, FSHConverterForm, TestDataUploadForm, RetrieveSplitDataForm
 from wtforms import SubmitField
 from package import package_bp
+from copy import deepcopy
 import tempfile
 from logging.handlers import RotatingFileHandler
 
@@ -913,6 +914,101 @@ def get_example():
         logger.error(f"Unexpected error getting example '{filename}' from {tgz_filename}: {e}", exc_info=True)
         return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
 
+#----------------------------------------------------------------------new
+def collect_all_structure_definitions(tgz_path):
+    """Collect all StructureDefinitions from a .tgz package."""
+    structure_definitions = {}
+    try:
+        with tarfile.open(tgz_path, "r:gz") as tar:
+            for member in tar:
+                if not (member.isfile() and member.name.startswith('package/') and member.name.lower().endswith('.json')):
+                    continue
+                if os.path.basename(member.name).lower() in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']:
+                    continue
+                fileobj = None
+                try:
+                    fileobj = tar.extractfile(member)
+                    if fileobj:
+                        content_bytes = fileobj.read()
+                        content_string = content_bytes.decode('utf-8-sig')
+                        data = json.loads(content_string)
+                        if isinstance(data, dict) and data.get('resourceType') == 'StructureDefinition':
+                            sd_url = data.get('url')
+                            if sd_url:
+                                structure_definitions[sd_url] = data
+                except Exception as e:
+                    logger.warning(f"Could not read/parse potential SD {member.name}, skipping: {e}")
+                finally:
+                    if fileobj:
+                        fileobj.close()
+    except Exception as e:
+        logger.error(f"Unexpected error collecting StructureDefinitions from {tgz_path}: {e}", exc_info=True)
+    return structure_definitions
+
+def generate_snapshot(structure_def, core_package_path, local_package_path):
+    """Generate a snapshot by merging the differential with the base StructureDefinition."""
+    if 'snapshot' in structure_def:
+        return structure_def
+
+    # Fetch all StructureDefinitions from the local package for reference resolution
+    local_sds = collect_all_structure_definitions(local_package_path)
+
+    # Get the base StructureDefinition from the core package
+    base_url = structure_def.get('baseDefinition')
+    if not base_url:
+        logger.error("No baseDefinition found in StructureDefinition.")
+        return structure_def
+
+    resource_type = structure_def.get('type')
+    base_sd_data, _ = services.find_and_extract_sd(core_package_path, resource_type, profile_url=base_url)
+    if not base_sd_data or 'snapshot' not in base_sd_data:
+        logger.error(f"Could not fetch or find snapshot in base StructureDefinition: {base_url}")
+        return structure_def
+
+    # Copy the base snapshot elements
+    snapshot_elements = deepcopy(base_sd_data['snapshot']['element'])
+    differential_elements = structure_def.get('differential', {}).get('element', [])
+
+    # Map snapshot elements by path and id for easier lookup
+    snapshot_by_path = {el['path']: el for el in snapshot_elements}
+    snapshot_by_id = {el['id']: el for el in snapshot_elements if 'id' in el}
+
+    # Process differential elements
+    for diff_el in differential_elements:
+        diff_path = diff_el.get('path')
+        diff_id = diff_el.get('id')
+
+        # Resolve extensions or referenced types
+        if 'type' in diff_el:
+            for type_info in diff_el['type']:
+                if 'profile' in type_info:
+                    for profile_url in type_info['profile']:
+                        if profile_url in local_sds:
+                            # Add elements from the referenced StructureDefinition
+                            ref_sd = local_sds[profile_url]
+                            ref_elements = ref_sd.get('snapshot', {}).get('element', []) or ref_sd.get('differential', {}).get('element', [])
+                            for ref_el in ref_elements:
+                                # Adjust paths to fit within the current structure
+                                ref_path = ref_el.get('path')
+                                if ref_path.startswith(ref_sd.get('type')):
+                                    new_path = diff_path + ref_path[len(ref_sd.get('type')):]
+                                    new_el = deepcopy(ref_el)
+                                    new_el['path'] = new_path
+                                    new_el['id'] = diff_id + ref_path[len(ref_sd.get('type')):]
+                                    snapshot_elements.append(new_el)
+
+        # Find matching element in snapshot
+        target_el = snapshot_by_id.get(diff_id) or snapshot_by_path.get(diff_path)
+        if target_el:
+            # Update existing element with differential constraints
+            target_el.update(diff_el)
+        else:
+            # Add new element (e.g., extensions or new slices)
+            snapshot_elements.append(diff_el)
+
+    structure_def['snapshot'] = {'element': snapshot_elements}
+    return structure_def
+
 @app.route('/get-structure')
 def get_structure():
     package_name = request.args.get('package_name')
@@ -954,7 +1050,6 @@ def get_structure():
     if sd_data is None:
         logger.info(f"SD for '{resource_type}' not found or failed to load from {source_package_id}. Attempting fallback to {services.CANONICAL_PACKAGE_ID}.")
         if not core_package_exists:
-            logger.error(f"Core package {services.CANONICAL_PACKAGE_ID} not found locally at {core_tgz_path}.")
             error_message = f"SD for '{resource_type}' not found in primary package, and core package is missing." if primary_package_exists else f"Primary package {package_name}#{version} and core package are missing."
             return jsonify({"error": error_message}), 500 if primary_package_exists else 404
         try:
@@ -970,23 +1065,43 @@ def get_structure():
     if not sd_data:
         logger.error(f"SD for '{resource_type}' could not be found in primary or fallback packages.")
         return jsonify({"error": f"StructureDefinition for '{resource_type}' not found."}), 404
+    
+    # Generate snapshot if missing
+    if 'snapshot' not in sd_data:
+        logger.info(f"Snapshot missing for {resource_type}. Generating snapshot...")
+        sd_data = generate_snapshot(sd_data, core_tgz_path, tgz_path)
+
     if raw:
         return Response(json.dumps(sd_data, indent=None, separators=(',', ':')), mimetype='application/json')
+
+    # Prepare elements based on the view
     snapshot_elements = sd_data.get('snapshot', {}).get('element', [])
     differential_elements = sd_data.get('differential', {}).get('element', [])
     differential_ids = {el.get('id') for el in differential_elements if el.get('id')}
     logger.debug(f"Found {len(differential_ids)} unique IDs in differential.")
+
+    # Select elements based on the view
     enriched_elements = []
-    if snapshot_elements:
-        logger.debug(f"Processing {len(snapshot_elements)} snapshot elements to add isInDifferential flag.")
-        for element in snapshot_elements:
-            element_id = element.get('id')
-            element['isInDifferential'] = bool(element_id and element_id in differential_ids)
-            enriched_elements.append(element)
-        enriched_elements = [services.remove_narrative(el, include_narrative=include_narrative) for el in enriched_elements]
-    else:
-        logger.warning(f"No snapshot found for {resource_type} in {source_package_id}. Returning empty element list.")
-        enriched_elements = []
+    if view == 'snapshot':
+        if snapshot_elements:
+            logger.debug(f"Processing {len(snapshot_elements)} snapshot elements for Snapshot view.")
+            for element in snapshot_elements:
+                element_id = element.get('id')
+                element['isInDifferential'] = bool(element_id and element_id in differential_ids)
+                enriched_elements.append(element)
+        else:
+            logger.warning(f"No snapshot elements found for {resource_type} in {source_package_id} for Snapshot view.")
+    else:  # Differential, Must Support, Key Elements views use differential elements as a base
+        if differential_elements:
+            logger.debug(f"Processing {len(differential_elements)} differential elements for {view} view.")
+            for element in differential_elements:
+                element['isInDifferential'] = True
+                enriched_elements.append(element)
+        else:
+            logger.warning(f"No differential elements found for {resource_type} in {source_package_id} for {view} view.")
+
+    enriched_elements = [services.remove_narrative(el, include_narrative=include_narrative) for el in enriched_elements]
+
     must_support_paths = []
     processed_ig_record = ProcessedIg.query.filter_by(package_name=package_name, version=version).first()
     if processed_ig_record and processed_ig_record.must_support_elements:
@@ -1002,6 +1117,7 @@ def get_structure():
             logger.debug(f"No specific MS paths found for keys '{resource_type}' or '{base_resource_type_for_sp}' in DB.")
     else:
         logger.debug(f"No processed IG record or no must_support_elements found in DB for {package_name}#{version}")
+
     if base_resource_type_for_sp and primary_package_exists:
         try:
             logger.info(f"Fetching SearchParameters for base type '{base_resource_type_for_sp}' from primary package {tgz_path}")
@@ -1060,6 +1176,8 @@ def get_structure():
         'source_package': source_package_id
     }
     return Response(json.dumps(response_data, indent=None, separators=(',', ':')), mimetype='application/json')
+#------------------------------------------------------------------------
+
 
 @app.route('/get-package-metadata')
 def get_package_metadata():
