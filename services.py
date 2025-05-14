@@ -735,26 +735,76 @@ def basic_fhir_xml_to_dict(xml_string):
         logger.error(f"Unexpected error during basic_fhir_xml_to_dict: {e}", exc_info=True)
         return None
 
+# def parse_package_filename(filename):
+#     """Parses a standard FHIR package filename into name and version."""
+#     if not filename or not filename.endswith('.tgz'):
+#         logger.debug(f"Filename '{filename}' does not end with .tgz")
+#         return None, None
+#     base_name = filename[:-4]
+#     last_hyphen_index = base_name.rfind('-')
+#     while last_hyphen_index != -1:
+#         potential_name = base_name[:last_hyphen_index]
+#         potential_version = base_name[last_hyphen_index + 1:]
+#         if potential_version and (potential_version[0].isdigit() or any(potential_version.startswith(kw) for kw in ['v', 'dev', 'draft', 'preview', 'release', 'alpha', 'beta'])):
+#             name = potential_name.replace('_', '.')
+#             version = potential_version
+#             logger.debug(f"Parsed '{filename}' -> name='{name}', version='{version}'")
+#             return name, version
+#         else:
+#             last_hyphen_index = base_name.rfind('-', 0, last_hyphen_index)
+#     logger.warning(f"Could not parse version from '{filename}'. Treating '{base_name}' as name.")
+#     name = base_name.replace('_', '.')
+#     version = ""
+#     return name, version
+
 def parse_package_filename(filename):
-    """Parses a standard FHIR package filename into name and version."""
+    """
+    Parses a standard FHIR package filename into name and version.
+    Handles various version formats including semantic versions, pre-releases, snapshots, and complex suffixes.
+    """
     if not filename or not filename.endswith('.tgz'):
         logger.debug(f"Filename '{filename}' does not end with .tgz")
         return None, None
-    base_name = filename[:-4]
-    last_hyphen_index = base_name.rfind('-')
-    while last_hyphen_index != -1:
-        potential_name = base_name[:last_hyphen_index]
-        potential_version = base_name[last_hyphen_index + 1:]
-        if potential_version and (potential_version[0].isdigit() or any(potential_version.startswith(kw) for kw in ['v', 'dev', 'draft', 'preview', 'release', 'alpha', 'beta'])):
-            name = potential_name.replace('_', '.')
-            version = potential_version
-            logger.debug(f"Parsed '{filename}' -> name='{name}', version='{version}'")
-            return name, version
-        else:
-            last_hyphen_index = base_name.rfind('-', 0, last_hyphen_index)
-    logger.warning(f"Could not parse version from '{filename}'. Treating '{base_name}' as name.")
-    name = base_name.replace('_', '.')
-    version = ""
+    
+    base_name = filename[:-4]  # Remove '.tgz'
+
+    # Define a comprehensive pattern for FHIR package versions as a single string
+    # Matches versions like:
+    # - 1.0.0, 4.0.2
+    # - 1.1.0-preview, 0.1.0-draft, 1.0.0-ballot-3
+    # - 1.0.0-alpha.1, 1.0.0-RC2, 0.9.0-alpha1.0.8
+    # - 1.1.0-snapshot-3, 0.0.1-snapshot
+    # - 2.3.5-buildnumbersuffix2
+    version_pattern = r'(\d+\.\d+\.\d+)(?:-(?:preview|ballot|draft|snapshot|alpha|beta|RC\d*|buildnumbersuffix\d*|alpha\d+\.\d+\.\d+|snapshot-\d+|ballot-\d+|alpha\.\d+))?$'
+
+    # Find the last occurrence of the version pattern in the base_name
+    match = None
+    for i in range(len(base_name), 0, -1):
+        substring = base_name[:i]
+        if re.search(version_pattern, substring):
+            match = re.search(version_pattern, base_name[:i])
+            if match:
+                break
+    
+    if not match:
+        logger.warning(f"Could not parse version from '{filename}'. Treating '{base_name}' as name.")
+        name = base_name.replace('_', '.')
+        version = ""
+        return name, version
+
+    # Extract the matched version
+    version_start_idx = match.start(1)  # Start of the version (e.g., start of "1.1.0" in "1.1.0-preview")
+    name = base_name[:version_start_idx].rstrip('-').replace('_', '.')  # Everything before the version
+    version = base_name[version_start_idx:]  # The full version string
+
+    # Validate the name and version
+    if not name or not version:
+        logger.warning(f"Invalid parse for '{filename}': name='{name}', version='{version}'. Using fallback.")
+        name = base_name.replace('_', '.')
+        version = ""
+        return name, version
+
+    logger.debug(f"Parsed '{filename}' -> name='{name}', version='{version}'")
     return name, version
 
 def remove_narrative(resource, include_narrative=False):
@@ -1953,30 +2003,129 @@ def _load_definition(details, download_dir):
         logger.error(f"Failed to load definition {details['filename']} from {tgz_path}: {e}")
     return None
 
-def download_package(name, version):
-    """Downloads a single FHIR package."""
+# def download_package(name, version):
+#     """Downloads a single FHIR package."""
+#     download_dir = _get_download_dir()
+#     if not download_dir: return None, "Download dir error"
+#     filename = construct_tgz_filename(name, version)
+#     if not filename: return None, "Filename construction error"
+#     save_path = os.path.join(download_dir, filename)
+#     if os.path.exists(save_path):
+#         logger.info(f"Package already exists: {save_path}")
+#         return save_path, None
+#     package_url = f"{FHIR_REGISTRY_BASE_URL}/{name}/{version}"
+#     try:
+#         with requests.get(package_url, stream=True, timeout=60) as r:
+#             r.raise_for_status()
+#             with open(save_path, 'wb') as f:
+#                 for chunk in r.iter_content(chunk_size=8192): f.write(chunk)
+#         logger.info(f"Downloaded {filename}")
+#         return save_path, None
+#     except requests.exceptions.RequestException as e:
+#         logger.error(f"Download failed for {name}#{version}: {e}")
+#         return None, f"Download error: {e}"
+#     except IOError as e:
+#         logger.error(f"File write error for {save_path}: {e}")
+#         return None, f"File write error: {e}"
+
+def download_package(name, version, dependency_mode='none'):
+    """Downloads a FHIR package by name and version to the configured directory."""
     download_dir = _get_download_dir()
-    if not download_dir: return None, "Download dir error"
-    filename = construct_tgz_filename(name, version)
-    if not filename: return None, "Filename construction error"
-    save_path = os.path.join(download_dir, filename)
-    if os.path.exists(save_path):
-        logger.info(f"Package already exists: {save_path}")
-        return save_path, None
-    package_url = f"{FHIR_REGISTRY_BASE_URL}/{name}/{version}"
+    if not download_dir:
+        return None, ["Could not determine download directory"]
+    tgz_filename = construct_tgz_filename(name, version)
+    if not tgz_filename:
+        return None, [f"Could not construct filename for {name}#{version}"]
+    download_path = os.path.join(download_dir, tgz_filename)
+    errors = []
+
+    # Check if already downloaded
+    if os.path.exists(download_path):
+        logger.info(f"Package {name}#{version} already downloaded at {download_path}")
+        return download_path, []
+
+    # Primary download URL
+    primary_url = f"{FHIR_REGISTRY_BASE_URL}/{name}/{version}"
+    logger.info(f"Attempting download of {name}#{version} from {primary_url}")
+
     try:
-        with requests.get(package_url, stream=True, timeout=60) as r:
-            r.raise_for_status()
-            with open(save_path, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192): f.write(chunk)
-        logger.info(f"Downloaded {filename}")
-        return save_path, None
+        response = requests.get(primary_url, timeout=30)
+        response.raise_for_status()
+        with open(download_path, 'wb') as f:
+            f.write(response.content)
+        logger.info(f"Successfully downloaded {name}#{version} to {download_path}")
+        save_package_metadata(name, version, dependency_mode, [])
+        return download_path, []
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 404:
+            logger.warning(f"Primary download failed (404) for {name}#{version} at {primary_url}. Attempting fallback URL.")
+        else:
+            error_msg = f"Download error for {name}#{version}: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            errors.append(error_msg)
+            return None, errors
     except requests.exceptions.RequestException as e:
-        logger.error(f"Download failed for {name}#{version}: {e}")
-        return None, f"Download error: {e}"
-    except IOError as e:
-        logger.error(f"File write error for {save_path}: {e}")
-        return None, f"File write error: {e}"
+        error_msg = f"Download error for {name}#{version}: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        errors.append(error_msg)
+        return None, errors
+    except Exception as e:
+        error_msg = f"Unexpected error downloading {name}#{version}: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        errors.append(error_msg)
+        return None, errors
+
+    # Fallback: Try the package's URL from the normalized package data
+    if errors and "404" in errors[0]:
+        logger.info(f"Looking up alternative download URL for {name}#{version}")
+        try:
+            # Access the in-memory cache from the Flask app config
+            normalized_packages = current_app.config.get('MANUAL_PACKAGE_CACHE', [])
+            package_data = next((pkg for pkg in normalized_packages if pkg.get('name') == name), None)
+            if not package_data:
+                error_msg = f"Package {name} not found in cache for fallback download."
+                logger.error(error_msg)
+                errors.append(error_msg)
+                return None, errors
+
+            package_url = package_data.get('url')
+            if not package_url:
+                error_msg = f"No alternative URL found for {name}#{version}."
+                logger.error(error_msg)
+                errors.append(error_msg)
+                return None, errors
+
+            # Construct a download URL using the package's URL
+            # Assuming the URL is a base (e.g., https://packages.simplifier.net/fhir.ieb.core)
+            # and we append the version to form the download URL
+            # This may need adjustment based on the actual format of 'url'
+            fallback_url = f"{package_url.rstrip('/')}/{version}.tgz"
+            logger.info(f"Attempting fallback download of {name}#{version} from {fallback_url}")
+
+            response = requests.get(fallback_url, timeout=30)
+            response.raise_for_status()
+            with open(download_path, 'wb') as f:
+                f.write(response.content)
+            logger.info(f"Successfully downloaded {name}#{version} using fallback URL to {download_path}")
+            save_package_metadata(name, version, dependency_mode, [])
+            return download_path, []
+        except requests.exceptions.HTTPError as e:
+            error_msg = f"Fallback download error for {name}#{version} at {fallback_url}: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            errors.append(error_msg)
+            return None, errors
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Fallback download network error for {name}#{version}: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            errors.append(error_msg)
+            return None, errors
+        except Exception as e:
+            error_msg = f"Unexpected error during fallback download of {name}#{version}: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            errors.append(error_msg)
+            return None, errors
+
+    return None, errors
 
 def extract_dependencies(tgz_path):
     """Extracts dependencies from package.json."""
