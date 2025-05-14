@@ -10,7 +10,7 @@
         </p>
           <!-----------------------------------------------------------------remove the buttons-----------------------------------------------------
         <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
-            <a href="{{ url_for('import_ig') }}" class="btn btn-primary btn-lg px-4 gap-3">Import IGs</a>
+            <a href="{{ url_for('search-and-import') }}" class="btn btn-primary btn-lg px-4 gap-3">Import IGs</a>
             <a href="{{ url_for('view_igs') }}" class="btn btn-outline-secondary btn-lg px-4 disabled">Manage FHIR Packages</a>
             <a href="{{ url_for('push_igs') }}" class="btn btn-outline-secondary btn-lg px-4">Upload IG's</a>
         </div>
@@ -34,7 +34,7 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2><i class="bi bi-journal-arrow-down me-2"></i>Manage FHIR Packages</h2>
         <div>
-            <a href="{{ url_for('import_ig') }}" class="btn btn-success"><i class="bi bi-download me-1"></i> Import More IGs</a>
+            <a href="{{ url_for('search-and-import') }}" class="btn btn-success"><i class="bi bi-download me-1"></i> Import More IGs</a>
         </div>
     </div>
 
