@@ -18,6 +18,7 @@ import subprocess
 import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
+from flasgger import swag_from # Import swag_from here
 
 # Define Blueprint
 services_bp = Blueprint('services', __name__)
@@ -2375,6 +2376,51 @@ def import_package_and_dependencies(initial_name, initial_version, dependency_mo
 
 # --- Validation Route ---
 @services_bp.route('/validate-sample', methods=['POST'])
+@swag_from({
+    'tags': ['Validation'],
+    'summary': 'Validate a FHIR resource or bundle.',
+    'description': 'Validates a given FHIR resource or bundle against profiles defined in a specified FHIR package. Uses HAPI FHIR for validation if a profile is specified, otherwise falls back to local StructureDefinition checks.',
+    'security': [{'ApiKeyAuth': []}], # Assuming API key is desired
+    'consumes': ['application/json'],
+    'parameters': [
+        {
+            'name': 'validation_payload', # Changed name
+            'in': 'body',
+            'required': True,
+            'schema': {
+                'type': 'object',
+                'required': ['package_name', 'version', 'sample_data'],
+                'properties': {
+                    'package_name': {'type': 'string', 'example': 'hl7.fhir.us.core'},
+                    'version': {'type': 'string', 'example': '6.1.0'},
+                    'sample_data': {'type': 'string', 'description': 'A JSON string of the FHIR resource or Bundle to validate.'},
+                    # 'include_dependencies': {'type': 'boolean', 'default': True} # This seems to be a server-side decision now
+                }
+            }
+        }
+    ],
+    'responses': {
+        '200': {
+            'description': 'Validation result.',
+            'schema': { # Define the schema of the validation_result dictionary
+                'type': 'object',
+                'properties': {
+                    'valid': {'type': 'boolean'},
+                    'errors': {'type': 'array', 'items': {'type': 'string'}},
+                    'warnings': {'type': 'array', 'items': {'type': 'string'}},
+                    'details': {'type': 'array', 'items': {'type': 'object'}}, # more specific if known
+                    'resource_type': {'type': 'string'},
+                    'resource_id': {'type': 'string'},
+                    'profile': {'type': 'string', 'nullable': True},
+                    'summary': {'type': 'object'}
+                }
+            }
+        },
+        '400': {'description': 'Invalid request (e.g., missing fields, invalid JSON).'},
+        '404': {'description': 'Specified package for validation not found.'},
+        '500': {'description': 'Server error during validation.'}
+    }
+})
 def validate_sample():
     """Validates a FHIR sample against a package profile."""
     logger.debug("Received validate-sample request")
@@ -2771,10 +2817,10 @@ def find_and_extract_search_params(tgz_path, base_resource_type):
 # --- END OF NEW FUNCTION ---
 
 # --- Full Replacement Function (Corrected Prefix Definitions & Unabbreviated) ---
+
 def generate_push_stream(package_name, version, fhir_server_url, include_dependencies,
                          auth_type, auth_token, resource_types_filter, skip_files,
-                         dry_run, verbose, force_upload,
-                         packages_dir):
+                         dry_run, verbose, force_upload, packages_dir):
     """
     Generates NDJSON stream for the push IG operation.
     Handles canonical resources (search by URL, POST/PUT),
@@ -2787,8 +2833,8 @@ def generate_push_stream(package_name, version, fhir_server_url, include_depende
     skipped_count = 0
     post_count = 0
     put_count = 0
-    total_resources_attempted = 0 # Calculated after collecting resources
-    processed_resources = set() # Tracks resource IDs attempted in this run
+    total_resources_attempted = 0
+    processed_resources = set()
     failed_uploads_details = []
     skipped_resources_details = []
     filter_set = set(resource_types_filter) if resource_types_filter else None
@@ -2797,12 +2843,12 @@ def generate_push_stream(package_name, version, fhir_server_url, include_depende
     try:
         # --- Start Messages ---
         operation_mode = " (DRY RUN)" if dry_run else ""
-        force_mode = " (FORCE UPLOAD)" if force_upload else "" # For initial message
+        force_mode = " (FORCE UPLOAD)" if force_upload else ""
         yield json.dumps({"type": "start", "message": f"Starting push{operation_mode}{force_mode} for {package_name}#{version} to {fhir_server_url}"}) + "\n"
         if filter_set:
-             yield json.dumps({"type": "info", "message": f"Filtering for resource types: {', '.join(sorted(list(filter_set)))}"}) + "\n"
+            yield json.dumps({"type": "info", "message": f"Filtering for resource types: {', '.join(sorted(list(filter_set)))}"}) + "\n"
         if skip_files_set:
-             yield json.dumps({"type": "info", "message": f"Skipping {len(skip_files_set)} specific files."}) + "\n"
+            yield json.dumps({"type": "info", "message": f"Skipping {len(skip_files_set)} specific files."}) + "\n"
         yield json.dumps({"type": "info", "message": f"Include Dependencies: {'Yes' if include_dependencies else 'No'}"}) + "\n"
 
         # --- Define packages_to_push ---
@@ -2814,407 +2860,406 @@ def generate_push_stream(package_name, version, fhir_server_url, include_depende
             yield json.dumps({"type": "error", "message": f"Primary package file not found: {primary_tgz_filename}"}) + "\n"
             raise FileNotFoundError(f"Primary package file not found: {primary_tgz_path}")
 
-        # Always add the primary package
         packages_to_push.append((package_name, version, primary_tgz_path))
         logger.debug(f"Added primary package to push list: {package_name}#{version}")
 
-        # Handle dependencies IF include_dependencies is true
-        # NOTE: This uses the simple dependency inclusion based on import metadata.
-        # Aligning with UploadFIG's --includeReferencedDependencies requires more complex logic here.
         if include_dependencies:
             yield json.dumps({"type": "info", "message": "Including dependencies based on import metadata..."}) + "\n"
-            metadata = get_package_metadata(package_name, version) # Assumes this helper exists
-            if metadata and metadata.get('imported_dependencies'):
-                dependencies_to_include = metadata['imported_dependencies']
+            metadata = get_package_metadata(package_name, version)
+            if metadata and metadata.get("imported_dependencies"):
+                dependencies_to_include = metadata["imported_dependencies"]
                 logger.info(f"Found {len(dependencies_to_include)} dependencies in metadata to potentially include.")
                 for dep in dependencies_to_include:
-                    dep_name = dep.get('name')
-                    dep_version = dep.get('version')
+                    dep_name = dep.get("name")
+                    dep_version = dep.get("version")
                     if dep_name and dep_version:
                         dep_tgz_filename = construct_tgz_filename(dep_name, dep_version)
                         dep_tgz_path = os.path.join(packages_dir, dep_tgz_filename)
                         if os.path.exists(dep_tgz_path):
-                            # Add dependency package to the list if file exists
                             if (dep_name, dep_version, dep_tgz_path) not in packages_to_push:
                                 packages_to_push.append((dep_name, dep_version, dep_tgz_path))
                                 logger.debug(f"Added dependency package to push list: {dep_name}#{dep_version}")
                         else:
-                            # Log a warning if a listed dependency file isn't found
                             yield json.dumps({"type": "warning", "message": f"Dependency package file not found, cannot include: {dep_tgz_filename}"}) + "\n"
                             logger.warning(f"Dependency package file listed in metadata but not found locally: {dep_tgz_path}")
             else:
                 yield json.dumps({"type": "warning", "message": "Include Dependencies checked, but no dependency metadata found. Only pushing primary."}) + "\n"
                 logger.warning(f"No dependency metadata found for {package_name}#{version} despite include_dependencies=True")
-        # --- End Define packages_to_push ---
 
         # --- Resource Extraction & Filtering ---
         resources_to_upload = []
-        seen_resource_files = set() # Track filenames across all packages being pushed
+        seen_resource_files = set()
 
-        # Iterate through the populated list of packages to push
         for pkg_name, pkg_version, pkg_path in packages_to_push:
-             yield json.dumps({"type": "progress", "message": f"Extracting resources from: {pkg_name}#{pkg_version}..."}) + "\n"
-             try:
+            yield json.dumps({"type": "progress", "message": f"Extracting resources from: {pkg_name}#{pkg_version}..."}) + "\n"
+            try:
                 with tarfile.open(pkg_path, "r:gz") as tar:
                     for member in tar.getmembers():
-                         # Basic file checks: must be a file, in 'package/', end with .json
-                         if not (member.isfile() and member.name.startswith('package/') and member.name.lower().endswith('.json')):
-                             continue
-                         # Skip common metadata files by basename
-                         basename_lower = os.path.basename(member.name).lower()
-                         if basename_lower in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']:
-                              continue
+                        if not (member.isfile() and member.name.startswith("package/") and member.name.lower().endswith(".json")):
+                            continue
+                        basename_lower = os.path.basename(member.name).lower()
+                        if basename_lower in ["package.json", ".index.json", "validation-summary.json", "validation-oo.json"]:
+                            continue
 
-                         # Check against skip_files list (using normalized paths)
-                         normalized_member_name = member.name.replace('\\', '/')
-                         if normalized_member_name in skip_files_set or member.name in skip_files_set:
-                             if verbose: yield json.dumps({"type": "info", "message": f"Skipping file due to filter: {member.name}"}) + "\n"
-                             continue
+                        normalized_member_name = member.name.replace("\\", "/")
+                        if normalized_member_name in skip_files_set or member.name in skip_files_set:
+                            if verbose:
+                                yield json.dumps({"type": "info", "message": f"Skipping file due to filter: {member.name}"}) + "\n"
+                            continue
 
-                         # Avoid processing the same file path if it appears in multiple packages
-                         if member.name in seen_resource_files:
-                             if verbose: yield json.dumps({"type": "info", "message": f"Skipping already seen file: {member.name}"}) + "\n"
-                             continue
-                         seen_resource_files.add(member.name)
+                        if member.name in seen_resource_files:
+                            if verbose:
+                                yield json.dumps({"type": "info", "message": f"Skipping already seen file: {member.name}"}) + "\n"
+                            continue
+                        seen_resource_files.add(member.name)
 
-                         # Extract and parse the resource JSON
-                         try:
-                             with tar.extractfile(member) as f:
-                                 resource_content = f.read().decode('utf-8-sig')
-                                 resource_data = json.loads(resource_content)
+                        try:
+                            with tar.extractfile(member) as f:
+                                resource_content = f.read().decode("utf-8-sig")
+                                resource_data = json.loads(resource_content)
 
-                                 # Basic validation of resource structure
-                                 if isinstance(resource_data, dict) and 'resourceType' in resource_data and 'id' in resource_data:
-                                     resource_type_val = resource_data.get('resourceType') # Use distinct var name
-                                     # Apply resource type filter if provided
-                                     if filter_set and resource_type_val not in filter_set:
-                                         if verbose: yield json.dumps({"type": "info", "message": f"Skipping resource type {resource_type_val} due to filter: {member.name}"}) + "\n"
-                                         continue
-                                     # Add valid resource to the upload list
-                                     resources_to_upload.append({
-                                         "data": resource_data,
-                                         "source_package": f"{pkg_name}#{pkg_version}",
-                                         "source_filename": member.name # Store original filename
-                                     })
-                                 else:
-                                     yield json.dumps({"type": "warning", "message": f"Skipping invalid/incomplete resource structure in file: {member.name}"}) + "\n"
-                         # Handle errors during extraction/parsing of individual files
-                         except json.JSONDecodeError as json_e: yield json.dumps({"type": "warning", "message": f"JSON parse error in file {member.name}: {json_e}"}) + "\n"
-                         except UnicodeDecodeError as uni_e: yield json.dumps({"type": "warning", "message": f"Encoding error in file {member.name}: {uni_e}"}) + "\n"
-                         except KeyError: yield json.dumps({"type": "warning", "message": f"File not found within archive (should not happen here): {member.name}"}) + "\n"
-                         except Exception as extract_e: yield json.dumps({"type": "warning", "message": f"Error processing file {member.name}: {extract_e}"}) + "\n"
-             # Handle errors opening/reading the tarfile itself
-             except tarfile.ReadError as tar_read_e:
-                  error_msg = f"Tar ReadError reading package {pkg_name}#{pkg_version}: {tar_read_e}. Skipping package."
-                  yield json.dumps({"type": "error", "message": error_msg}) + "\n"
-                  failure_count += 1 # Count as failure for summary
-                  failed_uploads_details.append({'resource': f"Package: {pkg_name}#{pkg_version}", 'error': f"Read Error: {tar_read_e}"})
-                  continue # Skip to next package in packages_to_push
-             except tarfile.TarError as tar_e:
-                  error_msg = f"TarError reading package {pkg_name}#{pkg_version}: {tar_e}. Skipping package."
-                  yield json.dumps({"type": "error", "message": error_msg}) + "\n"
-                  failure_count += 1
-                  failed_uploads_details.append({'resource': f"Package: {pkg_name}#{pkg_version}", 'error': f"Tar Error: {tar_e}"})
-                  continue
-             except Exception as pkg_e: # Catch other potential errors reading package
-                  error_msg = f"Unexpected error reading package {pkg_name}#{pkg_version}: {pkg_e}. Skipping package."
-                  yield json.dumps({"type": "error", "message": error_msg}) + "\n"
-                  failure_count += 1
-                  failed_uploads_details.append({'resource': f"Package: {pkg_name}#{pkg_version}", 'error': f"Unexpected: {pkg_e}"})
-                  logger.error(f"Error reading package {pkg_path}: {pkg_e}", exc_info=True)
-                  continue
-        # --- End Resource Extraction ---
+                                if isinstance(resource_data, dict) and "resourceType" in resource_data and "id" in resource_data:
+                                    resource_type_val = resource_data.get("resourceType")
+                                    if filter_set and resource_type_val not in filter_set:
+                                        if verbose:
+                                            yield json.dumps({"type": "info", "message": f"Skipping resource type {resource_type_val} due to filter: {member.name}"}) + "\n"
+                                        continue
+                                    resources_to_upload.append({
+                                        "data": resource_data,
+                                        "source_package": f"{pkg_name}#{pkg_version}",
+                                        "source_filename": member.name
+                                    })
+                                else:
+                                    yield json.dumps({"type": "warning", "message": f"Skipping invalid/incomplete resource structure in file: {member.name}"}) + "\n"
+                        except json.JSONDecodeError as json_e:
+                            yield json.dumps({"type": "warning", "message": f"JSON parse error in file {member.name}: {json_e}"}) + "\n"
+                        except UnicodeDecodeError as uni_e:
+                            yield json.dumps({"type": "warning", "message": f"Encoding error in file {member.name}: {uni_e}"}) + "\n"
+                        except KeyError:
+                            yield json.dumps({"type": "warning", "message": f"File not found within archive: {member.name}"}) + "\n"
+                        except Exception as extract_e:
+                            yield json.dumps({"type": "warning", "message": f"Error processing file {member.name}: {extract_e}"}) + "\n"
+            except tarfile.ReadError as tar_read_e:
+                error_msg = f"Tar ReadError reading package {pkg_name}#{pkg_version}: {tar_read_e}. Skipping package."
+                yield json.dumps({"type": "error", "message": error_msg}) + "\n"
+                failure_count += 1
+                failed_uploads_details.append({"resource": f"Package: {pkg_name}#{pkg_version}", "error": f"Read Error: {tar_read_e}"})
+                continue
+            except tarfile.TarError as tar_e:
+                error_msg = f"TarError reading package {pkg_name}#{pkg_version}: {tar_e}. Skipping package."
+                yield json.dumps({"type": "error", "message": error_msg}) + "\n"
+                failure_count += 1
+                failed_uploads_details.append({"resource": f"Package: {pkg_name}#{pkg_version}", "error": f"Tar Error: {tar_e}"})
+                continue
+            except Exception as pkg_e:
+                error_msg = f"Unexpected error reading package {pkg_name}#{pkg_version}: {pkg_e}. Skipping package."
+                yield json.dumps({"type": "error", "message": error_msg}) + "\n"
+                failure_count += 1
+                failed_uploads_details.append({"resource": f"Package: {pkg_name}#{pkg_version}", "error": f"Unexpected: {pkg_e}"})
+                logger.error(f"Error reading package {pkg_path}: {pkg_e}", exc_info=True)
+                continue
 
         total_resources_attempted = len(resources_to_upload)
         yield json.dumps({"type": "info", "message": f"Found {total_resources_attempted} resources matching filters across selected packages."}) + "\n"
 
         if total_resources_attempted == 0:
-             yield json.dumps({"type": "warning", "message": "No resources found to upload after filtering."}) + "\n"
-             # Go straight to completion summary if nothing to upload
+            yield json.dumps({"type": "warning", "message": "No resources found to upload after filtering."}) + "\n"
         else:
             # --- Resource Upload Loop Setup ---
             session = requests.Session()
-            base_url = fhir_server_url.rstrip('/')
-            headers = {'Content-Type': 'application/fhir+json', 'Accept': 'application/fhir+json'}
-            # Add Authentication Header
-            if auth_type == 'bearerToken' and auth_token:
-                 headers['Authorization'] = f'Bearer {auth_token}'
-                 yield json.dumps({"type": "info", "message": "Using Bearer Token authentication."}) + "\n"
-            elif auth_type == 'apiKey':
-                 # Get internal key from Flask app config if available
-                 internal_api_key = None
-                 try:
-                     internal_api_key = current_app.config.get('API_KEY')
-                 except RuntimeError:
-                     logger.warning("Cannot access current_app config outside of request context for API Key.")
-                 if internal_api_key:
-                      headers['X-API-Key'] = internal_api_key
-                      yield json.dumps({"type": "info", "message": "Using internal API Key authentication."}) + "\n"
-                 else:
-                      yield json.dumps({"type": "warning", "message": "API Key auth selected, but no internal key configured/accessible."}) + "\n"
-            else: # 'none'
-                 yield json.dumps({"type": "info", "message": "Using no authentication."}) + "\n"
+            base_url = fhir_server_url.rstrip("/")
+            headers = {"Content-Type": "application/fhir+json", "Accept": "application/fhir+json"}
+            # MODIFIED: Enhanced authentication handling
+            if auth_type in ["bearerToken", "basic"] and auth_token:
+                # Log the Authorization header (mask sensitive data)
+                auth_display = "Basic <redacted>" if auth_type == "basic" else (auth_token[:10] + "..." if len(auth_token) > 10 else auth_token)
+                yield json.dumps({"type": "info", "message": f"Using {auth_type} auth with header: Authorization: {auth_display}"}) + "\n"
+                headers["Authorization"] = auth_token  # Use auth_token for both Bearer and Basic
+            elif auth_type == "apiKey":
+                internal_api_key = None
+                try:
+                    internal_api_key = current_app.config.get("API_KEY")
+                except RuntimeError:
+                    logger.warning("Cannot access current_app config outside of request context for API Key.")
+                if internal_api_key:
+                    headers["X-API-Key"] = internal_api_key
+                    yield json.dumps({"type": "info", "message": "Using internal API Key authentication."}) + "\n"
+                else:
+                    yield json.dumps({"type": "warning", "message": "API Key auth selected, but no internal key configured/accessible."}) + "\n"
+            else:
+                yield json.dumps({"type": "info", "message": "Using no authentication."}) + "\n"
 
             # --- Main Upload Loop ---
             for i, resource_info in enumerate(resources_to_upload, 1):
                 local_resource = resource_info["data"]
                 source_pkg = resource_info["source_package"]
-                resource_type = local_resource.get('resourceType')
-                resource_id = local_resource.get('id')
+                resource_type = local_resource.get("resourceType")
+                resource_id = local_resource.get("id")
                 resource_log_id = f"{resource_type}/{resource_id}"
-                canonical_url = local_resource.get('url')
-                canonical_version = local_resource.get('version')
-                is_canonical_type = resource_type in CANONICAL_RESOURCE_TYPES # Assumes this set is defined
+                canonical_url = local_resource.get("url")
+                canonical_version = local_resource.get("version")
+                is_canonical_type = resource_type in CANONICAL_RESOURCE_TYPES
 
-                # Skip duplicates already attempted *in this run* (by ResourceType/Id)
                 if resource_log_id in processed_resources:
-                    if verbose: yield json.dumps({"type": "info", "message": f"Skipping duplicate ID in processing list: {resource_log_id}"}) + "\n"
-                    # Note: Do not increment skipped_count here as it wasn't an upload attempt failure/skip
+                    if verbose:
+                        yield json.dumps({"type": "info", "message": f"Skipping duplicate ID in processing list: {resource_log_id}"}) + "\n"
                     continue
                 processed_resources.add(resource_log_id)
 
-                # --- Dry Run Handling ---
                 if dry_run:
-                    dry_run_action = "check/PUT" # Default action
+                    dry_run_action = "check/PUT"
                     if is_canonical_type and canonical_url:
                         dry_run_action = "search/POST/PUT"
                     yield json.dumps({"type": "progress", "message": f"[DRY RUN] Would {dry_run_action} {resource_log_id} ({i}/{total_resources_attempted}) from {source_pkg}"}) + "\n"
-                    success_count += 1 # Count check/potential action as success in dry run
-                    # Track package info for dry run summary
+                    success_count += 1
                     pkg_found = False
                     for p in pushed_packages_info:
-                         if p["id"] == source_pkg:
-                             p["resource_count"] += 1
-                             pkg_found = True
-                             break
-                    if not pkg_found: pushed_packages_info.append({"id": source_pkg, "resource_count": 1})
-                    continue # Skip actual request processing for dry run
+                        if p["id"] == source_pkg:
+                            p["resource_count"] += 1
+                            pkg_found = True
+                            break
+                    if not pkg_found:
+                        pushed_packages_info.append({"id": source_pkg, "resource_count": 1})
+                    continue
 
-                # --- Determine Upload Strategy ---
                 existing_resource_id = None
                 existing_resource_data = None
-                action = "PUT" # Default action is PUT by ID
-                target_url = f"{base_url}/{resource_type}/{resource_id}" # Default target URL for PUT
-                skip_resource = False # Flag to skip upload altogether
+                action = "PUT"
+                target_url = f"{base_url}/{resource_type}/{resource_id}"
+                skip_resource = False
 
-                # 1. Handle Canonical Resources (Search by URL/Version)
                 if is_canonical_type and canonical_url:
-                    action = "SEARCH_POST_PUT" # Indicate canonical handling path
-                    search_params = {'url': canonical_url}
+                    action = "SEARCH_POST_PUT"
+                    search_params = {"url": canonical_url}
                     if canonical_version:
-                        search_params['version'] = canonical_version
+                        search_params["version"] = canonical_version
                     search_url = f"{base_url}/{resource_type}"
-                    if verbose: yield json.dumps({"type": "info", "message": f"Canonical Type: Searching {search_url} with params {search_params}"}) + "\n"
+                    if verbose:
+                        yield json.dumps({"type": "info", "message": f"Canonical Type: Searching {search_url} with params {search_params}"}) + "\n"
 
                     try:
                         search_response = session.get(search_url, params=search_params, headers=headers, timeout=20)
-                        search_response.raise_for_status() # Check for HTTP errors on search
+                        search_response.raise_for_status()
                         search_bundle = search_response.json()
 
-                        if search_bundle.get('resourceType') == 'Bundle' and 'entry' in search_bundle:
-                            entries = search_bundle.get('entry', [])
+                        if search_bundle.get("resourceType") == "Bundle" and "entry" in search_bundle:
+                            entries = search_bundle.get("entry", [])
                             if len(entries) == 1:
-                                existing_resource_data = entries[0].get('resource')
+                                existing_resource_data = entries[0].get("resource")
                                 if existing_resource_data:
-                                    existing_resource_id = existing_resource_data.get('id')
+                                    existing_resource_id = existing_resource_data.get("id")
                                     if existing_resource_id:
-                                        action = "PUT" # Found existing, plan to PUT
+                                        action = "PUT"
                                         target_url = f"{base_url}/{resource_type}/{existing_resource_id}"
-                                        if verbose: yield json.dumps({"type": "info", "message": f"Found existing canonical resource ID: {existing_resource_id}"}) + "\n"
+                                        if verbose:
+                                            yield json.dumps({"type": "info", "message": f"Found existing canonical resource ID: {existing_resource_id}"}) + "\n"
                                     else:
                                         yield json.dumps({"type": "warning", "message": f"Found canonical {canonical_url}|{canonical_version} but lacks ID. Skipping update."}) + "\n"
-                                        action = "SKIP"; skip_resource = True; skipped_count += 1
-                                        skipped_resources_details.append({'resource': resource_log_id, 'reason': 'Found canonical match without ID'})
+                                        action = "SKIP"
+                                        skip_resource = True
+                                        skipped_count += 1
+                                        skipped_resources_details.append({"resource": resource_log_id, "reason": "Found canonical match without ID"})
                                 else:
-                                     yield json.dumps({"type": "warning", "message": f"Search for {canonical_url}|{canonical_version} entry lacks resource data. Assuming not found."}) + "\n"
-                                     action = "POST"; target_url = f"{base_url}/{resource_type}"
+                                    yield json.dumps({"type": "warning", "message": f"Search for {canonical_url}|{canonical_version} entry lacks resource data. Assuming not found."}) + "\n"
+                                    action = "POST"
+                                    target_url = f"{base_url}/{resource_type}"
                             elif len(entries) == 0:
-                                action = "POST"; target_url = f"{base_url}/{resource_type}"
-                                if verbose: yield json.dumps({"type": "info", "message": f"Canonical not found by URL/Version. Planning POST."}) + "\n"
-                            else: # Found multiple matches - conflict!
-                                ids_found = [e.get('resource', {}).get('id', 'unknown') for e in entries]
+                                action = "POST"
+                                target_url = f"{base_url}/{resource_type}"
+                                if verbose:
+                                    yield json.dumps({"type": "info", "message": f"Canonical not found by URL/Version. Planning POST."}) + "\n"
+                            else:
+                                ids_found = [e.get("resource", {}).get("id", "unknown") for e in entries]
                                 yield json.dumps({"type": "error", "message": f"Conflict: Found {len(entries)} matches for {canonical_url}|{canonical_version} (IDs: {', '.join(ids_found)}). Skipping."}) + "\n"
-                                action = "SKIP"; skip_resource = True; failure_count += 1 # Count conflict as failure
-                                failed_uploads_details.append({'resource': resource_log_id, 'error': f"Conflict: Multiple matches ({len(entries)}) for canonical URL/Version"})
-                        else: # Search returned non-Bundle or empty Bundle
-                             yield json.dumps({"type": "warning", "message": f"Search for {canonical_url}|{canonical_version} returned non-Bundle/empty. Assuming not found."}) + "\n"
-                             action = "POST"; target_url = f"{base_url}/{resource_type}"
+                                action = "SKIP"
+                                skip_resource = True
+                                failure_count += 1
+                                failed_uploads_details.append({"resource": resource_log_id, "error": f"Conflict: Multiple matches ({len(entries)}) for canonical URL/Version"})
+                        else:
+                            yield json.dumps({"type": "warning", "message": f"Search for {canonical_url}|{canonical_version} returned non-Bundle/empty. Assuming not found."}) + "\n"
+                            action = "POST"
+                            target_url = f"{base_url}/{resource_type}"
 
                     except requests.exceptions.RequestException as search_err:
                         yield json.dumps({"type": "warning", "message": f"Search failed for {resource_log_id}: {search_err}. Defaulting to PUT by ID."}) + "\n"
-                        action = "PUT"; target_url = f"{base_url}/{resource_type}/{resource_id}" # Fallback
+                        action = "PUT"
+                        target_url = f"{base_url}/{resource_type}/{resource_id}"
                     except json.JSONDecodeError as json_err:
-                         yield json.dumps({"type": "warning", "message": f"Failed parse search result for {resource_log_id}: {json_err}. Defaulting PUT by ID."}) + "\n"
-                         action = "PUT"; target_url = f"{base_url}/{resource_type}/{resource_id}"
-                    except Exception as e: # Catch other unexpected errors during search
-                         yield json.dumps({"type": "warning", "message": f"Unexpected canonical search error for {resource_log_id}: {e}. Defaulting PUT by ID."}) + "\n"
-                         action = "PUT"; target_url = f"{base_url}/{resource_type}/{resource_id}"
+                        yield json.dumps({"type": "warning", "message": f"Failed parse search result for {resource_log_id}: {json_err}. Defaulting PUT by ID."}) + "\n"
+                        action = "PUT"
+                        target_url = f"{base_url}/{resource_type}/{resource_id}"
+                    except Exception as e:
+                        yield json.dumps({"type": "warning", "message": f"Unexpected canonical search error for {resource_log_id}: {e}. Defaulting PUT by ID."}) + "\n"
+                        action = "PUT"
+                        target_url = f"{base_url}/{resource_type}/{resource_id}"
 
-                # 2. Semantic Comparison (Only if PUTting an existing resource and NOT force_upload)
                 if action == "PUT" and not force_upload and not skip_resource:
-                    resource_to_compare = existing_resource_data # Use data from canonical search if available
+                    resource_to_compare = existing_resource_data
                     if not resource_to_compare:
-                        # If not canonical or search failed/skipped, try GET by ID for comparison
                         try:
-                            if verbose: yield json.dumps({"type": "info", "message": f"Checking existing (PUT target): {target_url}"}) + "\n"
+                            if verbose:
+                                yield json.dumps({"type": "info", "message": f"Checking existing (PUT target): {target_url}"}) + "\n"
                             get_response = session.get(target_url, headers=headers, timeout=15)
                             if get_response.status_code == 200:
                                 resource_to_compare = get_response.json()
-                                if verbose: yield json.dumps({"type": "info", "message": f"Found resource by ID for comparison."}) + "\n"
+                                if verbose:
+                                    yield json.dumps({"type": "info", "message": f"Found resource by ID for comparison."}) + "\n"
                             elif get_response.status_code == 404:
-                                 if verbose: yield json.dumps({"type": "info", "message": f"Resource {resource_log_id} not found by ID ({target_url}). Proceeding with PUT create."}) + "\n"
-                                 # No comparison needed if target doesn't exist
-                            else: # Handle other GET errors - log warning, comparison skipped, proceed with PUT
-                                 yield json.dumps({"type": "warning", "message": f"Comparison check failed (GET {get_response.status_code}). Attempting PUT."}) + "\n"
+                                if verbose:
+                                    yield json.dumps({"type": "info", "message": f"Resource {resource_log_id} not found by ID ({target_url}). Proceeding with PUT create."}) + "\n"
+                            else:
+                                yield json.dumps({"type": "warning", "message": f"Comparison check failed (GET {get_response.status_code}). Attempting PUT."}) + "\n"
                         except Exception as get_err:
-                             yield json.dumps({"type": "warning", "message": f"Comparison check failed (Error during GET by ID: {get_err}). Attempting PUT."}) + "\n"
+                            yield json.dumps({"type": "warning", "message": f"Comparison check failed (Error during GET by ID: {get_err}). Attempting PUT."}) + "\n"
 
-                    # Perform comparison if we have fetched an existing resource
                     if resource_to_compare:
                         try:
-                            # Assumes are_resources_semantically_equal helper function exists and works
                             if are_resources_semantically_equal(local_resource, resource_to_compare):
                                 yield json.dumps({"type": "info", "message": f"Skipping {resource_log_id} (Identical content)"}) + "\n"
-                                skip_resource = True; skipped_count += 1
-                                skipped_resources_details.append({'resource': resource_log_id, 'reason': 'Identical content'})
+                                skip_resource = True
+                                skipped_count += 1
+                                skipped_resources_details.append({"resource": resource_log_id, "reason": "Identical content"})
                             elif verbose:
                                 yield json.dumps({"type": "info", "message": f"{resource_log_id} exists but differs. Updating."}) + "\n"
                         except Exception as comp_err:
-                             # Log error during comparison but proceed with PUT
-                             yield json.dumps({"type": "warning", "message": f"Comparison failed for {resource_log_id}: {comp_err}. Proceeding with PUT."}) + "\n"
+                            yield json.dumps({"type": "warning", "message": f"Comparison failed for {resource_log_id}: {comp_err}. Proceeding with PUT."}) + "\n"
 
-                elif action == "PUT" and force_upload: # Force upload enabled, skip comparison
-                     if verbose: yield json.dumps({"type": "info", "message": f"Force Upload enabled, skipping comparison for {resource_log_id}."}) + "\n"
+                elif action == "PUT" and force_upload:
+                    if verbose:
+                        yield json.dumps({"type": "info", "message": f"Force Upload enabled, skipping comparison for {resource_log_id}."}) + "\n"
 
-                # 3. Execute Upload Action (POST or PUT, if not skipped)
                 if not skip_resource:
-                    http_method = action if action in ["POST", "PUT"] else "PUT" # Ensure valid method
+                    http_method = action if action in ["POST", "PUT"] else "PUT"
                     log_action = f"{http_method}ing"
                     yield json.dumps({"type": "progress", "message": f"{log_action} {resource_log_id} ({i}/{total_resources_attempted}) to {target_url}..."}) + "\n"
 
                     try:
-                        # Send the request
                         if http_method == "POST":
                             response = session.post(target_url, json=local_resource, headers=headers, timeout=30)
                             post_count += 1
-                        else: # Default to PUT
+                        else:
                             response = session.put(target_url, json=local_resource, headers=headers, timeout=30)
                             put_count += 1
 
-                        response.raise_for_status() # Raises HTTPError for 4xx/5xx responses
+                        response.raise_for_status()
 
-                        # Log success
                         success_msg = f"{http_method} successful for {resource_log_id} (Status: {response.status_code})"
                         if http_method == "POST" and response.status_code == 201:
-                             # Add Location header info if available on create
-                             location = response.headers.get('Location')
-                             if location:
-                                  # Try to extract ID from location header
-                                  match = re.search(f"{resource_type}/([^/]+)/_history", location)
-                                  new_id = match.group(1) if match else "unknown"
-                                  success_msg += f" -> New ID: {new_id}"
-                             else:
-                                   success_msg += " (No Location header)"
+                            location = response.headers.get("Location")
+                            if location:
+                                match = re.search(f"{resource_type}/([^/]+)/_history", location)
+                                new_id = match.group(1) if match else "unknown"
+                                success_msg += f" -> New ID: {new_id}"
+                            else:
+                                success_msg += " (No Location header)"
                         yield json.dumps({"type": "success", "message": success_msg}) + "\n"
                         success_count += 1
-                        # Track package info for successful upload
                         pkg_found_success = False
                         for p in pushed_packages_info:
-                             if p["id"] == source_pkg:
-                                 p["resource_count"] += 1
-                                 pkg_found_success = True
-                                 break
+                            if p["id"] == source_pkg:
+                                p["resource_count"] += 1
+                                pkg_found_success = True
+                                break
                         if not pkg_found_success:
-                             pushed_packages_info.append({"id": source_pkg, "resource_count": 1})
+                            pushed_packages_info.append({"id": source_pkg, "resource_count": 1})
 
-                    # --- CORRECTED ERROR HANDLING ---
                     except requests.exceptions.HTTPError as http_err:
                         outcome_text = ""
-                        status_code = http_err.response.status_code if http_err.response is not None else 'N/A'
+                        status_code = http_err.response.status_code if http_err.response is not None else "N/A"
                         try:
                             outcome = http_err.response.json()
-                            if outcome and outcome.get('resourceType') == 'OperationOutcome':
-                                issues = outcome.get('issue', [])
-                                outcome_text = "; ".join([ f"{i.get('severity','info')}: {i.get('diagnostics', i.get('details',{}).get('text','No details'))}" for i in issues]) if issues else "OperationOutcome with no issues."
-                            else: outcome_text = http_err.response.text[:200] if http_err.response is not None else "No response body"
-                        except ValueError: outcome_text = http_err.response.text[:200] if http_err.response is not None else "No response body (or not JSON)"
-                        # This block is now correctly indented
+                            if outcome and outcome.get("resourceType") == "OperationOutcome":
+                                issues = outcome.get("issue", [])
+                                outcome_text = "; ".join([f"{i.get('severity', 'info')}: {i.get('diagnostics', i.get('details', {}).get('text', 'No details'))}" for i in issues]) if issues else "OperationOutcome with no issues."
+                            else:
+                                outcome_text = http_err.response.text[:200] if http_err.response is not None else "No response body"
+                        except ValueError:
+                            outcome_text = http_err.response.text[:200] if http_err.response is not None else "No response body (or not JSON)"
                         error_msg = f"Failed {http_method} {resource_log_id} (Status: {status_code}): {outcome_text or str(http_err)}"
-                        yield json.dumps({"type": "error", "message": error_msg}) + "\n"; failure_count += 1; failed_uploads_details.append({'resource': resource_log_id, 'error': error_msg})
-                    # --- END CORRECTION ---
-
+                        yield json.dumps({"type": "error", "message": error_msg}) + "\n"
+                        failure_count += 1
+                        failed_uploads_details.append({"resource": resource_log_id, "error": error_msg})
                     except requests.exceptions.Timeout:
                         error_msg = f"Timeout during {http_method} {resource_log_id}"
-                        yield json.dumps({"type": "error", "message": error_msg}) + "\n"; failure_count += 1; failed_uploads_details.append({'resource': resource_log_id, 'error': 'Timeout'})
+                        yield json.dumps({"type": "error", "message": error_msg}) + "\n"
+                        failure_count += 1
+                        failed_uploads_details.append({"resource": resource_log_id, "error": "Timeout"})
                     except requests.exceptions.ConnectionError as conn_err:
                         error_msg = f"Connection error during {http_method} {resource_log_id}: {conn_err}"
-                        yield json.dumps({"type": "error", "message": error_msg}) + "\n"; failure_count += 1; failed_uploads_details.append({'resource': resource_log_id, 'error': f'Connection Error: {conn_err}'})
+                        yield json.dumps({"type": "error", "message": error_msg}) + "\n"
+                        failure_count += 1
+                        failed_uploads_details.append({"resource": resource_log_id, "error": f"Connection Error: {conn_err}"})
                     except requests.exceptions.RequestException as req_err:
                         error_msg = f"Request error during {http_method} {resource_log_id}: {str(req_err)}"
-                        yield json.dumps({"type": "error", "message": error_msg}) + "\n"; failure_count += 1; failed_uploads_details.append({'resource': resource_log_id, 'error': f'Request Error: {req_err}'})
+                        yield json.dumps({"type": "error", "message": error_msg}) + "\n"
+                        failure_count += 1
+                        failed_uploads_details.append({"resource": resource_log_id, "error": f"Request Error: {req_err}"})
                     except Exception as e:
                         error_msg = f"Unexpected error during {http_method} {resource_log_id}: {str(e)}"
-                        yield json.dumps({"type": "error", "message": error_msg}) + "\n"; failure_count += 1; failed_uploads_details.append({'resource': resource_log_id, 'error': f'Unexpected: {e}'}); logger.error(f"[API Push Stream] Upload error for {resource_log_id}: {e}", exc_info=True)
-                # --- End Execute Action ---
-
-                else: # Resource was skipped
-                     # Track package info even if skipped
-                     pkg_found_skipped = False
-                     for p in pushed_packages_info:
-                          if p["id"] == source_pkg:
-                              pkg_found_skipped = True; break
-                     if not pkg_found_skipped:
-                          pushed_packages_info.append({"id": source_pkg, "resource_count": 0}) # Add pkg with 0 count
-            # --- End Main Upload Loop ---
+                        yield json.dumps({"type": "error", "message": error_msg}) + "\n"
+                        failure_count += 1
+                        failed_uploads_details.append({"resource": resource_log_id, "error": f"Unexpected: {e}"})
+                        logger.error(f"[API Push Stream] Upload error for {resource_log_id}: {e}", exc_info=True)
+                else:
+                    pkg_found_skipped = False
+                    for p in pushed_packages_info:
+                        if p["id"] == source_pkg:
+                            pkg_found_skipped = True
+                            break
+                    if not pkg_found_skipped:
+                        pushed_packages_info.append({"id": source_pkg, "resource_count": 0})
 
         # --- Final Summary ---
-        final_status = "success" if failure_count == 0 else \
-                       "partial" if success_count > 0 else "failure"
-
-        # --- Define prefixes before use ---
+        final_status = "success" if failure_count == 0 else "partial" if success_count > 0 else "failure"
         dry_run_prefix = "[DRY RUN] " if dry_run else ""
         force_prefix = "[FORCE UPLOAD] " if force_upload else ""
-        # --- End Define prefixes ---
-
-        # Adjust summary message construction
         if total_resources_attempted == 0 and failure_count == 0:
-             summary_message = f"{dry_run_prefix}Push finished: No matching resources found to process."
-             final_status = "success" # Still success if no errors occurred
+            summary_message = f"{dry_run_prefix}Push finished: No matching resources found to process."
+            final_status = "success"
         else:
-             # Use the defined prefixes
-             summary_message = f"{dry_run_prefix}{force_prefix}Push finished: {post_count} POSTed, {put_count} PUT, {failure_count} failed, {skipped_count} skipped ({total_resources_attempted} resources attempted)."
+            summary_message = f"{dry_run_prefix}{force_prefix}Push finished: {post_count} POSTed, {put_count} PUT, {failure_count} failed, {skipped_count} skipped ({total_resources_attempted} resources attempted)."
 
-        # Create summary dictionary
         summary = {
-            "status": final_status, "message": summary_message,
-            "target_server": fhir_server_url, "package_name": package_name, "version": version,
-            "included_dependencies": include_dependencies, "resources_attempted": total_resources_attempted,
-            "success_count": success_count, "post_count": post_count, "put_count": put_count,
-            "failure_count": failure_count, "skipped_count": skipped_count,
-            "validation_failure_count": 0, # Placeholder
-            "failed_details": failed_uploads_details, "skipped_details": skipped_resources_details,
-            "pushed_packages_summary": pushed_packages_info, "dry_run": dry_run, "force_upload": force_upload,
+            "status": final_status,
+            "message": summary_message,
+            "target_server": fhir_server_url,
+            "package_name": package_name,
+            "version": version,
+            "included_dependencies": include_dependencies,
+            "resources_attempted": total_resources_attempted,
+            "success_count": success_count,
+            "post_count": post_count,
+            "put_count": put_count,
+            "failure_count": failure_count,
+            "skipped_count": skipped_count,
+            "validation_failure_count": 0,
+            "failed_details": failed_uploads_details,
+            "skipped_details": skipped_resources_details,
+            "pushed_packages_summary": pushed_packages_info,
+            "dry_run": dry_run,
+            "force_upload": force_upload,
             "resource_types_filter": resource_types_filter,
             "skip_files_filter": sorted(list(skip_files_set)) if skip_files_set else None
         }
         yield json.dumps({"type": "complete", "data": summary}) + "\n"
         logger.info(f"[API Push Stream] Completed {package_name}#{version}. Status: {final_status}. {summary_message}")
 
-    # --- Final Exception Handling for setup/initialization errors ---
     except FileNotFoundError as fnf_err:
-         logger.error(f"[API Push Stream] Setup error: {str(fnf_err)}", exc_info=False)
-         error_response = {"status": "error", "message": f"Setup error: {str(fnf_err)}"}
-         try:
-             yield json.dumps({"type": "error", "message": error_response["message"]}) + "\n"
-             yield json.dumps({"type": "complete", "data": error_response}) + "\n"
-         except Exception as yield_e: logger.error(f"Error yielding final setup error: {yield_e}")
+        logger.error(f"[API Push Stream] Setup error: {str(fnf_err)}", exc_info=False)
+        error_response = {"status": "error", "message": f"Setup error: {str(fnf_err)}"}
+        try:
+            yield json.dumps({"type": "error", "message": error_response["message"]}) + "\n"
+            yield json.dumps({"type": "complete", "data": error_response}) + "\n"
+        except Exception as yield_e:
+            logger.error(f"Error yielding final setup error: {yield_e}")
     except Exception as e:
         logger.error(f"[API Push Stream] Critical error during setup or stream generation: {str(e)}", exc_info=True)
         error_response = {"status": "error", "message": f"Server error during push setup: {str(e)}"}
         try:
             yield json.dumps({"type": "error", "message": error_response["message"]}) + "\n"
             yield json.dumps({"type": "complete", "data": error_response}) + "\n"
-        except Exception as yield_e: logger.error(f"Error yielding final critical error: {yield_e}")
+        except Exception as yield_e:
+            logger.error(f"Error yielding final critical error: {yield_e}")
 
 # --- END generate_push_stream FUNCTION ---
 
@@ -3612,9 +3657,15 @@ def process_and_upload_test_data(server_info, options, temp_file_dir):
             session = requests.Session()
             base_url = server_info['url'].rstrip('/')
             upload_headers = {'Content-Type': 'application/fhir+json', 'Accept': 'application/fhir+json'}
-            if server_info['auth_type'] == 'bearerToken' and server_info['auth_token']:
-                upload_headers['Authorization'] = f"Bearer {server_info['auth_token']}"
-                yield json.dumps({"type": "info", "message": "Using Bearer Token auth."}) + "\n"
+            if server_info['auth_type'] in ['bearerToken', 'basic'] and server_info.get('auth_token'):
+                # Log the Authorization header (mask sensitive data)
+                auth_header = server_info['auth_token']
+                if auth_header.startswith('Basic '):
+                    auth_display = 'Basic <redacted>'
+                else:
+                    auth_display = auth_header[:10] + '...' if len(auth_header) > 10 else auth_header
+                yield json.dumps({"type": "info", "message": f"Using {server_info['auth_type']} auth with header: Authorization: {auth_display}"}) + "\n"
+                upload_headers['Authorization'] = server_info['auth_token']  # FIXED: Use server_info['auth_token']
             else:
                 yield json.dumps({"type": "info", "message": "Using no auth."}) + "\n"
 
@@ -3892,10 +3943,11 @@ def process_and_upload_test_data(server_info, options, temp_file_dir):
 # --- END Service Function ---
 
 # --- CORRECTED retrieve_bundles function with NEW logic ---
-def retrieve_bundles(fhir_server_url, resources, output_zip, validate_references=False, fetch_reference_bundles=False):
+def retrieve_bundles(fhir_server_url, resources, output_zip, validate_references=False, fetch_reference_bundles=False, auth_type='none', auth_token=None):
     """
     Retrieve FHIR bundles and save to a ZIP file.
     Optionally fetches referenced resources, either individually by ID or as full bundles by type.
+    Supports authentication for custom FHIR servers.
     Yields NDJSON progress updates.
     """
     temp_dir = None
@@ -3903,29 +3955,35 @@ def retrieve_bundles(fhir_server_url, resources, output_zip, validate_references
         total_initial_bundles = 0
         fetched_individual_references = 0
         fetched_type_bundles = 0
-        retrieved_references_or_types = set() # Track fetched items to avoid duplicates
+        retrieved_references_or_types = set()
 
         temp_dir = tempfile.mkdtemp(prefix="fhir_retrieve_")
         logger.debug(f"Created temporary directory for bundle retrieval: {temp_dir}")
         yield json.dumps({"type": "progress", "message": f"Starting bundle retrieval for {len(resources)} resource types"}) + "\n"
         if validate_references:
-             yield json.dumps({"type": "info", "message": f"Reference fetching ON (Mode: {'Full Type Bundles' if fetch_reference_bundles else 'Individual Resources'})"}) + "\n"
+            yield json.dumps({"type": "info", "message": f"Reference fetching ON (Mode: {'Full Type Bundles' if fetch_reference_bundles else 'Individual Resources'})"}) + "\n"
         else:
-             yield json.dumps({"type": "info", "message": "Reference fetching OFF"}) + "\n"
+            yield json.dumps({"type": "info", "message": "Reference fetching OFF"}) + "\n"
 
-
-        # --- Determine Base URL and Headers for Proxy ---
+        # Determine Base URL and Headers for Proxy
         base_proxy_url = f"{current_app.config['APP_BASE_URL'].rstrip('/')}/fhir"
         headers = {'Accept': 'application/fhir+json, application/fhir+xml;q=0.9, */*;q=0.8'}
         is_custom_url = fhir_server_url != '/fhir' and fhir_server_url is not None and fhir_server_url.startswith('http')
         if is_custom_url:
             headers['X-Target-FHIR-Server'] = fhir_server_url.rstrip('/')
+            if auth_type in ['bearer', 'basic'] and auth_token:
+                auth_display = 'Basic <redacted>' if auth_type == 'basic' else (auth_token[:10] + '...' if len(auth_token) > 10 else auth_token)
+                yield json.dumps({"type": "info", "message": f"Using {auth_type} auth with header: Authorization: {auth_display}"}) + "\n"
+                headers['Authorization'] = auth_token
+            else:
+                yield json.dumps({"type": "info", "message": "Using no authentication for custom URL"}) + "\n"
             logger.debug(f"Will use proxy with X-Target-FHIR-Server: {headers['X-Target-FHIR-Server']}")
         else:
+            yield json.dumps({"type": "info", "message": "Using no authentication for local HAPI server"}) + "\n"
             logger.debug("Will use proxy targeting local HAPI server")
 
-        # --- Fetch Initial Bundles ---
-        initial_bundle_files = [] # Store paths for reference scanning
+        # Fetch Initial Bundles
+        initial_bundle_files = []
         for resource_type in resources:
             url = f"{base_proxy_url}/{quote(resource_type)}"
             yield json.dumps({"type": "progress", "message": f"Fetching bundle for {resource_type} via proxy..."}) + "\n"
@@ -3934,18 +3992,18 @@ def retrieve_bundles(fhir_server_url, resources, output_zip, validate_references
                 response = requests.get(url, headers=headers, timeout=60)
                 logger.debug(f"Proxy response for {resource_type}: HTTP {response.status_code}")
                 if response.status_code != 200:
-                     # ... (keep existing error handling for initial fetch) ...
-                     error_detail = f"Proxy returned HTTP {response.status_code}."
-                     try: error_detail += f" Body: {response.text[:200]}..."
-                     except: pass
-                     yield json.dumps({"type": "error", "message": f"Failed to fetch {resource_type}: {error_detail}"}) + "\n"
-                     logger.error(f"Failed to fetch {resource_type} via proxy {url}: {error_detail}")
-                     continue
-                try: bundle = response.json()
+                    error_detail = f"Proxy returned HTTP {response.status_code}."
+                    try: error_detail += f" Body: {response.text[:200]}..."
+                    except: pass
+                    yield json.dumps({"type": "error", "message": f"Failed to fetch {resource_type}: {error_detail}"}) + "\n"
+                    logger.error(f"Failed to fetch {resource_type} via proxy {url}: {error_detail}")
+                    continue
+                try:
+                    bundle = response.json()
                 except ValueError as e:
-                     yield json.dumps({"type": "error", "message": f"Invalid JSON response for {resource_type}: {str(e)}"}) + "\n"
-                     logger.error(f"Invalid JSON from proxy for {resource_type} at {url}: {e}, Response: {response.text[:500]}")
-                     continue
+                    yield json.dumps({"type": "error", "message": f"Invalid JSON response for {resource_type}: {str(e)}"}) + "\n"
+                    logger.error(f"Invalid JSON from proxy for {resource_type} at {url}: {e}, Response: {response.text[:500]}")
+                    continue
                 if not isinstance(bundle, dict) or bundle.get('resourceType') != 'Bundle':
                     yield json.dumps({"type": "error", "message": f"Expected Bundle for {resource_type}, got {bundle.get('resourceType', 'unknown')}"}) + "\n"
                     logger.error(f"Expected Bundle for {resource_type}, got {bundle.get('resourceType', 'unknown')}")
@@ -3956,9 +4014,10 @@ def retrieve_bundles(fhir_server_url, resources, output_zip, validate_references
                 # Save the bundle
                 output_file = os.path.join(temp_dir, f"{resource_type}_bundle.json")
                 try:
-                    with open(output_file, 'w', encoding='utf-8') as f: json.dump(bundle, f, indent=2)
+                    with open(output_file, 'w', encoding='utf-8') as f:
+                        json.dump(bundle, f, indent=2)
                     logger.debug(f"Wrote bundle to {output_file}")
-                    initial_bundle_files.append(output_file) # Add for scanning
+                    initial_bundle_files.append(output_file)
                     total_initial_bundles += 1
                     yield json.dumps({"type": "success", "message": f"Saved bundle for {resource_type}"}) + "\n"
                 except IOError as e:
@@ -3970,20 +4029,21 @@ def retrieve_bundles(fhir_server_url, resources, output_zip, validate_references
                 logger.error(f"Error retrieving bundle for {resource_type} via proxy {url}: {e}")
                 continue
             except Exception as e:
-                 yield json.dumps({"type": "error", "message": f"Unexpected error fetching {resource_type}: {str(e)}"}) + "\n"
-                 logger.error(f"Unexpected error during initial fetch for {resource_type} at {url}: {e}", exc_info=True)
-                 continue
+                yield json.dumps({"type": "error", "message": f"Unexpected error fetching {resource_type}: {str(e)}"}) + "\n"
+                logger.error(f"Unexpected error during initial fetch for {resource_type} at {url}: {e}", exc_info=True)
+                continue
 
-        # --- Fetch Referenced Resources (Conditionally) ---
+        # Fetch Referenced Resources (Conditionally)
         if validate_references and initial_bundle_files:
             yield json.dumps({"type": "progress", "message": "Scanning retrieved bundles for references..."}) + "\n"
             all_references = set()
-            references_by_type = defaultdict(set) # To store { 'Patient': {'id1', 'id2'}, ... }
+            references_by_type = defaultdict(set)
 
-            # --- Scan for References ---
+            # Scan for References
             for bundle_file_path in initial_bundle_files:
                 try:
-                    with open(bundle_file_path, 'r', encoding='utf-8') as f: bundle = json.load(f)
+                    with open(bundle_file_path, 'r', encoding='utf-8') as f:
+                        bundle = json.load(f)
                     for entry in bundle.get('entry', []):
                         resource = entry.get('resource')
                         if resource:
@@ -3992,49 +4052,52 @@ def retrieve_bundles(fhir_server_url, resources, output_zip, validate_references
                             for ref_str in current_refs:
                                 if isinstance(ref_str, str) and '/' in ref_str and not ref_str.startswith('#'):
                                     all_references.add(ref_str)
-                                    # Group by type for bundle fetch mode
                                     try:
                                         ref_type = ref_str.split('/')[0]
-                                        if ref_type: references_by_type[ref_type].add(ref_str)
-                                    except Exception: pass # Ignore parsing errors here
+                                        if ref_type:
+                                            references_by_type[ref_type].add(ref_str)
+                                    except Exception:
+                                        pass
                 except Exception as e:
-                     yield json.dumps({"type": "warning", "message": f"Could not scan references in {os.path.basename(bundle_file_path)}: {e}"}) + "\n"
-                     logger.warning(f"Error processing references in {bundle_file_path}: {e}")
+                    yield json.dumps({"type": "warning", "message": f"Could not scan references in {os.path.basename(bundle_file_path)}: {e}"}) + "\n"
+                    logger.warning(f"Error processing references in {bundle_file_path}: {e}")
 
-            # --- Fetch Logic ---
+            # Fetch Logic
             if not all_references:
                 yield json.dumps({"type": "info", "message": "No references found to fetch."}) + "\n"
             else:
                 if fetch_reference_bundles:
-                    # --- Fetch Full Bundles by Type ---
+                    # Fetch Full Bundles by Type
                     unique_ref_types = sorted(list(references_by_type.keys()))
                     yield json.dumps({"type": "progress", "message": f"Fetching full bundles for {len(unique_ref_types)} referenced types..."}) + "\n"
                     logger.info(f"Fetching full bundles for referenced types: {unique_ref_types}")
 
                     for ref_type in unique_ref_types:
-                        if ref_type in retrieved_references_or_types: continue # Skip if type bundle already fetched
+                        if ref_type in retrieved_references_or_types:
+                            continue
 
-                        url = f"{base_proxy_url}/{quote(ref_type)}" # Fetch all of this type
+                        url = f"{base_proxy_url}/{quote(ref_type)}"
                         yield json.dumps({"type": "progress", "message": f"Fetching full bundle for type {ref_type} via proxy..."}) + "\n"
                         logger.debug(f"Sending GET request for full type bundle {ref_type} to proxy {url} with headers: {json.dumps(headers)}")
                         try:
-                            response = requests.get(url, headers=headers, timeout=180) # Longer timeout for full bundles
+                            response = requests.get(url, headers=headers, timeout=180)
                             logger.debug(f"Proxy response for {ref_type} bundle: HTTP {response.status_code}")
                             if response.status_code != 200:
-                                 error_detail = f"Proxy returned HTTP {response.status_code}."
-                                 try: error_detail += f" Body: {response.text[:200]}..."
-                                 except: pass
-                                 yield json.dumps({"type": "warning", "message": f"Failed to fetch full bundle for {ref_type}: {error_detail}"}) + "\n"
-                                 logger.warning(f"Failed to fetch full bundle {ref_type} via proxy {url}: {error_detail}")
-                                 retrieved_references_or_types.add(ref_type) # Mark type as attempted
-                                 continue
+                                error_detail = f"Proxy returned HTTP {response.status_code}."
+                                try: error_detail += f" Body: {response.text[:200]}..."
+                                except: pass
+                                yield json.dumps({"type": "warning", "message": f"Failed to fetch full bundle for {ref_type}: {error_detail}"}) + "\n"
+                                logger.warning(f"Failed to fetch full bundle {ref_type} via proxy {url}: {error_detail}")
+                                retrieved_references_or_types.add(ref_type)
+                                continue
 
-                            try: bundle = response.json()
+                            try:
+                                bundle = response.json()
                             except ValueError as e:
-                                 yield json.dumps({"type": "warning", "message": f"Invalid JSON for full {ref_type} bundle: {str(e)}"}) + "\n"
-                                 logger.warning(f"Invalid JSON response from proxy for full {ref_type} bundle at {url}: {e}")
-                                 retrieved_references_or_types.add(ref_type)
-                                 continue
+                                yield json.dumps({"type": "warning", "message": f"Invalid JSON for full {ref_type} bundle: {str(e)}"}) + "\n"
+                                logger.warning(f"Invalid JSON response from proxy for full {ref_type} bundle at {url}: {e}")
+                                retrieved_references_or_types.add(ref_type)
+                                continue
 
                             if not isinstance(bundle, dict) or bundle.get('resourceType') != 'Bundle':
                                 yield json.dumps({"type": "warning", "message": f"Expected Bundle for full {ref_type} fetch, got {bundle.get('resourceType', 'unknown')}"}) + "\n"
@@ -4045,44 +4108,41 @@ def retrieve_bundles(fhir_server_url, resources, output_zip, validate_references
                             # Save the full type bundle
                             output_file = os.path.join(temp_dir, f"ref_{ref_type}_BUNDLE.json")
                             try:
-                                 with open(output_file, 'w', encoding='utf-8') as f: json.dump(bundle, f, indent=2)
-                                 logger.debug(f"Wrote full type bundle to {output_file}")
-                                 fetched_type_bundles += 1
-                                 retrieved_references_or_types.add(ref_type)
-                                 yield json.dumps({"type": "success", "message": f"Saved full bundle for type {ref_type}"}) + "\n"
+                                with open(output_file, 'w', encoding='utf-8') as f:
+                                    json.dump(bundle, f, indent=2)
+                                logger.debug(f"Wrote full type bundle to {output_file}")
+                                fetched_type_bundles += 1
+                                retrieved_references_or_types.add(ref_type)
+                                yield json.dumps({"type": "success", "message": f"Saved full bundle for type {ref_type}"}) + "\n"
                             except IOError as e:
-                                  yield json.dumps({"type": "warning", "message": f"Failed to save full bundle file for {ref_type}: {e}"}) + "\n"
-                                  logger.error(f"Failed to write full bundle file {output_file}: {e}")
-                                  retrieved_references_or_types.add(ref_type) # Still mark as attempted
-
+                                yield json.dumps({"type": "warning", "message": f"Failed to save full bundle file for {ref_type}: {e}"}) + "\n"
+                                logger.error(f"Failed to write full bundle file {output_file}: {e}")
+                                retrieved_references_or_types.add(ref_type)
                         except requests.RequestException as e:
                             yield json.dumps({"type": "warning", "message": f"Error connecting to proxy for full {ref_type} bundle: {str(e)}"}) + "\n"
                             logger.warning(f"Error retrieving full {ref_type} bundle via proxy: {e}")
                             retrieved_references_or_types.add(ref_type)
                         except Exception as e:
-                             yield json.dumps({"type": "warning", "message": f"Unexpected error fetching full {ref_type} bundle: {str(e)}"}) + "\n"
-                             logger.warning(f"Unexpected error during full {ref_type} bundle fetch: {e}", exc_info=True)
-                             retrieved_references_or_types.add(ref_type)
-                    # End loop through ref_types
+                            yield json.dumps({"type": "warning", "message": f"Unexpected error fetching full {ref_type} bundle: {str(e)}"}) + "\n"
+                            logger.warning(f"Unexpected error during full {ref_type} bundle fetch: {e}", exc_info=True)
+                            retrieved_references_or_types.add(ref_type)
                 else:
-                    # --- Fetch Individual Referenced Resources ---
+                    # Fetch Individual Referenced Resources
                     yield json.dumps({"type": "progress", "message": f"Fetching {len(all_references)} unique referenced resources individually..."}) + "\n"
                     logger.info(f"Fetching {len(all_references)} unique referenced resources by ID.")
-                    for ref in sorted(list(all_references)): # Sort for consistent order
-                        if ref in retrieved_references_or_types: continue # Skip already fetched
+                    for ref in sorted(list(all_references)):
+                        if ref in retrieved_references_or_types:
+                            continue
 
                         try:
-                            # Parse reference
                             ref_parts = ref.split('/')
                             if len(ref_parts) != 2 or not ref_parts[0] or not ref_parts[1]:
                                 logger.warning(f"Skipping invalid reference format: {ref}")
                                 continue
                             ref_type, ref_id = ref_parts
 
-                            # Fetch individual resource using _id search
                             search_param = quote(f"_id={ref_id}")
                             url = f"{base_proxy_url}/{quote(ref_type)}?{search_param}"
-
                             yield json.dumps({"type": "progress", "message": f"Fetching referenced {ref_type}/{ref_id} via proxy..."}) + "\n"
                             logger.debug(f"Sending GET request for referenced {ref} to proxy {url} with headers: {json.dumps(headers)}")
 
@@ -4090,20 +4150,21 @@ def retrieve_bundles(fhir_server_url, resources, output_zip, validate_references
                             logger.debug(f"Proxy response for referenced {ref}: HTTP {response.status_code}")
 
                             if response.status_code != 200:
-                                 error_detail = f"Proxy returned HTTP {response.status_code}."
-                                 try: error_detail += f" Body: {response.text[:200]}..."
-                                 except: pass
-                                 yield json.dumps({"type": "warning", "message": f"Failed to fetch referenced {ref}: {error_detail}"}) + "\n"
-                                 logger.warning(f"Failed to fetch referenced {ref} via proxy {url}: {error_detail}")
-                                 retrieved_references_or_types.add(ref)
-                                 continue
+                                error_detail = f"Proxy returned HTTP {response.status_code}."
+                                try: error_detail += f" Body: {response.text[:200]}..."
+                                except: pass
+                                yield json.dumps({"type": "warning", "message": f"Failed to fetch referenced {ref}: {error_detail}"}) + "\n"
+                                logger.warning(f"Failed to fetch referenced {ref} via proxy {url}: {error_detail}")
+                                retrieved_references_or_types.add(ref)
+                                continue
 
-                            try: bundle = response.json()
+                            try:
+                                bundle = response.json()
                             except ValueError as e:
-                                 yield json.dumps({"type": "warning", "message": f"Invalid JSON for referenced {ref}: {str(e)}"}) + "\n"
-                                 logger.warning(f"Invalid JSON from proxy for ref {ref} at {url}: {e}")
-                                 retrieved_references_or_types.add(ref)
-                                 continue
+                                yield json.dumps({"type": "warning", "message": f"Invalid JSON for referenced {ref}: {str(e)}"}) + "\n"
+                                logger.warning(f"Invalid JSON from proxy for ref {ref} at {url}: {e}")
+                                retrieved_references_or_types.add(ref)
+                                continue
 
                             if not isinstance(bundle, dict) or bundle.get('resourceType') != 'Bundle':
                                 yield json.dumps({"type": "warning", "message": f"Expected Bundle for referenced {ref}, got {bundle.get('resourceType', 'unknown')}"}) + "\n"
@@ -4111,25 +4172,24 @@ def retrieve_bundles(fhir_server_url, resources, output_zip, validate_references
                                 continue
 
                             if not bundle.get('entry'):
-                                yield json.dumps({"type": "info", "message": f"Referenced resource {ref} not found on server." }) + "\n"
+                                yield json.dumps({"type": "info", "message": f"Referenced resource {ref} not found on server."}) + "\n"
                                 logger.info(f"Referenced resource {ref} not found via search {url}")
                                 retrieved_references_or_types.add(ref)
                                 continue
 
                             # Save the bundle containing the single referenced resource
-                            # Use a filename indicating it's an individual reference fetch
                             output_file = os.path.join(temp_dir, f"ref_{ref_type}_{ref_id}.json")
                             try:
-                                 with open(output_file, 'w', encoding='utf-8') as f: json.dump(bundle, f, indent=2)
-                                 logger.debug(f"Wrote referenced resource bundle to {output_file}")
-                                 fetched_individual_references += 1
-                                 retrieved_references_or_types.add(ref)
-                                 yield json.dumps({"type": "success", "message": f"Saved referenced resource {ref}"}) + "\n"
+                                with open(output_file, 'w', encoding='utf-8') as f:
+                                    json.dump(bundle, f, indent=2)
+                                logger.debug(f"Wrote referenced resource bundle to {output_file}")
+                                fetched_individual_references += 1
+                                retrieved_references_or_types.add(ref)
+                                yield json.dumps({"type": "success", "message": f"Saved referenced resource {ref}"}) + "\n"
                             except IOError as e:
-                                  yield json.dumps({"type": "warning", "message": f"Failed to save file for referenced {ref}: {e}"}) + "\n"
-                                  logger.error(f"Failed to write file {output_file}: {e}")
-                                  retrieved_references_or_types.add(ref)
-
+                                yield json.dumps({"type": "warning", "message": f"Failed to save file for referenced {ref}: {e}"}) + "\n"
+                                logger.error(f"Failed to write file {output_file}: {e}")
+                                retrieved_references_or_types.add(ref)
                         except requests.RequestException as e:
                             yield json.dumps({"type": "warning", "message": f"Network error fetching referenced {ref}: {str(e)}"}) + "\n"
                             logger.warning(f"Network error retrieving referenced {ref} via proxy: {e}")
@@ -4138,10 +4198,8 @@ def retrieve_bundles(fhir_server_url, resources, output_zip, validate_references
                             yield json.dumps({"type": "warning", "message": f"Unexpected error fetching referenced {ref}: {str(e)}"}) + "\n"
                             logger.warning(f"Unexpected error during reference fetch for {ref}: {e}", exc_info=True)
                             retrieved_references_or_types.add(ref)
-                     # End loop through individual references
-        # --- End Reference Fetching Logic ---
 
-        # --- Create Final ZIP File ---
+        # Create Final ZIP File
         yield json.dumps({"type": "progress", "message": f"Creating ZIP file {os.path.basename(output_zip)}..."}) + "\n"
         files_to_zip = [f for f in os.listdir(temp_dir) if f.endswith('.json')]
         if not files_to_zip:
@@ -4150,21 +4208,23 @@ def retrieve_bundles(fhir_server_url, resources, output_zip, validate_references
         else:
             logger.debug(f"Found {len(files_to_zip)} JSON files to include in ZIP: {files_to_zip}")
             try:
-                 with zipfile.ZipFile(output_zip, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                with zipfile.ZipFile(output_zip, 'w', zipfile.ZIP_DEFLATED) as zipf:
                     for filename in files_to_zip:
                         file_path = os.path.join(temp_dir, filename)
-                        if os.path.exists(file_path): zipf.write(file_path, filename)
-                        else: logger.error(f"File {file_path} disappeared before adding to ZIP.")
-                 yield json.dumps({"type": "success", "message": f"ZIP file created: {os.path.basename(output_zip)} with {len(files_to_zip)} files."}) + "\n"
+                        if os.path.exists(file_path):
+                            zipf.write(file_path, filename)
+                        else:
+                            logger.error(f"File {file_path} disappeared before adding to ZIP.")
+                yield json.dumps({"type": "success", "message": f"ZIP file created: {os.path.basename(output_zip)} with {len(files_to_zip)} files."}) + "\n"
             except Exception as e:
-                 yield json.dumps({"type": "error", "message": f"Failed to create ZIP file: {e}"}) + "\n"
-                 logger.error(f"Error creating ZIP file {output_zip}: {e}", exc_info=True)
+                yield json.dumps({"type": "error", "message": f"Failed to create ZIP file: {e}"}) + "\n"
+                logger.error(f"Error creating ZIP file {output_zip}: {e}", exc_info=True)
 
-        # --- Final Completion Message ---
+        # Final Completion Message
         completion_message = (
             f"Bundle retrieval finished. Initial bundles: {total_initial_bundles}, "
             f"Referenced items fetched: {fetched_individual_references if not fetch_reference_bundles else fetched_type_bundles} "
-            f"({ 'individual resources' if not fetch_reference_bundles else 'full type bundles' })."
+            f"({'individual resources' if not fetch_reference_bundles else 'full type bundles'})"
         )
         yield json.dumps({
             "type": "complete",
@@ -4174,16 +4234,14 @@ def retrieve_bundles(fhir_server_url, resources, output_zip, validate_references
                 "fetched_individual_references": fetched_individual_references,
                 "fetched_type_bundles": fetched_type_bundles,
                 "reference_mode": "individual" if validate_references and not fetch_reference_bundles else "type_bundle" if validate_references and fetch_reference_bundles else "off"
-                }
+            }
         }) + "\n"
 
     except Exception as e:
-        # Catch errors during setup (like temp dir creation)
         yield json.dumps({"type": "error", "message": f"Critical error during retrieval setup: {str(e)}"}) + "\n"
         logger.error(f"Unexpected error in retrieve_bundles setup: {e}", exc_info=True)
-        yield json.dumps({ "type": "complete", "message": f"Retrieval failed: {str(e)}", "data": {"total_initial_bundles": 0, "fetched_individual_references": 0, "fetched_type_bundles": 0} }) + "\n"
+        yield json.dumps({"type": "complete", "message": f"Retrieval failed: {str(e)}", "data": {"total_initial_bundles": 0, "fetched_individual_references": 0, "fetched_type_bundles": 0}}) + "\n"
     finally:
-        # --- Cleanup Temporary Directory ---
         if temp_dir and os.path.exists(temp_dir):
             try:
                 shutil.rmtree(temp_dir)
