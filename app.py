@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 from cachetools import TTLCache
 from types import SimpleNamespace
 import tarfile
+import base64
 import json
 import logging
 import requests
@@ -42,6 +43,7 @@ from services import (
 from forms import IgImportForm, ValidationForm, FSHConverterForm, TestDataUploadForm, RetrieveSplitDataForm
 from wtforms import SubmitField
 from package import package_bp
+from flasgger import Swagger, swag_from # Import Flasgger
 from copy import deepcopy
 import tempfile
 from logging.handlers import RotatingFileHandler
@@ -60,10 +62,44 @@ app.config['APP_BASE_URL'] = os.environ.get('APP_BASE_URL', 'http://localhost:50
 app.config['HAPI_FHIR_URL'] = os.environ.get('HAPI_FHIR_URL', 'http://localhost:8080/fhir')
 CONFIG_PATH = '/usr/local/tomcat/conf/application.yaml'
 
+# Basic Swagger configuration
+app.config['SWAGGER'] = {
+    'title': 'FHIRFLARE IG Toolkit API',
+    'uiversion': 3,  # Use Swagger UI 3
+    'version': '1.0.0',
+    'description': 'API documentation for the FHIRFLARE IG Toolkit. This provides access to various FHIR IG management and validation functionalities.',
+    'termsOfService': 'https://example.com/terms', # Replace with your terms
+    'contact': {
+        'name': 'FHIRFLARE Support',
+        'url': 'https://github.com/Sudo-JHare/FHIRFLARE-IG-Toolkit/issues', # Replace with your support URL
+        'email': 'xsannz@gmail.com', # Replace with your support email
+    },
+    'license': {
+        'name': 'MIT License', # Or your project's license
+        'url': 'https://github.com/Sudo-JHare/FHIRFLARE-IG-Toolkit/blob/main/LICENSE.md', # Link to your license
+    },
+    'securityDefinitions': { # Defines how API key security is handled
+        'ApiKeyAuth': {
+            'type': 'apiKey',
+            'name': 'X-API-Key', # The header name for the API key
+            'in': 'header',
+            'description': 'API Key for accessing protected endpoints.'
+        }
+    },
+    # 'security': [{'ApiKeyAuth': []}], # Optional: Apply ApiKeyAuth globally to all Flasgger-documented API endpoints by default
+                                     # If you set this, individual public endpoints would need 'security': [] in their swag_from spec.
+                                     # It's often better to define security per-endpoint in @swag_from.
+    'specs_route': '/apidocs/' # URL for the Swagger UI. This makes url_for('flasgger.apidocs') work.
+}
+swagger = Swagger(app) # Initialize Flasgger with the app. This registers its routes.
+
+
 # Register blueprints immediately after app setup
 app.register_blueprint(services_bp, url_prefix='/api')
 app.register_blueprint(package_bp)
 logging.getLogger(__name__).info("Registered package_bp blueprint")
+
+
 
 # Set max upload size (e.g., 12 MB, adjust as needed)
 app.config['MAX_CONTENT_LENGTH'] = 6 * 1024 * 1024
@@ -364,6 +400,25 @@ def index():
     return render_template('index.html', site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
 
 @app.route('/debug-routes')
+@swag_from({
+    'tags': ['Debugging'],
+    'summary': 'List all application routes.',
+    'description': 'Provides a JSON list of all registered URL rules and their endpoints. Useful for development and debugging.',
+    'responses': {
+        '200': {
+            'description': 'A list of route strings.',
+            'schema': {
+                'type': 'array',
+                'items': {
+                    'type': 'string',
+                    'example': 'Endpoint: my_endpoint, Methods: GET,POST, URL: /my/url'
+                }
+            }
+        }
+    }
+    # No API key needed for this one, so you can add:
+    # 'security': [] 
+})
 def debug_routes():
     """
     Debug endpoint to list all registered routes and their endpoints.
@@ -375,6 +430,19 @@ def debug_routes():
 
 @app.route('/api/config', methods=['GET'])
 @csrf.exempt
+@swag_from({
+    'tags': ['HAPI Configuration'],
+    'summary': 'Get HAPI FHIR server configuration.',
+    'description': 'Retrieves the current HAPI FHIR server configuration from the application.yaml file.',
+    'security': [{'ApiKeyAuth': []}], # Requires API Key
+    'responses': {
+        '200': {
+            'description': 'HAPI FHIR configuration.',
+            'schema': { 'type': 'object' } # You can be more specific if you know the YAML structure
+        },
+        '500': {'description': 'Error reading configuration file.'}
+    }
+})
 def get_config():
     try:
         with open(CONFIG_PATH, 'r') as file:
@@ -386,6 +454,30 @@ def get_config():
 
 @app.route('/api/config', methods=['POST'])
 @csrf.exempt
+@swag_from({
+    'tags': ['HAPI Configuration'],
+    'summary': 'Save HAPI FHIR server configuration.',
+    'description': 'Saves the provided HAPI FHIR server configuration to the application.yaml file.',
+    'security': [{'ApiKeyAuth': []}], # Requires API Key
+    'parameters': [
+        {
+            'name': 'config_payload', # Changed name to avoid conflict with function arg
+            'in': 'body',
+            'required': True,
+            'description': 'The HAPI FHIR configuration object.',
+            'schema': {
+                'type': 'object',
+                # Add example properties if you know them
+                'example': {'fhir_server': {'base_url': 'http://localhost:8080/fhir'}}
+            }
+        }
+    ],
+    'responses': {
+        '200': {'description': 'Configuration saved successfully.'},
+        '400': {'description': 'Invalid request body.'},
+        '500': {'description': 'Error saving configuration file.'}
+    }
+})
 def save_config():
     try:
         config = request.get_json()
@@ -399,6 +491,16 @@ def save_config():
 
 @app.route('/api/restart-tomcat', methods=['POST'])
 @csrf.exempt
+@swag_from({
+    'tags': ['HAPI Configuration'],
+    'summary': 'Restart the Tomcat server.',
+    'description': 'Attempts to restart the Tomcat server using supervisorctl. Requires appropriate server permissions.',
+    'security': [{'ApiKeyAuth': []}], # Requires API Key
+    'responses': {
+        '200': {'description': 'Tomcat restart initiated successfully.'},
+        '500': {'description': 'Error restarting Tomcat (e.g., supervisorctl not found or command failed).'}
+    }
+})
 def restart_tomcat():
     try:
         result = subprocess.run(['supervisorctl', 'restart', 'tomcat'], capture_output=True, text=True)
@@ -579,6 +681,16 @@ def perform_cache_refresh_and_log():
 
 @app.route('/api/refresh-cache-task', methods=['POST'])
 @csrf.exempt # Ensure CSRF is handled if needed, or keep exempt
+@swag_from({
+    'tags': ['Package Management'],
+    'summary': 'Refresh FHIR package cache.',
+    'description': 'Triggers an asynchronous background task to clear and refresh the FHIR package cache from configured registries.',
+    'security': [{'ApiKeyAuth': []}], # Requires API Key
+    'responses': {
+        '202': {'description': 'Cache refresh process started in the background.'},
+        # Consider if other error codes are possible before task starts
+    }
+})
 def refresh_cache_task():
     """API endpoint to trigger the background cache refresh."""
     # Note: Clearing queue here might interfere if multiple users click concurrently.
@@ -598,6 +710,24 @@ def refresh_cache_task():
 
 # Modify stream_import_logs - Simpler version: relies on thread putting [DONE]
 @app.route('/stream-import-logs')
+@swag_from({
+    'tags': ['Package Management'],
+    'summary': 'Stream package import logs.',
+    'description': 'Provides a Server-Sent Events (SSE) stream of logs generated during package import or cache refresh operations. The client should listen for "data:" events. The stream ends with "data: [DONE]".',
+    'produces': ['text/event-stream'],
+    # No API key usually for SSE streams if they are tied to an existing user session/action
+    # 'security': [], 
+    'responses': {
+        '200': {
+            'description': 'An event stream of log messages.',
+            'schema': {
+                'type': 'string',
+                'format': 'text/event-stream',
+                'example': "data: INFO: Starting import...\ndata: INFO: Package downloaded.\ndata: [DONE]\n\n"
+            }
+        }
+    }
+})
 def stream_import_logs():
     logger.debug("SSE connection established to stream-import-logs")
     def generate():
@@ -860,6 +990,23 @@ def view_ig(processed_ig_id):
                            config=current_app.config)
 
 @app.route('/get-example')
+@swag_from({
+    'tags': ['Package Management'],
+    'summary': 'Get a specific example resource from a package.',
+    'description': 'Retrieves the content of an example JSON file from a specified FHIR package and version.',
+    'parameters': [
+        {'name': 'package_name', 'in': 'query', 'type': 'string', 'required': True, 'description': 'Name of the FHIR package.'},
+        {'name': 'version', 'in': 'query', 'type': 'string', 'required': True, 'description': 'Version of the FHIR package.'},
+        {'name': 'filename', 'in': 'query', 'type': 'string', 'required': True, 'description': 'Path to the example file within the package (e.g., "package/Patient-example.json").'},
+        {'name': 'include_narrative', 'in': 'query', 'type': 'boolean', 'required': False, 'default': False, 'description': 'Whether to include the HTML narrative in the response.'}
+    ],
+    'responses': {
+        '200': {'description': 'The example FHIR resource in JSON format.', 'schema': {'type': 'object'}},
+        '400': {'description': 'Missing required query parameters or invalid file path.'},
+        '404': {'description': 'Package or example file not found.'},
+        '500': {'description': 'Server error during file retrieval or processing.'}
+    }
+})
 def get_example():
     package_name = request.args.get('package_name')
     version = request.args.get('version')
@@ -1010,6 +1157,38 @@ def generate_snapshot(structure_def, core_package_path, local_package_path):
     return structure_def
 
 @app.route('/get-structure')
+@swag_from({
+    'tags': ['Package Management'],
+    'summary': 'Get a StructureDefinition from a package.',
+    'description': 'Retrieves a StructureDefinition, optionally generating or filtering for snapshot/differential views.',
+    'parameters': [
+        {'name': 'package_name', 'in': 'query', 'type': 'string', 'required': True},
+        {'name': 'version', 'in': 'query', 'type': 'string', 'required': True},
+        {'name': 'resource_type', 'in': 'query', 'type': 'string', 'required': True, 'description': 'The resource type or profile ID.'},
+        {'name': 'view', 'in': 'query', 'type': 'string', 'required': False, 'default': 'snapshot', 'enum': ['snapshot', 'differential']},
+        {'name': 'include_narrative', 'in': 'query', 'type': 'boolean', 'required': False, 'default': False},
+        {'name': 'raw', 'in': 'query', 'type': 'boolean', 'required': False, 'default': False, 'description': 'If true, returns the raw SD JSON.'},
+        {'name': 'profile_url', 'in': 'query', 'type': 'string', 'required': False, 'description': 'Canonical URL of the profile to retrieve.'}
+    ],
+    'responses': {
+        '200': {
+            'description': 'The StructureDefinition data.',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'elements': {'type': 'array', 'items': {'type': 'object'}},
+                    'must_support_paths': {'type': 'array', 'items': {'type': 'string'}},
+                    'search_parameters': {'type': 'array', 'items': {'type': 'object'}},
+                    'fallback_used': {'type': 'boolean'},
+                    'source_package': {'type': 'string'}
+                }
+            }
+         },
+        '400': {'description': 'Missing required parameters.'},
+        '404': {'description': 'StructureDefinition not found.'},
+        '500': {'description': 'Server error.'}
+    }
+})
 def get_structure():
     package_name = request.args.get('package_name')
     version = request.args.get('version')
@@ -1180,6 +1359,33 @@ def get_structure():
 
 
 @app.route('/get-package-metadata')
+@swag_from({
+    'tags': ['Package Management'],
+    'summary': 'Get metadata for a downloaded package.',
+    'parameters': [
+        {'name': 'package_name', 'in': 'query', 'type': 'string', 'required': True},
+        {'name': 'version', 'in': 'query', 'type': 'string', 'required': True}
+    ],
+    'responses': {
+        '200': {
+            'description': 'Package metadata.',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'package_name': {'type': 'string'},
+                    'version': {'type': 'string'},
+                    'dependency_mode': {'type': 'string'},
+                    'imported_dependencies': {'type': 'array', 'items': {'type': 'object'}},
+                    'complies_with_profiles': {'type': 'array', 'items': {'type': 'string'}},
+                    'imposed_profiles': {'type': 'array', 'items': {'type': 'string'}}
+                }
+            }
+        },
+        '400': {'description': 'Missing parameters.'},
+        '404': {'description': 'Metadata not found.'},
+        '500': {'description': 'Server error.'}
+    }
+})
 def get_package_metadata():
     package_name = request.args.get('package_name')
     version = request.args.get('version')
@@ -1203,6 +1409,38 @@ def get_package_metadata():
         return jsonify({'error': f'Error retrieving metadata: {str(e)}'}), 500
 
 @app.route('/api/import-ig', methods=['POST'])
+@swag_from({
+    'tags': ['Package Management'],
+    'summary': 'Import a FHIR Implementation Guide via API.',
+    'description': 'Downloads and processes a FHIR IG and its dependencies.',
+    'security': [{'ApiKeyAuth': []}],
+    'consumes': ['application/json'],
+    'parameters': [
+        {
+            'name': 'body',
+            'in': 'body',
+            'required': True,
+            'schema': {
+                'type': 'object',
+                'required': ['package_name', 'version'],
+                'properties': {
+                    'package_name': {'type': 'string', 'example': 'hl7.fhir.us.core'},
+                    'version': {'type': 'string', 'example': '6.1.0'},
+                    'dependency_mode': {
+                        'type': 'string', 'enum': ['recursive', 'patch-canonical', 'tree-shaking', 'direct'],
+                        'default': 'recursive'
+                    }
+                }
+            }
+        }
+    ],
+    'responses': {
+        '200': {'description': 'Package imported successfully or with warnings.'},
+        '400': {'description': 'Invalid request (e.g., missing fields, invalid mode).'},
+        '404': {'description': 'Package not found on registry.'},
+        '500': {'description': 'Server error during import.'}
+    }
+})
 def api_import_ig():
     auth_error = check_api_key()
     if auth_error:
@@ -1275,6 +1513,48 @@ def api_import_ig():
         return jsonify({"status": "error", "message": f"Unexpected server error during import: {str(e)}"}), 500
 
 @app.route('/api/push-ig', methods=['POST'])
+@csrf.exempt  # Retain CSRF exemption as specified
+@swag_from({
+    'tags': ['Package Management'],
+    'summary': 'Push a FHIR Implementation Guide to a server via API.',
+    'description': 'Uploads resources from a specified FHIR IG (and optionally its dependencies) to a target FHIR server. Returns an NDJSON stream of progress.',
+    'security': [{'ApiKeyAuth': []}],
+    'consumes': ['application/json'],
+    'produces': ['application/x-ndjson'],
+    'parameters': [
+        {
+            'name': 'body',
+            'in': 'body',
+            'required': True,
+            'schema': {
+                'type': 'object',
+                'required': ['package_name', 'version', 'fhir_server_url'],
+                'properties': {
+                    'package_name': {'type': 'string', 'example': 'hl7.fhir.us.core'},
+                    'version': {'type': 'string', 'example': '6.1.0'},
+                    'fhir_server_url': {'type': 'string', 'format': 'url', 'example': 'http://localhost:8080/fhir'},
+                    'include_dependencies': {'type': 'boolean', 'default': True},
+                    'auth_type': {'type': 'string', 'enum': ['apiKey', 'bearerToken', 'basic', 'none'], 'default': 'none'},
+                    'auth_token': {'type': 'string', 'description': 'Required if auth_type is bearerToken or basic (for basic, use "Basic <base64_encoded_user:pass>")'},
+                    'username': {'type': 'string', 'description': 'Required if auth_type is basic'},
+                    'password': {'type': 'string', 'format': 'password', 'description': 'Required if auth_type is basic'},
+                    'resource_types_filter': {'type': 'array', 'items': {'type': 'string'}, 'description': 'List of resource types to include.'},
+                    'skip_files': {'type': 'array', 'items': {'type': 'string'}, 'description': 'List of specific file paths within packages to skip.'},
+                    'dry_run': {'type': 'boolean', 'default': False},
+                    'verbose': {'type': 'boolean', 'default': False},
+                    'force_upload': {'type': 'boolean', 'default': False, 'description': 'If true, uploads resources even if they appear identical to server versions.'}
+                }
+            }
+        }
+    ],
+    'responses': {
+        '200': {'description': 'NDJSON stream of push progress and results.'},
+        '400': {'description': 'Invalid request parameters.'},
+        '401': {'description': 'Authentication error.'},
+        '404': {'description': 'Package not found locally.'},
+        '500': {'description': 'Server error during push operation setup.'}
+    }
+})
 def api_push_ig():
     auth_error = check_api_key()
     if auth_error: return auth_error
@@ -1287,20 +1567,23 @@ def api_push_ig():
     include_dependencies = data.get('include_dependencies', True)
     auth_type = data.get('auth_type', 'none')
     auth_token = data.get('auth_token')
+    username = data.get('username')  # ADD: Extract username
+    password = data.get('password')  # ADD: Extract password
     resource_types_filter_raw = data.get('resource_types_filter')
     skip_files_raw = data.get('skip_files')
     dry_run = data.get('dry_run', False)
     verbose = data.get('verbose', False)
-    force_upload = data.get('force_upload', False) # <<< ADD: Extract force_upload
+    force_upload = data.get('force_upload', False)
 
-    # --- Input Validation (Assume previous validation is sufficient) ---
+    # --- Input Validation ---
     if not all([package_name, version, fhir_server_url]): return jsonify({"status": "error", "message": "Missing required fields"}), 400
-    # ... (Keep other specific validations as needed) ...
-    valid_auth_types = ['apiKey', 'bearerToken', 'none'];
+    valid_auth_types = ['apiKey', 'bearerToken', 'basic', 'none']  # ADD: 'basic' to valid auth types
     if auth_type not in valid_auth_types: return jsonify({"status": "error", "message": f"Invalid auth_type."}), 400
     if auth_type == 'bearerToken' and not auth_token: return jsonify({"status": "error", "message": "auth_token required for bearerToken."}), 400
+    if auth_type == 'basic' and (not username or not password):  # ADD: Validate Basic Auth inputs
+        return jsonify({"status": "error", "message": "Username and password required for Basic Authentication."}), 400
 
-    # Parse filters (same as before)
+    # Parse filters (unchanged)
     resource_types_filter = None
     if resource_types_filter_raw:
         if isinstance(resource_types_filter_raw, list): resource_types_filter = [s for s in resource_types_filter_raw if isinstance(s, str)]
@@ -1312,25 +1595,27 @@ def api_push_ig():
         elif isinstance(skip_files_raw, str): skip_files = [s.strip().replace('\\', '/') for s in re.split(r'[,\n]', skip_files_raw) if s.strip()]
         else: return jsonify({"status": "error", "message": "Invalid skip_files format."}), 400
 
-    # --- File Path Setup (Same as before) ---
+    # --- File Path Setup (unchanged) ---
     packages_dir = current_app.config.get('FHIR_PACKAGES_DIR')
     if not packages_dir: return jsonify({"status": "error", "message": "Server config error: Package dir missing."}), 500
-    # ... (check if package tgz exists - same as before) ...
     tgz_filename = services.construct_tgz_filename(package_name, version)
     tgz_path = os.path.join(packages_dir, tgz_filename)
     if not os.path.exists(tgz_path): return jsonify({"status": "error", "message": f"Package not found locally: {package_name}#{version}"}), 404
 
+    # ADD: Handle Basic Authentication
+    if auth_type == 'basic':
+        credentials = f"{username}:{password}"
+        auth_token = f"Basic {base64.b64encode(credentials.encode('utf-8')).decode('utf-8')}"
 
     # --- Streaming Response ---
     def generate_stream_wrapper():
-         yield from services.generate_push_stream(
-             package_name=package_name, version=version, fhir_server_url=fhir_server_url,
-             include_dependencies=include_dependencies, auth_type=auth_type,
-             auth_token=auth_token, resource_types_filter=resource_types_filter,
-             skip_files=skip_files, dry_run=dry_run, verbose=verbose,
-             force_upload=force_upload, # <<< ADD: Pass force_upload
-             packages_dir=packages_dir
-         )
+        yield from services.generate_push_stream(
+            package_name=package_name, version=version, fhir_server_url=fhir_server_url,
+            include_dependencies=include_dependencies, auth_type=auth_type,
+            auth_token=auth_token, resource_types_filter=resource_types_filter,
+            skip_files=skip_files, dry_run=dry_run, verbose=verbose,
+            force_upload=force_upload, packages_dir=packages_dir
+        )
     return Response(generate_stream_wrapper(), mimetype='application/x-ndjson')
 
 # Ensure csrf.exempt(api_push_ig) remains
@@ -1529,6 +1814,34 @@ def proxy_hapi(subpath):
 
 
 @app.route('/api/load-ig-to-hapi', methods=['POST'])
+@swag_from({
+    'tags': ['HAPI Integration'],
+    'summary': 'Load an IG into the local HAPI FHIR server.',
+    'description': 'Extracts all resources from a specified IG package and PUTs them to the configured HAPI FHIR server.',
+    'security': [{'ApiKeyAuth': []}],
+    'consumes': ['application/json'],
+    'parameters': [
+        {
+            'name': 'body',
+            'in': 'body',
+            'required': True,
+            'schema': {
+                'type': 'object',
+                'required': ['package_name', 'version'],
+                'properties': {
+                    'package_name': {'type': 'string', 'example': 'hl7.fhir.us.core'},
+                    'version': {'type': 'string', 'example': '6.1.0'}
+                }
+            }
+        }
+    ],
+    'responses': {
+        '200': {'description': 'Package loaded to HAPI successfully.'},
+        '400': {'description': 'Invalid request (e.g., missing package_name/version).'},
+        '404': {'description': 'Package not found locally.'},
+        '500': {'description': 'Error loading IG to HAPI (e.g., HAPI server connection issue, resource upload failure).'}
+    }
+})
 def load_ig_to_hapi():
     data = request.get_json()
     package_name = data.get('package_name')
@@ -1744,41 +2057,58 @@ def upload_test_data():
     return render_template('upload_test_data.html', title="Upload Test Data", form=form, api_key=api_key)
 
 
+# --- Updated /api/upload-test-data Endpoint ---
 @app.route('/api/upload-test-data', methods=['POST'])
 @csrf.exempt
+@swag_from({
+    'tags': ['Test Data Management'],
+    'summary': 'Upload and process FHIR test data.',
+    'description': 'Handles multipart/form-data uploads of FHIR resources (JSON, XML, or ZIP containing these) for processing and uploading to a target FHIR server. Returns an NDJSON stream of progress.',
+    'security': [{'ApiKeyAuth': []}],
+    'consumes': ['multipart/form-data'],
+    'produces': ['application/x-ndjson'],
+    'parameters': [
+        {'name': 'fhir_server_url', 'in': 'formData', 'type': 'string', 'required': True, 'format': 'url', 'description': 'Target FHIR server URL.'},
+        {'name': 'auth_type', 'in': 'formData', 'type': 'string', 'enum': ['none', 'bearerToken', 'basic'], 'default': 'none'},
+        {'name': 'auth_token', 'in': 'formData', 'type': 'string', 'description': 'Bearer token if auth_type is bearerToken.'},
+        {'name': 'username', 'in': 'formData', 'type': 'string', 'description': 'Username if auth_type is basic.'},
+        {'name': 'password', 'in': 'formData', 'type': 'string', 'format': 'password', 'description': 'Password if auth_type is basic.'},
+        {'name': 'test_data_files', 'in': 'formData', 'type': 'file', 'required': True, 'description': 'One or more FHIR resource files (JSON, XML) or ZIP archives containing them.'},
+        {'name': 'validate_before_upload', 'in': 'formData', 'type': 'boolean', 'default': False},
+        {'name': 'validation_package_id', 'in': 'formData', 'type': 'string', 'description': 'Package ID (name#version) for validation, if validate_before_upload is true.'},
+        {'name': 'upload_mode', 'in': 'formData', 'type': 'string', 'enum': ['individual', 'transaction'], 'default': 'individual'},
+        {'name': 'use_conditional_uploads', 'in': 'formData', 'type': 'boolean', 'default': True, 'description': 'For individual mode, use conditional logic (GET then PUT/POST).'},
+        {'name': 'error_handling', 'in': 'formData', 'type': 'string', 'enum': ['stop', 'continue'], 'default': 'stop'}
+    ],
+    'responses': {
+        '200': {'description': 'NDJSON stream of upload progress and results.'},
+        '400': {'description': 'Invalid request parameters or file types.'},
+        '401': {'description': 'Authentication error.'},
+        '413': {'description': 'Request entity too large.'},
+        '500': {'description': 'Server error during upload processing.'}
+    }
+})
 def api_upload_test_data():
     """API endpoint to handle test data upload and processing, using custom parser."""
-    auth_error = check_api_key();
+    auth_error = check_api_key()
     if auth_error: return auth_error
 
-    temp_dir = None # Initialize temp_dir to ensure cleanup happens
+    temp_dir = None
     try:
-        # --- Use Custom Form Parser ---
-        # Instantiate the custom parser with the desired limit
         parser = CustomFormDataParser()
-        #parser = CustomFormDataParser(max_form_parts=2000) # Match the class definition or set higher if needed
-
-        # Parse the request using the custom parser
-        # We need the stream, mimetype, content_length, and options from the request
-        # Note: Accessing request.stream consumes it, do this first.
         stream = request.stream
         mimetype = request.mimetype
         content_length = request.content_length
         options = request.mimetype_params
-
-        # The parse method returns (stream, form_dict, files_dict)
-        # stream: A wrapper around the original stream
-        # form_dict: A MultiDict containing non-file form fields
-        # files_dict: A MultiDict containing FileStorage objects for uploaded files
         _, form_data, files_data = parser.parse(stream, mimetype, content_length, options)
         logger.debug(f"Form parsed using CustomFormDataParser. Form fields: {len(form_data)}, Files: {len(files_data)}")
-        # --- END Custom Form Parser Usage ---
 
-
-        # --- Extract Form Data (using parsed data) ---
+        # --- Extract Form Data ---
         fhir_server_url = form_data.get('fhir_server_url')
         auth_type = form_data.get('auth_type', 'none')
         auth_token = form_data.get('auth_token')
+        username = form_data.get('username')
+        password = form_data.get('password')
         upload_mode = form_data.get('upload_mode', 'individual')
         error_handling = form_data.get('error_handling', 'stop')
         validate_before_upload_str = form_data.get('validate_before_upload', 'false')
@@ -1789,42 +2119,62 @@ def api_upload_test_data():
 
         logger.debug(f"API Upload Request Params: validate={validate_before_upload}, pkg_id={validation_package_id}, conditional={use_conditional_uploads}")
 
-        # --- Basic Validation (using parsed data) ---
-        if not fhir_server_url or not fhir_server_url.startswith(('http://', 'https://')): return jsonify({"status": "error", "message": "Invalid Target FHIR Server URL."}), 400
-        if auth_type not in ['none', 'bearerToken']: return jsonify({"status": "error", "message": "Invalid Authentication Type."}), 400
-        if auth_type == 'bearerToken' and not auth_token: return jsonify({"status": "error", "message": "Bearer Token required."}), 400
-        if upload_mode not in ['individual', 'transaction']: return jsonify({"status": "error", "message": "Invalid Upload Mode."}), 400
-        if error_handling not in ['stop', 'continue']: return jsonify({"status": "error", "message": "Invalid Error Handling mode."}), 400
-        if validate_before_upload and not validation_package_id: return jsonify({"status": "error", "message": "Validation Package ID required."}), 400
+        # --- Basic Validation ---
+        if not fhir_server_url or not fhir_server_url.startswith(('http://', 'https://')):
+            return jsonify({"status": "error", "message": "Invalid Target FHIR Server URL."}), 400
+        if auth_type not in ['none', 'bearerToken', 'basic']:
+            return jsonify({"status": "error", "message": "Invalid Authentication Type."}), 400
+        if auth_type == 'bearerToken' and not auth_token:
+            return jsonify({"status": "error", "message": "Bearer Token required."}), 400
+        if auth_type == 'basic' and (not username or not password):
+            return jsonify({"status": "error", "message": "Username and Password required for Basic Authentication."}), 400
+        if upload_mode not in ['individual', 'transaction']:
+            return jsonify({"status": "error", "message": "Invalid Upload Mode."}), 400
+        if error_handling not in ['stop', 'continue']:
+            return jsonify({"status": "error", "message": "Invalid Error Handling mode."}), 400
+        if validate_before_upload and not validation_package_id:
+            return jsonify({"status": "error", "message": "Validation Package ID required."}), 400
 
-        # --- Handle File Uploads (using parsed data) ---
-        # Use files_data obtained from the custom parser
+        # --- Handle File Uploads ---
         uploaded_files = files_data.getlist('test_data_files')
-        if not uploaded_files or all(f.filename == '' for f in uploaded_files): return jsonify({"status": "error", "message": "No files selected."}), 400
+        if not uploaded_files or all(f.filename == '' for f in uploaded_files):
+            return jsonify({"status": "error", "message": "No files selected."}), 400
 
         temp_dir = tempfile.mkdtemp(prefix='fhirflare_upload_')
         saved_file_paths = []
         allowed_extensions = {'.json', '.xml', '.zip'}
         try:
-            for file_storage in uploaded_files: # Iterate through FileStorage objects
+            for file_storage in uploaded_files:
                 if file_storage and file_storage.filename:
                     filename = secure_filename(file_storage.filename)
                     file_ext = os.path.splitext(filename)[1].lower()
-                    if file_ext not in allowed_extensions: raise ValueError(f"Invalid file type: '{filename}'. Only JSON, XML, ZIP allowed.")
+                    if file_ext not in allowed_extensions:
+                        raise ValueError(f"Invalid file type: '{filename}'. Only JSON, XML, ZIP allowed.")
                     save_path = os.path.join(temp_dir, filename)
-                    file_storage.save(save_path) # Use the save method of FileStorage
+                    file_storage.save(save_path)
                     saved_file_paths.append(save_path)
-            if not saved_file_paths: raise ValueError("No valid files saved.")
+            if not saved_file_paths:
+                raise ValueError("No valid files saved.")
             logger.debug(f"Saved {len(saved_file_paths)} files to {temp_dir}")
         except ValueError as ve:
-             if temp_dir and os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-             logger.warning(f"Upload rejected: {ve}"); return jsonify({"status": "error", "message": str(ve)}), 400
+            if temp_dir and os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            logger.warning(f"Upload rejected: {ve}")
+            return jsonify({"status": "error", "message": str(ve)}), 400
         except Exception as file_err:
-             if temp_dir and os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-             logger.error(f"Error saving uploaded files: {file_err}", exc_info=True); return jsonify({"status": "error", "message": "Error saving uploaded files."}), 500
+            if temp_dir and os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            logger.error(f"Error saving uploaded files: {file_err}", exc_info=True)
+            return jsonify({"status": "error", "message": "Error saving uploaded files."}), 500
 
         # --- Prepare Server Info and Options ---
-        server_info = {'url': fhir_server_url, 'auth_type': auth_type, 'auth_token': auth_token}
+        server_info = {'url': fhir_server_url, 'auth_type': auth_type}
+        if auth_type == 'bearerToken':
+            server_info['auth_token'] = auth_token
+        elif auth_type == 'basic':
+            credentials = f"{username}:{password}"
+            encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
+            server_info['auth_token'] = f"Basic {encoded_credentials}"
         options = {
             'upload_mode': upload_mode,
             'error_handling': error_handling,
@@ -1839,25 +2189,30 @@ def api_upload_test_data():
                 with app.app_context():
                     yield from services.process_and_upload_test_data(server_info, options, temp_dir)
             finally:
-                try: logger.debug(f"Cleaning up temp dir: {temp_dir}"); shutil.rmtree(temp_dir)
-                except Exception as cleanup_e: logger.error(f"Error cleaning up temp dir {temp_dir}: {cleanup_e}")
+                try:
+                    logger.debug(f"Cleaning up temp dir: {temp_dir}")
+                    shutil.rmtree(temp_dir)
+                except Exception as cleanup_e:
+                    logger.error(f"Error cleaning up temp dir {temp_dir}: {cleanup_e}")
 
         return Response(generate_stream_wrapper(), mimetype='application/x-ndjson')
 
     except RequestEntityTooLarge as e:
-        # Catch the specific exception if the custom parser still fails (e.g., limit too low)
         logger.error(f"RequestEntityTooLarge error in /api/upload-test-data despite custom parser: {e}", exc_info=True)
         if temp_dir and os.path.exists(temp_dir):
-             try: shutil.rmtree(temp_dir)
-             except Exception as cleanup_e: logger.error(f"Error cleaning up temp dir during exception: {cleanup_e}")
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception as cleanup_e:
+                logger.error(f"Error cleaning up temp dir during exception: {cleanup_e}")
         return jsonify({"status": "error", "message": f"Upload failed: Request entity too large. Try increasing parser limit or reducing files/size. ({str(e)})"}), 413
 
     except Exception as e:
-        # Catch other potential errors during parsing or setup
         logger.error(f"Error in /api/upload-test-data: {e}", exc_info=True)
         if temp_dir and os.path.exists(temp_dir):
-             try: shutil.rmtree(temp_dir)
-             except Exception as cleanup_e: logger.error(f"Error cleaning up temp dir during exception: {cleanup_e}")
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception as cleanup_e:
+                logger.error(f"Error cleaning up temp dir during exception: {cleanup_e}")
         return jsonify({"status": "error", "message": f"Unexpected server error: {str(e)}"}), 500
 
 @app.route('/retrieve-split-data', methods=['GET', 'POST'])
@@ -1889,6 +2244,36 @@ def retrieve_split_data():
                           api_key=app.config['API_KEY'])
 
 @app.route('/api/retrieve-bundles', methods=['POST'])
+@csrf.exempt
+@swag_from({
+    'tags': ['Test Data Management'],
+    'summary': 'Retrieve FHIR resource bundles from a server.',
+    'description': 'Fetches bundles for specified resource types from a FHIR server. Optionally fetches referenced resources. Returns an NDJSON stream and prepares a ZIP file for download.',
+    'security': [{'ApiKeyAuth': []}],
+    'consumes': ['application/x-www-form-urlencoded'], # Or multipart/form-data if files are involved
+    'produces': ['application/x-ndjson'],
+    'parameters': [
+        {'name': 'fhir_server_url', 'in': 'formData', 'type': 'string', 'required': False, 'format': 'url', 'description': 'Target FHIR server URL. Defaults to local proxy (/fhir).'},
+        {'name': 'resources', 'in': 'formData', 'type': 'array', 'items': {'type': 'string'}, 'collectionFormat': 'multi', 'required': True, 'description': 'List of resource types to retrieve (e.g., Patient, Observation).'},
+        {'name': 'validate_references', 'in': 'formData', 'type': 'boolean', 'default': False, 'description': 'Fetch resources referenced by the initial bundles.'},
+        {'name': 'fetch_reference_bundles', 'in': 'formData', 'type': 'boolean', 'default': False, 'description': 'If fetching references, get full bundles for referenced types instead of individual resources.'},
+        {'name': 'auth_type', 'in': 'formData', 'type': 'string', 'enum': ['none', 'bearer', 'basic'], 'default': 'none'},
+        {'name': 'bearer_token', 'in': 'formData', 'type': 'string', 'description': 'Bearer token if auth_type is bearer.'},
+        {'name': 'username', 'in': 'formData', 'type': 'string', 'description': 'Username if auth_type is basic.'},
+        {'name': 'password', 'in': 'formData', 'type': 'string', 'format': 'password', 'description': 'Password if auth_type is basic.'}
+    ],
+    'responses': {
+        '200': {
+            'description': 'NDJSON stream of retrieval progress. X-Zip-Path header indicates path to the created ZIP file.',
+            'headers': {
+                'X-Zip-Path': {'type': 'string', 'description': 'Server path to the generated ZIP file.'}
+            }
+        },
+        '400': {'description': 'Invalid request parameters.'},
+        '401': {'description': 'Authentication error.'},
+        '500': {'description': 'Server error during retrieval.'}
+    }
+})
 def api_retrieve_bundles():
     auth_error = check_api_key()
     if auth_error:
@@ -1896,50 +2281,90 @@ def api_retrieve_bundles():
 
     # Use request.form for standard form data
     params = request.form.to_dict()
-    resources = request.form.getlist('resources') # Get list of selected resources
-
-    # Get boolean flags, converting string 'true' to boolean True
+    resources = request.form.getlist('resources')
     validate_references = params.get('validate_references', 'false').lower() == 'true'
-    # --- Get NEW flag ---
     fetch_reference_bundles = params.get('fetch_reference_bundles', 'false').lower() == 'true'
-    # --- End NEW flag ---
+    auth_type = params.get('auth_type', 'none')
+    bearer_token = params.get('bearer_token')
+    username = params.get('username')
+    password = params.get('password')
 
-    # Basic validation
+    # Get FHIR server URL, default to '/fhir' (local proxy)
+    fhir_server_url = params.get('fhir_server_url', '/fhir').strip()
+    if not fhir_server_url:
+        fhir_server_url = '/fhir'
+
+    # Validation
     if not resources:
         return jsonify({"status": "error", "message": "No resources selected."}), 400
+    valid_auth_types = ['none', 'bearer', 'basic']
+    if auth_type not in valid_auth_types:
+        return jsonify({"status": "error", "message": f"Invalid auth_type. Must be one of {valid_auth_types}."}), 400
+    if auth_type == 'bearer' and not bearer_token:
+        return jsonify({"status": "error", "message": "Bearer token required for bearer authentication."}), 400
+    if auth_type == 'basic' and (not username or not password):
+        return jsonify({"status": "error", "message": "Username and password required for basic authentication."}), 400
 
-    # Get FHIR server URL, default to '/fhir' (which targets local proxy)
-    fhir_server_url = params.get('fhir_server_url', '/fhir').strip()
-    if not fhir_server_url: # Handle empty string case
-         fhir_server_url = '/fhir'
+    # Handle authentication
+    auth_token = None
+    if auth_type == 'bearer':
+        auth_token = f"Bearer {bearer_token}"
+    elif auth_type == 'basic':
+        credentials = f"{username}:{password}"
+        auth_token = f"Basic {base64.b64encode(credentials.encode('utf-8')).decode('utf-8')}"
 
-    logger.info(f"Retrieve API: Server='{fhir_server_url}', Resources={resources}, ValidateRefs={validate_references}, FetchRefBundles={fetch_reference_bundles}")
+    logger.info(f"Retrieve API: Server='{fhir_server_url}', Resources={resources}, ValidateRefs={validate_references}, FetchRefBundles={fetch_reference_bundles}, AuthType={auth_type}")
 
-    # Ensure the temp directory exists (use Flask's configured upload folder or system temp)
-    # Using system temp is generally safer for transient data
+    # Ensure the temp directory exists
     temp_dir = tempfile.gettempdir()
-    # Generate a unique filename for the zip in the temp dir
     zip_filename = f"retrieved_bundles_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.zip"
     output_zip = os.path.join(temp_dir, zip_filename)
 
     def generate():
-        # Pass the NEW flag to the service function
-        yield from retrieve_bundles(
-            fhir_server_url=fhir_server_url,
-            resources=resources,
-            output_zip=output_zip,
-            validate_references=validate_references,
-            fetch_reference_bundles=fetch_reference_bundles # Pass new flag
-        )
+        try:
+            yield from services.retrieve_bundles(
+                fhir_server_url=fhir_server_url,
+                resources=resources,
+                output_zip=output_zip,
+                validate_references=validate_references,
+                fetch_reference_bundles=fetch_reference_bundles,
+                auth_type=auth_type,
+                auth_token=auth_token
+            )
+        except Exception as e:
+            logger.error(f"Error in retrieve_bundles: {e}", exc_info=True)
+            yield json.dumps({"type": "error", "message": f"Unexpected error: {str(e)}"}) + "\n"
 
-    # Create the response *before* starting the generator
     response = Response(generate(), mimetype='application/x-ndjson')
-    # Send back the *relative* path within the temp dir for download
-    response.headers['X-Zip-Path'] = os.path.join('/tmp', zip_filename) # Path for the /tmp/<filename> route
-
+    response.headers['X-Zip-Path'] = os.path.join('/tmp', zip_filename)
     return response
 
 @app.route('/api/split-bundles', methods=['POST'])
+@swag_from({
+    'tags': ['Test Data Management'],
+    'summary': 'Split FHIR bundles from a ZIP into individual resources.',
+    'description': 'Takes a ZIP file containing FHIR bundles, extracts individual resources, and creates a new ZIP file with these resources. Returns an NDJSON stream of progress.',
+    'security': [{'ApiKeyAuth': []}],
+    'consumes': ['multipart/form-data'], # Assuming split_bundle_zip_path comes from a form that might include a file upload in other contexts, or it's a path string. If it's always a path string from a JSON body, change consumes.
+    'produces': ['application/x-ndjson'],
+    'parameters': [
+        # If split_bundle_zip_path is a path sent in form data:
+        {'name': 'split_bundle_zip_path', 'in': 'formData', 'type': 'string', 'required': True, 'description': 'Path to the input ZIP file containing bundles (server-side path).'},
+        # If it's an uploaded file:
+        # {'name': 'split_bundle_zip_file', 'in': 'formData', 'type': 'file', 'required': True, 'description': 'ZIP file containing bundles to split.'}
+    ],
+    'responses': {
+        '200': {
+            'description': 'NDJSON stream of splitting progress. X-Zip-Path header indicates path to the output ZIP file.',
+            'headers': {
+                'X-Zip-Path': {'type': 'string', 'description': 'Server path to the generated ZIP file with split resources.'}
+            }
+        },
+        '400': {'description': 'Invalid request (e.g., missing input ZIP path/file).'},
+        '401': {'description': 'Authentication error.'},
+        '500': {'description': 'Server error during splitting.'}
+    }
+})
 def api_split_bundles():
     auth_error = check_api_key()
     if auth_error:
@@ -1977,6 +2402,31 @@ def clear_session():
 
 
 @app.route('/api/package/<name>', methods=['GET'])
+@swag_from({
+    'tags': ['Package Management'],
+    'summary': 'Get details for a specific FHIR package.',
+    'description': 'Retrieves details for a FHIR IG package by its name. Data is sourced from ProcessedIg, CachedPackage, or fetched live from registries.',
+    'parameters': [
+        {'name': 'name', 'in': 'path', 'type': 'string', 'required': True, 'description': 'The canonical name of the package (e.g., hl7.fhir.us.core).'}
+    ],
+    'responses': {
+        '200': {
+            'description': 'Package details.',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'name': {'type': 'string'},
+                    'latest': {'type': 'string', 'description': 'Latest known version.'},
+                    'author': {'type': 'string'},
+                    'fhir_version': {'type': 'string'},
+                    'version_count': {'type': 'integer'},
+                    'url': {'type': 'string', 'format': 'url'}
+                }
+            }
+        },
+        '404': {'description': 'Package not found.'}
+    }
+})
 def package_details(name):
     """
     Retrieve details for a specific FHIR Implementation Guide package by name.
@@ -2252,6 +2702,19 @@ def search_and_import():
                            is_fetching=is_fetching)
 
 @app.route('/api/search-packages', methods=['GET'], endpoint='api_search_packages')
+@swag_from({
+    'tags': ['Package Management'],
+    'summary': 'Search FHIR packages (HTMX).',
+    'description': 'Searches the in-memory package cache. Returns an HTML fragment for HTMX to display matching packages. Primarily for UI interaction.',
+    'parameters': [
+        {'name': 'search', 'in': 'query', 'type': 'string', 'required': False, 'description': 'Search term for package name or author.'},
+        {'name': 'page', 'in': 'query', 'type': 'integer', 'required': False, 'default': 1}
+    ],
+    'produces': ['text/html'],
+    'responses': {
+        '200': {'description': 'HTML fragment containing the search results table.'}
+    }
+})
 def api_search_packages():
     """
     Handles HTMX search requests. Filters packages from the in-memory cache.

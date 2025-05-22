@@ -134,10 +134,36 @@
                     <label class="form-label fw-bold">FHIR Server</label>
                     <div class="input-group">
                         <button type="button" class="btn btn-outline-primary" id="toggleServer">
-                            <span id="toggleLabel">Use Local HAPI</span> </button>
+                            <span id="toggleLabel">Use Local HAPI</span>
+                        </button>
                         <input type="text" class="form-control" id="fhirServerUrl" name="fhir_server_url" placeholder="Enter FHIR Base URL e.g., https://hapi.fhir.org/baseR4" style="display: none;" aria-describedby="fhirServerHelp">
                     </div>
                     <small id="fhirServerHelp" class="form-text text-muted">Toggle to use local HAPI (/fhir proxy) or enter a custom FHIR server URL.</small>
+                </div>
+                <div class="mb-3" id="authSection" style="display: none;">
+                    <label class="form-label fw-bold">Authentication</label>
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-5">
+                            <select class="form-select" id="authType" name="auth_type">
+                                <option value="none" selected>None</option>
+                                <option value="bearer">Bearer Token</option>
+                                <option value="basic">Basic Authentication</option>
+                            </select>
+                        </div>
+                        <div class="col-md-7" id="authInputsGroup" style="display: none;">
+                            <div id="bearerTokenInput" style="display: none;">
+                                <label for="bearerToken" class="form-label">Bearer Token</label>
+                                <input type="password" class="form-control" id="bearerToken" name="bearer_token" placeholder="Enter Bearer Token">
+                            </div>
+                            <div id="basicAuthInputs" style="display: none;">
+                                <label for="username" class="form-label">Username</label>
+                                <input type="text" class="form-control mb-2" id="username" name="username" placeholder="Enter Username">
+                                <label for="password" class="form-label">Password</label>
+                                <input type="password" class="form-control" id="password" name="password" placeholder="Enter Password">
+                            </div>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted">Select authentication method for the custom FHIR server.</small>
                 </div>
                 <button type="button" class="btn btn-primary mb-3" id="fetchMetadata">Fetch Metadata</button>
             </form>
@@ -338,9 +364,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const swaggerUiContainer = document.getElementById('swagger-ui');
     const selectedResourceSpan = document.getElementById('selectedResource');
     const queryListContainer = document.getElementById('queryList');
-    // --- Add checks if desired ---
-    if (!toggleServerButton || !toggleLabel || !fhirServerUrlInput /* || other critical elements */) {
-        console.error("Crucial elements missing, stopping script."); return;
+    const authSection = document.getElementById('authSection');
+    const authTypeSelect = document.getElementById('authType');
+    const authInputsGroup = document.getElementById('authInputsGroup');
+    const bearerTokenInput = document.getElementById('bearerToken');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    if (!toggleServerButton || !toggleLabel || !fhirServerUrlInput || !authSection || !authTypeSelect) {
+        console.error("Crucial elements missing, stopping script.");
+        return;
     }
 
     // --- State Variables ---
@@ -355,48 +387,57 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log(`App Mode (Operations): ${appMode}`);
     // <<< END ADD >>>
 
+    // --- Helper Functions ---
+    function updateAuthInputsUI() {
+        console.log(`[updateAuthInputsUI] Running, authType: ${authTypeSelect.value}`);
+        if (!authTypeSelect || !authInputsGroup || !bearerTokenInput || !basicAuthInputs) {
+            console.error("[updateAuthInputsUI] Missing auth elements");
+            return;
+        }
+        const authType = authTypeSelect.value;
+        authInputsGroup.style.display = (authType === 'bearer' || authType === 'basic') ? 'block' : 'none';
+        bearerTokenInput.style.display = authType === 'bearer' ? 'block' : 'none';
+        basicAuthInputs.style.display = authType === 'basic' ? 'block' : 'none';
+        if (authType !== 'bearer' && bearerTokenInput) bearerTokenInput.value = '';
+        if (authType !== 'basic' && usernameInput) usernameInput.value = '';
+        if (authType !== 'basic' && passwordInput) passwordInput.value = '';
+        console.log(`[updateAuthInputsUI] authInputsGroup display: ${authInputsGroup.style.display}, bearer: ${bearerTokenInput.style.display}, basic: ${basicAuthInputs.style.display}`);
+    }
+
         // --- Helper Function to Update Toggle Button/Input UI (MODIFY THIS FUNCTION) ---
     function updateServerToggleUI() {
-        // Keep checks for elements
-        if (!toggleLabel || !fhirServerUrlInput || !toggleServerButton) {
-             console.error("updateServerToggleUI: Required elements missing!");
-             return;
+        if (!toggleLabel || !fhirServerUrlInput || !toggleServerButton || !authSection) {
+            console.error("[updateServerToggleUI] Required elements missing!");
+            return;
         }
-        console.log(`updateServerToggleUI: appMode=${appMode}, current isUsingLocalHapi=${isUsingLocalHapi}`); // Debug
-
-        // <<< MODIFY THIS WHOLE IF/ELSE BLOCK >>>
+        console.log(`[updateServerToggleUI] appMode=${appMode}, isUsingLocalHapi=${isUsingLocalHapi}`);
         if (appMode === 'lite') {
-            console.log("-> Applying Lite mode UI settings.");
-            isUsingLocalHapi = false; // Force state
-            toggleServerButton.disabled = true; // Set disabled attribute
-            toggleServerButton.classList.add('disabled'); // Add Bootstrap disabled class
-            // --- ADD !important to pointerEvents ---
+            console.log("[updateServerToggleUI] Applying Lite mode UI settings");
+            isUsingLocalHapi = false;
+            toggleServerButton.disabled = true;
+            toggleServerButton.classList.add('disabled');
             toggleServerButton.style.pointerEvents = 'none !important';
-            // --- END ADD ---
-            toggleServerButton.setAttribute('aria-disabled', 'true'); // Accessibility
-            toggleServerButton.title = "Local HAPI is not available in Lite mode"; // Tooltip
-            toggleLabel.textContent = 'Use Custom URL'; // Set label text
-            fhirServerUrlInput.style.display = 'block'; // Show custom URL input
+            toggleServerButton.setAttribute('aria-disabled', 'true');
+            toggleServerButton.title = "Local HAPI is not available in Lite mode";
+            toggleLabel.textContent = 'Use Custom URL';
+            fhirServerUrlInput.style.display = 'block';
             fhirServerUrlInput.placeholder = "Enter FHIR Base URL (Local HAPI unavailable)";
+            authSection.style.display = 'block';
         } else {
-            // Standalone mode
-            console.log("-> Applying Standalone mode UI settings.");
-            toggleServerButton.disabled = false; // Ensure enabled
-            toggleServerButton.classList.remove('disabled'); // Remove Bootstrap disabled class
-            // --- Ensure pointerEvents is auto in standalone ---
+            console.log("[updateServerToggleUI] Applying Standalone mode UI settings");
+            toggleServerButton.disabled = false;
+            toggleServerButton.classList.remove('disabled');
             toggleServerButton.style.pointerEvents = 'auto';
-            // --- END ---
-            toggleServerButton.removeAttribute('aria-disabled'); // Accessibility
-            toggleServerButton.title = ""; // Clear tooltip
-
-            // Set text/display based on current standalone state
+            toggleServerButton.removeAttribute('aria-disabled');
+            toggleServerButton.title = "";
             toggleLabel.textContent = isUsingLocalHapi ? 'Use Local HAPI' : 'Use Custom URL';
             fhirServerUrlInput.style.display = isUsingLocalHapi ? 'none' : 'block';
             fhirServerUrlInput.placeholder = "Enter FHIR Base URL e.g., https://hapi.fhir.org/baseR4";
+            authSection.style.display = isUsingLocalHapi ? 'none' : 'block';
         }
-        fhirServerUrlInput.classList.remove('is-invalid'); // Clear validation state
-        console.log(`-> updateServerToggleUI finished. Button disabled: ${toggleServerButton.disabled}, pointer-events: ${toggleServerButton.style.pointerEvents}`); // Log pointer-events
-        // <<< END MODIFICATION >>>
+        fhirServerUrlInput.classList.remove('is-invalid');
+        updateAuthInputsUI();
+        console.log(`[updateServerToggleUI] Finished. Button disabled: ${toggleServerButton.disabled}, authSection display: ${authSection.style.display}`);
     }  
 
 // <<< REFINED fetchOperationDefinition >>>
@@ -482,47 +523,47 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     // <<< END REFINED fetchOperationDefinition (v3) >>>
 
-    function updateServerToggleUI() {
-        // Keep checks for elements
-        if (!toggleLabel || !fhirServerUrlInput || !toggleServerButton) {
-             console.error("updateServerToggleUI: Required elements missing!");
-             return;
-        }
-        console.log(`updateServerToggleUI: appMode=<span class="math-inline">\{appMode\}, current isUsingLocalHapi\=</span>{isUsingLocalHapi}`); // Debug
+    // function updateServerToggleUI() {
+    //     // Keep checks for elements
+    //     if (!toggleLabel || !fhirServerUrlInput || !toggleServerButton) {
+    //          console.error("updateServerToggleUI: Required elements missing!");
+    //          return;
+    //     }
+    //     console.log(`updateServerToggleUI: appMode=<span class="math-inline">\{appMode\}, current isUsingLocalHapi\=</span>{isUsingLocalHapi}`); // Debug
 
-        if (appMode === 'lite') {
-            console.log("-> Applying Lite mode UI settings.");
-            isUsingLocalHapi = false; // Force state
-            toggleServerButton.disabled = true; // Set disabled attribute
-            toggleServerButton.classList.add('disabled'); // Add Bootstrap disabled class
-            // --- ADD !important to pointerEvents ---
-            toggleServerButton.style.pointerEvents = 'none !important';
-            // --- END ADD ---
-            toggleServerButton.setAttribute('aria-disabled', 'true'); // Accessibility
-            toggleServerButton.title = "Local HAPI is not available in Lite mode"; // Tooltip
-            toggleLabel.textContent = 'Use Custom URL'; // Set label text
-            fhirServerUrlInput.style.display = 'block'; // Show custom URL input
-            fhirServerUrlInput.placeholder = "Enter FHIR Base URL (Local HAPI unavailable)";
-        } else {
-            // Standalone mode
-            console.log("-> Applying Standalone mode UI settings.");
-            toggleServerButton.disabled = false; // Ensure enabled
-            toggleServerButton.classList.remove('disabled'); // Remove Bootstrap disabled class
-            // --- Ensure pointerEvents is auto in standalone ---
-            toggleServerButton.style.pointerEvents = 'auto';
-            // --- END ---
-            toggleServerButton.removeAttribute('aria-disabled'); // Accessibility
-            toggleServerButton.title = ""; // Clear tooltip
+    //     if (appMode === 'lite') {
+    //         console.log("-> Applying Lite mode UI settings.");
+    //         isUsingLocalHapi = false; // Force state
+    //         toggleServerButton.disabled = true; // Set disabled attribute
+    //         toggleServerButton.classList.add('disabled'); // Add Bootstrap disabled class
+    //         // --- ADD !important to pointerEvents ---
+    //         toggleServerButton.style.pointerEvents = 'none !important';
+    //         // --- END ADD ---
+    //         toggleServerButton.setAttribute('aria-disabled', 'true'); // Accessibility
+    //         toggleServerButton.title = "Local HAPI is not available in Lite mode"; // Tooltip
+    //         toggleLabel.textContent = 'Use Custom URL'; // Set label text
+    //         fhirServerUrlInput.style.display = 'block'; // Show custom URL input
+    //         fhirServerUrlInput.placeholder = "Enter FHIR Base URL (Local HAPI unavailable)";
+    //     } else {
+    //         // Standalone mode
+    //         console.log("-> Applying Standalone mode UI settings.");
+    //         toggleServerButton.disabled = false; // Ensure enabled
+    //         toggleServerButton.classList.remove('disabled'); // Remove Bootstrap disabled class
+    //         // --- Ensure pointerEvents is auto in standalone ---
+    //         toggleServerButton.style.pointerEvents = 'auto';
+    //         // --- END ---
+    //         toggleServerButton.removeAttribute('aria-disabled'); // Accessibility
+    //         toggleServerButton.title = ""; // Clear tooltip
 
-            // Set text/display based on current standalone state
-            toggleLabel.textContent = isUsingLocalHapi ? 'Use Local HAPI' : 'Use Custom URL';
-            fhirServerUrlInput.style.display = isUsingLocalHapi ? 'none' : 'block';
-            fhirServerUrlInput.placeholder = "Enter FHIR Base URL e.g., https://hapi.fhir.org/baseR4";
-        }
-        // Clear potential validation errors regardless of mode
-        if(fhirServerUrlInput) fhirServerUrlInput.classList.remove('is-invalid'); // Add check for element existence
-        console.log(`-> updateServerToggleUI finished. Button disabled: ${toggleServerButton.disabled}, pointer-events: ${toggleServerButton.style.pointerEvents}`); // Log pointer-events
-    }
+    //         // Set text/display based on current standalone state
+    //         toggleLabel.textContent = isUsingLocalHapi ? 'Use Local HAPI' : 'Use Custom URL';
+    //         fhirServerUrlInput.style.display = isUsingLocalHapi ? 'none' : 'block';
+    //         fhirServerUrlInput.placeholder = "Enter FHIR Base URL e.g., https://hapi.fhir.org/baseR4";
+    //     }
+    //     // Clear potential validation errors regardless of mode
+    //     if(fhirServerUrlInput) fhirServerUrlInput.classList.remove('is-invalid'); // Add check for element existence
+    //     console.log(`-> updateServerToggleUI finished. Button disabled: ${toggleServerButton.disabled}, pointer-events: ${toggleServerButton.style.pointerEvents}`); // Log pointer-events
+    // }
 
     // --- Server Toggle Functionality (REVISED - simplified) ---
     function toggleServerSelection() {
@@ -1269,156 +1310,281 @@ document.addEventListener('DOMContentLoaded', () => {
 // Execute Button (Includes Enhanced Error Display)
              // <<< Execute Button Listener with Logging and Array Conversion Fix >>>
              if (executeButton && executeWrapper && respStatusDiv && reqUrlOutput && curlOutput && respFormatSelect && copyRespButton && downloadRespButton && respOutputCode && respNarrativeDiv && respOutputPre) {
-                 executeButton.addEventListener('click', async () => {
+                executeButton.addEventListener('click', async () => {
                     console.log("[LOG 1] Execute button clicked. Starting listener...");
-                    // --- Reset UI and Disable Button ---
-                    executeButton.disabled = true; executeButton.textContent = 'Executing...';
+                    executeButton.disabled = true;
+                    executeButton.textContent = 'Executing...';
                     executeWrapper.style.display = 'block';
-                    // ... (reset UI elements) ...
-                    if(reqUrlOutput) reqUrlOutput.textContent = 'Building request...'; if(curlOutput) curlOutput.textContent = 'Building request...'; if(respOutputCode) respOutputCode.textContent = ''; if(respNarrativeDiv) respNarrativeDiv.innerHTML = ''; respNarrativeDiv.style.display = 'none'; if(respOutputPre) respOutputPre.style.display = 'block'; if(respStatusDiv) respStatusDiv.textContent = 'Executing request...'; respStatusDiv.style.color = '#6c757d'; if(respFormatSelect) respFormatSelect.style.display = 'none'; respFormatSelect.value = 'json'; if(copyRespButton) copyRespButton.style.display = 'none'; if(downloadRespButton) downloadRespButton.style.display = 'none';
+                    if (reqUrlOutput) reqUrlOutput.textContent = 'Building request...';
+                    if (curlOutput) curlOutput.textContent = 'Building request...';
+                    if (respOutputCode) respOutputCode.textContent = '';
+                    if (respNarrativeDiv) respNarrativeDiv.innerHTML = '';
+                    respNarrativeDiv.style.display = 'none';
+                    if (respOutputPre) respOutputPre.style.display = 'block';
+                    if (respStatusDiv) respStatusDiv.textContent = 'Executing request...';
+                    respStatusDiv.style.color = '#6c757d';
+                    if (respFormatSelect) respFormatSelect.style.display = 'none';
+                    respFormatSelect.value = 'json';
+                    if (copyRespButton) copyRespButton.style.display = 'none';
+                    if (downloadRespButton) downloadRespButton.style.display = 'none';
 
-                    // --- Get Query Definition and Base URL ---
-                    const queryDef = JSON.parse(block.dataset.queryData); const method = queryDef.method; const headers = { 'Accept': 'application/fhir+json, application/fhir+xml;q=0.9, */*;q=0.8' }; let body; let path = queryDef.path; const baseUrl = isUsingLocalHapi ? '/fhir' : (fhirServerUrlInput.value.trim().replace(/\/+$/, '') || '/fhir'); let url = `${baseUrl}`; let validParams = true; const missingParams = []; const bodyParamsList = [];
+                    const queryDef = JSON.parse(block.dataset.queryData);
+                    const method = queryDef.method;
+                    const headers = { 'Accept': 'application/fhir+json, application/fhir+xml;q=0.9, */*;q=0.8' };
+                    let body;
+                    let path = queryDef.path;
+                    const baseUrl = isUsingLocalHapi ? '/fhir' : (fhirServerUrlInput.value.trim().replace(/\/+$/, '') || '/fhir');
+                    let url = `${baseUrl}`;
+                    let validParams = true;
+                    const missingParams = [];
+                    const bodyParamsList = [];
 
-                    console.log("[LOG 2] Starting parameter processing...");
+                    if (!isUsingLocalHapi) {
+                        const authType = authTypeSelect.value;
+                        const bearerToken = bearerTokenInput.value.trim();
+                        const username = usernameInput.value.trim();
+                        const password = passwordInput.value;
+                        if (authType === 'bearer') {
+                            headers['Authorization'] = `Bearer ${bearerToken}`;
+                            console.log("Adding header Authorization: Bearer <truncated>");
+                        } else if (authType === 'basic') {
+                            headers['Authorization'] = `Basic ${btoa(`${username}:${password}`)}`;
+                            console.log("Adding header Authorization: Basic <redacted>");
+                        }
+                    }
 
-                    // --- Process Path Parameters ---
-                    // <<< FIX: Convert NodeList to Array before forEach >>>
                     Array.from(block.querySelectorAll('.parameters-section tr[data-param-in="path"]')).forEach(row => {
-                        const paramName = row.dataset.paramName; const input = row.querySelector('input'); const paramDef = queryDef.parameters.find(p => p.name === paramName && p.in === 'path'); const required = paramDef?.required; const value = input?.value.trim(); if (input) input.classList.remove('is-invalid');
-                        if (!value && required) { validParams = false; missingParams.push(`${paramName} (path)`); if (input) input.classList.add('is-invalid'); }
-                        else if (value) { path = path.replace(`:${paramName}`, encodeURIComponent(value)); }
-                        else { path = path.replace(`/:${paramName}`, ''); }
+                        const paramName = row.dataset.paramName;
+                        const input = row.querySelector('input');
+                        const paramDef = queryDef.parameters.find(p => p.name === paramName && p.in === 'path');
+                        const required = paramDef?.required;
+                        const value = input?.value.trim();
+                        if (input) input.classList.remove('is-invalid');
+                        if (!value && required) {
+                            validParams = false;
+                            missingParams.push(`${paramName} (path)`);
+                            if (input) input.classList.add('is-invalid');
+                        } else if (value) {
+                            path = path.replace(`:${paramName}`, encodeURIComponent(value));
+                        } else {
+                            path = path.replace(`/:${paramName}`, '');
+                        }
                     });
-                     if (path.includes(':')) { const remainingPlaceholders = path.match(/:(\w+)/g) || []; const requiredRemaining = queryDef.parameters.filter(p => p.in === 'path' && remainingPlaceholders.includes(`:${p.name}`) && p.required); if (requiredRemaining.length > 0) { validParams = false; missingParams.push(...requiredRemaining.map(p => `${p.name} (path)`)); requiredRemaining.forEach(p => { const el = block.querySelector(`.parameters-section tr[data-param-name="${p.name}"][data-param-in="path"] input`); if (el) el.classList.add('is-invalid'); }); } }
+                    if (path.includes(':')) {
+                        const remainingPlaceholders = path.match(/:(\w+)/g) || [];
+                        const requiredRemaining = queryDef.parameters.filter(p => p.in === 'path' && remainingPlaceholders.includes(`:${p.name}`) && p.required);
+                        if (requiredRemaining.length > 0) {
+                            validParams = false;
+                            missingParams.push(...requiredRemaining.map(p => `${p.name} (path)`));
+                            requiredRemaining.forEach(p => {
+                                const el = block.querySelector(`.parameters-section tr[data-param-name="${p.name}"][data-param-in="path"] input`);
+                                if (el) el.classList.add('is-invalid');
+                            });
+                        }
+                    }
                     url += path.startsWith('/') ? path : `/${path}`;
 
-                    // --- Process Query and Body Parameters ---
                     const searchParams = new URLSearchParams();
-                    // <<< FIX: Convert NodeList to Array before forEach >>>
                     Array.from(block.querySelectorAll('.parameters-section tr[data-param-in="query"], .parameters-section tr[data-param-in="body (Parameters)"]')).forEach(row => {
-                         const paramName = row.dataset.paramName; const paramIn = row.dataset.paramIn; const inputElement = row.querySelector('input, select'); const paramDef = queryDef.parameters.find(p => p.name === paramName && p.in === paramIn); const required = paramDef?.required; let value = ''; if (inputElement) inputElement.classList.remove('is-invalid');
-                         if (inputElement?.type === 'checkbox') { value = inputElement.checked ? (inputElement.value || 'true') : ''; } else if (inputElement) { value = inputElement.value.trim(); }
-                         if (value) { if (paramIn === 'query') { searchParams.set(paramName, value); } else { let paramPart = { name: paramName }; const paramType = paramDef?.type || 'string'; try { switch (paramType) { case 'boolean': paramPart.valueBoolean = (value === 'true'); break; case 'integer': case 'positiveInt': case 'unsignedInt': paramPart.valueInteger = parseInt(value, 10); break; case 'decimal': paramPart.valueDecimal = parseFloat(value); break; case 'date': paramPart.valueDate = value; break; case 'dateTime': paramPart.valueDateTime = value; break; case 'instant': try { paramPart.valueInstant = new Date(value).toISOString(); } catch (dateError) { console.warn(`Instant parse failed: ${dateError}`); paramPart.valueString = value;} break; default: paramPart[`value${paramType.charAt(0).toUpperCase() + paramType.slice(1)}`] = value; } if (Object.keys(paramPart).length > 1) { bodyParamsList.push(paramPart); } } catch (typeError) { console.error(`Error processing body param ${paramName}: ${typeError}`); bodyParamsList.push({ name: paramName, valueString: value }); } } }
-                         else if (required) { validParams = false; missingParams.push(`${paramName} (${paramIn})`); if (inputElement) inputElement.classList.add('is-invalid'); }
+                        const paramName = row.dataset.paramName;
+                        const paramIn = row.dataset.paramIn;
+                        const inputElement = row.querySelector('input, select');
+                        const paramDef = queryDef.parameters.find(p => p.name === paramName && p.in === paramIn);
+                        const required = paramDef?.required;
+                        let value = '';
+                        if (inputElement) inputElement.classList.remove('is-invalid');
+                        if (inputElement?.type === 'checkbox') {
+                            value = inputElement.checked ? (inputElement.value || 'true') : '';
+                        } else if (inputElement) {
+                            value = inputElement.value.trim();
+                        }
+                        if (value) {
+                            if (paramIn === 'query') {
+                                searchParams.set(paramName, value);
+                            } else {
+                                let paramPart = { name: paramName };
+                                const paramType = paramDef?.type || 'string';
+                                try {
+                                    switch (paramType) {
+                                        case 'boolean': paramPart.valueBoolean = (value === 'true'); break;
+                                        case 'integer': case 'positiveInt': case 'unsignedInt': paramPart.valueInteger = parseInt(value, 10); break;
+                                        case 'decimal': paramPart.valueDecimal = parseFloat(value); break;
+                                        case 'date': paramPart.valueDate = value; break;
+                                        case 'dateTime': paramPart.valueDateTime = value; break;
+                                        case 'instant': try { paramPart.valueInstant = new Date(value).toISOString(); } catch (dateError) { console.warn(`Instant parse failed: ${dateError}`); paramPart.valueString = value; } break;
+                                        default: paramPart[`value${paramType.charAt(0).toUpperCase() + paramType.slice(1)}`] = value;
+                                    }
+                                    if (Object.keys(paramPart).length > 1) { bodyParamsList.push(paramPart); }
+                                } catch (typeError) {
+                                    console.error(`Error processing body param ${paramName}: ${typeError}`);
+                                    bodyParamsList.push({ name: paramName, valueString: value });
+                                }
+                            }
+                        } else if (required) {
+                            validParams = false;
+                            missingParams.push(`${paramName} (${paramIn})`);
+                            if (inputElement) inputElement.classList.add('is-invalid');
+                        }
                     });
 
-                    console.log("[LOG 3] Parameter processing finished. Valid:", validParams);
-
-                    // --- Validation Check ---
                     if (!validParams) {
                         const errorMsg = `Error: Missing required parameter(s): ${[...new Set(missingParams)].join(', ')}`;
                         console.error("[LOG 3a] Validation failed:", errorMsg);
-                        if(respStatusDiv) { respStatusDiv.textContent = errorMsg; respStatusDiv.style.color = 'red'; }
-                        if(reqUrlOutput) reqUrlOutput.textContent = 'Error: Invalid parameters';
-                        if(curlOutput) curlOutput.textContent = 'Error: Invalid parameters';
-                        executeButton.disabled = false; executeButton.textContent = 'Execute'; // Re-enable button
-                        return; // Stop execution
+                        if (respStatusDiv) { respStatusDiv.textContent = errorMsg; respStatusDiv.style.color = 'red'; }
+                        if (reqUrlOutput) reqUrlOutput.textContent = 'Error: Invalid parameters';
+                        if (curlOutput) curlOutput.textContent = 'Error: Invalid parameters';
+                        executeButton.disabled = false;
+                        executeButton.textContent = 'Execute';
+                        return;
                     }
 
-                    // --- Finalize URL ---
-                    const queryString = searchParams.toString(); if (queryString) url += (url.includes('?') ? '&' : '?') + queryString;
+                    const queryString = searchParams.toString();
+                    if (queryString) url += (url.includes('?') ? '&' : '?') + queryString;
 
-                    // --- Construct Request Body ---
-                    console.log("[LOG 4] Constructing request body...");
                     if (queryDef.requestBody) {
-                         const contentType = reqContentTypeSelect ? reqContentTypeSelect.value : 'application/fhir+json';
-                         headers['Content-Type'] = contentType;
-                         // <<< Refined Logic >>>
-                         if (bodyParamsList.length > 0) { // If parameters were collected for the body
-                             console.log("[LOG 4a] Using bodyParamsList to construct body.");
-                             if (contentType.includes('json')) { body = JSON.stringify({ resourceType: "Parameters", parameter: bodyParamsList }, null, 2); }
-                             else if (contentType.includes('xml')) { try { body = jsonToFhirXml({ resourceType: "Parameters", parameter: bodyParamsList }); } catch (xmlErr) { console.error("Params->XML failed:", xmlErr); body = JSON.stringify({ resourceType: "Parameters", parameter: bodyParamsList }); headers['Content-Type'] = 'application/fhir+json'; alert("Failed to create XML body. Sending JSON."); } }
-                             else { console.warn(`Unsupported Content-Type ${contentType} for Parameters body. Sending JSON.`); body = JSON.stringify({ resourceType: "Parameters", parameter: bodyParamsList }, null, 2); headers['Content-Type'] = 'application/fhir+json'; }
-                         } else if (reqBodyTextarea && reqBodyTextarea.value.trim() !== '') { // Otherwise, if textarea exists AND has non-whitespace content
-                             console.log("[LOG 4b] Using reqBodyTextarea value for body.");
-                             body = reqBodyTextarea.value; // Use the textarea content directly
-                             // Convert textarea content if needed (e.g., user pasted JSON but selected XML)
-                             if (contentType === 'application/fhir+xml' && body.trim().startsWith('{')) { try { body = jsonToFhirXml(body); } catch (e) { console.warn("Textarea JSON->XML failed", e); } }
-                             else if (contentType === 'application/fhir+json' && body.trim().startsWith('<')) { try { body = xmlToFhirJson(body); } catch (e) { console.warn("Textarea XML->JSON failed", e); } }
-                         } else { // No body params and textarea is missing or empty
-                              console.log("[LOG 4c] No body parameters and textarea is empty/missing. Setting body to empty string.");
-                              body = ''; // Ensure body is an empty string if nothing else applies
-                         }
-                         // Add CSRF token if needed
-                        console.log("[LOG 4d] Current isUsingLocalHapi state:", isUsingLocalHapi); // Log HAPI state
+                        const contentType = reqContentTypeSelect ? reqContentTypeSelect.value : 'application/fhir+json';
+                        headers['Content-Type'] = contentType;
+                        if (bodyParamsList.length > 0) {
+                            if (contentType.includes('json')) {
+                                body = JSON.stringify({ resourceType: "Parameters", parameter: bodyParamsList }, null, 2);
+                            } else if (contentType.includes('xml')) {
+                                try { body = jsonToFhirXml({ resourceType: "Parameters", parameter: bodyParamsList }); }
+                                catch (xmlErr) {
+                                    console.error("Params->XML failed:", xmlErr);
+                                    body = JSON.stringify({ resourceType: "Parameters", parameter: bodyParamsList });
+                                    headers['Content-Type'] = 'application/fhir+json';
+                                    alert("Failed to create XML body. Sending JSON.");
+                                }
+                            } else {
+                                console.warn(`Unsupported Content-Type ${contentType} for Parameters body. Sending JSON.`);
+                                body = JSON.stringify({ resourceType: "Parameters", parameter: bodyParamsList }, null, 2);
+                                headers['Content-Type'] = 'application/fhir+json';
+                            }
+                        } else if (reqBodyTextarea && reqBodyTextarea.value.trim() !== '') {
+                            body = reqBodyTextarea.value;
+                            if (contentType === 'application/fhir+xml' && body.trim().startsWith('{')) {
+                                try { body = jsonToFhirXml(body); } catch (e) { console.warn("Textarea JSON->XML failed", e); }
+                            } else if (contentType === 'application/fhir+json' && body.trim().startsWith('<')) {
+                                try { body = xmlToFhirJson(body); } catch (e) { console.warn("Textarea XML->JSON failed", e); }
+                            }
+                        } else {
+                            body = '';
+                        }
                         if (isUsingLocalHapi && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-                            console.log("[LOG 4e] Attempting to add CSRF token for local HAPI modifying request.");
-                            // Find the CSRF token input within the form
                             const csrfTokenInput = fhirOperationsForm.querySelector('input[name="csrf_token"]');
-                             if (csrfTokenInput && csrfTokenInput.value) {
-                                // Add the token value to the request headers object
+                            if (csrfTokenInput && csrfTokenInput.value) {
                                 headers['X-CSRFToken'] = csrfTokenInput.value;
-                                console.log("[LOG 4f] Added X-CSRFToken header:", headers['X-CSRFToken'] ? 'Yes' : 'No'); // Verify it was added
-                             } else {
-                                // Log an error if the token input wasn't found or was empty
+                                console.log("[LOG 4f] Added X-CSRFToken header:", headers['X-CSRFToken'] ? 'Yes' : 'No');
+                            } else {
                                 console.error("[LOG 4g] CSRF token input not found or has no value!");
-                             }
+                            }
+                        }
                     } else {
-                         // Log if CSRF is not being added and why
-                         console.log("[LOG 4h] Not adding CSRF token (not local HAPI or not modifying method). isUsingLocalHapi:", isUsingLocalHapi, "Method:", method);
-                    }
-                    } else {
-                        // Ensure body is undefined if queryDef.requestBody is false
                         body = undefined;
                     }
-                    console.log("[LOG 5] Request body constructed. Body length:", body?.length ?? 'undefined'); // Check body length
 
-                    // --- Log Request ---
-                    if(reqUrlOutput) reqUrlOutput.textContent = url;
-                    // <<< Log body right before generating cURL >>>
-                    console.log("[LOG 5a] Body variable before generateCurlCommand:", body ? body.substring(0,100)+'...' : body);
-                    if(curlOutput) curlOutput.textContent = generateCurlCommand(method, url, headers, body); // Generate cURL
-                    console.log(`Executing: ${method} ${url}`); console.log("Headers:", headers); if (body !== undefined) console.log("Body:", (body || '').substring(0, 300) + ((body?.length ?? 0) > 300 ? "..." : ""));
+                    if (reqUrlOutput) reqUrlOutput.textContent = url;
+                    if (curlOutput) curlOutput.textContent = generateCurlCommand(method, url, headers, body);
+                    console.log(`Executing: ${method} ${url}`);
+                    console.log("Headers:", { ...headers, Authorization: headers.Authorization ? '<redacted>' : undefined });
+                    if (body !== undefined) console.log("Body:", (body || '').substring(0, 300) + ((body?.length ?? 0) > 300 ? "..." : ""));
 
-            // --- Perform Fetch & Process Response ---
-
-                    // --- Perform Fetch & Process Response ---
                     let respData = { json: null, xml: null, narrative: null, text: null, status: 0, statusText: '', contentType: '' };
                     try {
-                        console.log("[LOG 6] Initiating fetch...");
                         const resp = await fetch(url, { method, headers, body: (body || undefined) });
-                        console.log("[LOG 7] Fetch completed. Status:", resp.status);
-
-                        respData.status = resp.status; respData.statusText = resp.statusText; respData.contentType = resp.headers.get('Content-Type') || '';
-                        console.log("[LOG 8] Reading response text...");
+                        respData.status = resp.status;
+                        respData.statusText = resp.statusText;
+                        respData.contentType = resp.headers.get('Content-Type') || '';
                         respData.text = await resp.text();
-                        console.log("[LOG 9] Response text read. Length:", respData.text?.length);
-                        if(respStatusDiv) { respStatusDiv.textContent = `Status: ${resp.status} ${resp.statusText}`; respStatusDiv.style.color = resp.ok ? 'green' : 'red'; }
+                        if (respStatusDiv) { respStatusDiv.textContent = `Status: ${resp.status} ${resp.statusText}`; respStatusDiv.style.color = resp.ok ? 'green' : 'red'; }
 
-                        // Process body (includes OperationOutcome check)
-                        console.log("[LOG 10] Processing response body...");
-                        let isOperationOutcome = false; let operationOutcomeIssuesHtml = '';
-                        
-                        if (respData.text) { if (respData.contentType.includes('json')) { try { respData.json = JSON.parse(respData.text); try { respData.xml = jsonToFhirXml(respData.json); } catch(xmlConvErr){ respData.xml = `<error>XML conversion failed: ${xmlConvErr.message}</error>`; } if (respData.json.text?.div) respData.narrative = respData.json.text.div; if (respData.json.resourceType === 'OperationOutcome') { isOperationOutcome = true; operationOutcomeIssuesHtml = formatOperationOutcome(respData.json); } } catch (e) { respData.json = { parsingError: e.message, rawText: respData.text }; respData.xml = `<data>${escapeXml(respData.text)}</data>`; } } else if (respData.contentType.includes('xml')) { respData.xml = respData.text; try { respData.json = JSON.parse(xmlToFhirJson(respData.xml)); const p = new DOMParser(), xd = p.parseFromString(respData.xml, "application/xml"), pe = xd.querySelector("parsererror"); if (pe) throw new Error(pe.textContent); if (xd.documentElement && xd.documentElement.tagName === 'OperationOutcome') { isOperationOutcome = true; operationOutcomeIssuesHtml = formatOperationOutcome(respData.json); } const nn = xd.querySelector("div[xmlns='http://www.w3.org/1999/xhtml']"); if (nn) respData.narrative = nn.outerHTML; } catch(e) { respData.json = { parsingError: e.message, rawText: respData.text }; } } else { respData.json = { contentType: respData.contentType, content: respData.text }; respData.xml = `<data contentType="${escapeXml(respData.contentType)}">${escapeXml(respData.text)}</data>`; } } else if (resp.ok) { respData.json = { message: "Success (No Content)" }; respData.xml = jsonToFhirXml({}); } else { respData.json = { error: `Request failed: ${resp.status}`, detail: resp.statusText }; respData.xml = `<error>Request failed: ${resp.status} ${escapeXml(resp.statusText)}</error>`; }
-                        console.log("[LOG 11] Response body processed. Is OperationOutcome:", isOperationOutcome);
-
-                        // --- Update UI ---
-                        block.dataset.responseData = JSON.stringify(respData);
-                        if(respFormatSelect) { respFormatSelect.style.display = 'inline-block'; respFormatSelect.disabled = false; } if(copyRespButton) copyRespButton.style.display = 'inline-block'; if(downloadRespButton) downloadRespButton.style.display = 'inline-block';
-                        // Enhanced Error Display Logic
-                        if (!resp.ok && isOperationOutcome && respNarrativeDiv) {
-                            console.log("[LOG 12a] Displaying formatted OperationOutcome.");
-                            respNarrativeDiv.innerHTML = operationOutcomeIssuesHtml; respNarrativeDiv.style.display = 'block'; respOutputPre.style.display = 'none';
-                            if (respFormatSelect) { const narrativeOpt = respFormatSelect.querySelector('option[value="narrative"]'); if (!narrativeOpt) { const opt = document.createElement('option'); opt.value = 'narrative'; opt.textContent = 'Formatted Issues'; respFormatSelect.insertBefore(opt, respFormatSelect.firstChild); } else { narrativeOpt.textContent = 'Formatted Issues'; narrativeOpt.disabled = false; } respFormatSelect.value = 'narrative'; respFormatSelect.dispatchEvent(new Event('change')); }
+                        let isOperationOutcome = false;
+                        let operationOutcomeIssuesHtml = '';
+                        if (respData.text) {
+                            if (respData.contentType.includes('json')) {
+                                try {
+                                    respData.json = JSON.parse(respData.text);
+                                    try { respData.xml = jsonToFhirXml(respData.json); } catch (xmlConvErr) { respData.xml = `<error>XML conversion failed: ${xmlConvErr.message}</error>`; }
+                                    if (respData.json.text?.div) respData.narrative = respData.json.text.div;
+                                    if (respData.json.resourceType === 'OperationOutcome') {
+                                        isOperationOutcome = true;
+                                        operationOutcomeIssuesHtml = formatOperationOutcome(respData.json);
+                                    }
+                                } catch (e) {
+                                    respData.json = { parsingError: e.message, rawText: respData.text };
+                                    respData.xml = `<data>${escapeXml(respData.text)}</data>`;
+                                }
+                            } else if (respData.contentType.includes('xml')) {
+                                respData.xml = respData.text;
+                                try {
+                                    respData.json = JSON.parse(xmlToFhirJson(respData.xml));
+                                    const p = new DOMParser(), xd = p.parseFromString(respData.xml, "application/xml"), pe = xd.querySelector("parsererror");
+                                    if (pe) throw new Error(pe.textContent);
+                                    if (xd.documentElement && xd.documentElement.tagName === 'OperationOutcome') {
+                                        isOperationOutcome = true;
+                                        operationOutcomeIssuesHtml = formatOperationOutcome(respData.json);
+                                    }
+                                    const nn = xd.querySelector("div[xmlns='http://www.w3.org/1999/xhtml']");
+                                    if (nn) respData.narrative = nn.outerHTML;
+                                } catch (e) {
+                                    respData.json = { parsingError: e.message, rawText: respData.text };
+                                }
+                            } else {
+                                respData.json = { contentType: respData.contentType, content: respData.text };
+                                respData.xml = `<data contentType="${escapeXml(respData.contentType)}">${escapeXml(respData.text)}</data>`;
+                            }
+                        } else if (resp.ok) {
+                            respData.json = { message: "Success (No Content)" };
+                            respData.xml = jsonToFhirXml({});
                         } else {
-                             console.log("[LOG 12b] Updating display format dropdown for success or non-OO error.");
-                             const narrativeOption = respFormatSelect?.querySelector('option[value="narrative"]'); if (narrativeOption) { narrativeOption.textContent = 'Narrative'; narrativeOption.disabled = !respData.narrative; }
-                             respFormatSelect.value = (respData.narrative && respFormatSelect.value === 'narrative') ? 'narrative' : 'json';
-                             respFormatSelect?.dispatchEvent(new Event('change')); // This will trigger highlighting via its listener
+                            respData.json = { error: `Request failed: ${resp.status}`, detail: resp.statusText };
+                            respData.xml = `<error>Request failed: ${resp.status} ${escapeXml(resp.statusText)}</error>`;
                         }
-                         console.log("[LOG 13] UI update triggered.");
 
-                    } catch (e) { // Catch fetch/network/processing errors
+                        block.dataset.responseData = JSON.stringify(respData);
+                        if (respFormatSelect) { respFormatSelect.style.display = 'inline-block'; respFormatSelect.disabled = false; }
+                        if (copyRespButton) copyRespButton.style.display = 'inline-block';
+                        if (downloadRespButton) downloadRespButton.style.display = 'inline-block';
+                        if (!resp.ok && isOperationOutcome && respNarrativeDiv) {
+                            respNarrativeDiv.innerHTML = operationOutcomeIssuesHtml;
+                            respNarrativeDiv.style.display = 'block';
+                            respOutputPre.style.display = 'none';
+                            if (respFormatSelect) {
+                                const narrativeOpt = respFormatSelect.querySelector('option[value="narrative"]');
+                                if (!narrativeOpt) {
+                                    const opt = document.createElement('option');
+                                    opt.value = 'narrative';
+                                    opt.textContent = 'Formatted Issues';
+                                    respFormatSelect.insertBefore(opt, respFormatSelect.firstChild);
+                                } else {
+                                    narrativeOpt.textContent = 'Formatted Issues';
+                                    narrativeOpt.disabled = false;
+                                }
+                                respFormatSelect.value = 'narrative';
+                                respFormatSelect.dispatchEvent(new Event('change'));
+                            }
+                        } else {
+                            const narrativeOption = respFormatSelect?.querySelector('option[value="narrative"]');
+                            if (narrativeOption) { narrativeOption.textContent = 'Narrative'; narrativeOption.disabled = !respData.narrative; }
+                            respFormatSelect.value = (respData.narrative && respFormatSelect.value === 'narrative') ? 'narrative' : 'json';
+                            respFormatSelect?.dispatchEvent(new Event('change'));
+                        }
+                    } catch (e) {
                         console.error('[LOG 14] Error during fetch or response processing:', e);
-                        if(respStatusDiv) { respStatusDiv.textContent = `Error: ${e.message}`; respStatusDiv.style.color = 'red'; } if(respOutputCode) { respOutputCode.textContent = `Request failed: ${e.message}\nURL: ${url}`; respOutputCode.className = 'language-text'; } if(respFormatSelect) respFormatSelect.style.display = 'none'; if(copyRespButton) copyRespButton.style.display = 'none'; if(downloadRespButton) downloadRespButton.style.display = 'none'; if(respNarrativeDiv) respNarrativeDiv.style.display = 'none'; if(respOutputPre) respOutputPre.style.display = 'block';
+                        if (respStatusDiv) { respStatusDiv.textContent = `Error: ${e.message}`; respStatusDiv.style.color = 'red'; }
+                        if (respOutputCode) { respOutputCode.textContent = `Request failed: ${e.message}\nURL: ${url}`; respOutputCode.className = 'language-text'; }
+                        if (respFormatSelect) respFormatSelect.style.display = 'none';
+                        if (copyRespButton) copyRespButton.style.display = 'none';
+                        if (downloadRespButton) downloadRespButton.style.display = 'none';
+                        if (respNarrativeDiv) respNarrativeDiv.style.display = 'none';
+                        if (respOutputPre) respOutputPre.style.display = 'block';
                     } finally {
-                        console.log("[LOG 15] Executing finally block."); // <<< LOG 15 (Finally Block)
+                        console.log("[LOG 15] Executing finally block.");
                         executeButton.disabled = false;
                         executeButton.textContent = 'Execute';
                     }
-                 }); // End executeButton listener
-             } // End if (executeButton && ...)
+                });
+            } // End if (executeButton && ...)
 
             // Response Format Change Listener
             if (respFormatSelect && respNarrativeDiv && respOutputPre && respOutputCode) {
@@ -1545,63 +1711,95 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Fetch Server Metadata (FIXED Local URL Handling) ---
     if (fetchMetadataButton) {
         fetchMetadataButton.addEventListener('click', async () => {
-            // Clear previous results immediately
-             if (resourceButtonsContainer) resourceButtonsContainer.innerHTML = '<span class="text-muted">Fetching...</span>';
-             if (resourceTypesDisplayDiv) resourceTypesDisplayDiv.style.display = 'block';
-             if (swaggerUiContainer) swaggerUiContainer.style.display = 'none'; // Hide old query list
-             fetchedMetadataCache = null; // Clear cache before fetch attempt
-             availableSystemOperations = [];
+            console.log("[fetchMetadata] Button clicked");
+            if (resourceButtonsContainer) resourceButtonsContainer.innerHTML = '<span class="text-muted">Fetching...</span>';
+            if (resourceTypesDisplayDiv) resourceTypesDisplayDiv.style.display = 'block';
+            if (swaggerUiContainer) swaggerUiContainer.style.display = 'none';
+            fetchedMetadataCache = null;
+            availableSystemOperations = [];
 
-            // Determine Base URL - FIXED
             const customUrl = fhirServerUrlInput.value.trim().replace(/\/+$/, '');
-            const baseUrl = isUsingLocalHapi ? '/fhir' : customUrl; // Use '/fhir' proxy path if local
+            const baseUrl = isUsingLocalHapi ? '/fhir' : customUrl;
 
-            // Validate custom URL only if not using local HAPI
-            if (!isUsingLocalHapi && !baseUrl) { // Should only happen if customUrl is empty
+            if (!isUsingLocalHapi && !baseUrl) {
+                console.error("[fetchMetadata] Custom URL required");
                 fhirServerUrlInput.classList.add('is-invalid');
                 alert('Please enter a valid FHIR server URL.');
                 if (resourceButtonsContainer) resourceButtonsContainer.innerHTML = `<span class="text-danger">Error: Custom URL required.</span>`;
                 return;
             }
-             // Basic format check for custom URL
-             if (!isUsingLocalHapi) {
-                 try {
-                     new URL(baseUrl); // Check if it's a parseable URL format
-                 } catch (_) {
-                     fhirServerUrlInput.classList.add('is-invalid');
-                     alert('Invalid custom URL format. Please enter a valid URL (e.g., https://example.com/fhir).');
-                      if (resourceButtonsContainer) resourceButtonsContainer.innerHTML = `<span class="text-danger">Error: Invalid custom URL format.</span>`;
-                     return;
-                 }
-             }
+            if (!isUsingLocalHapi) {
+                try { new URL(baseUrl); } catch (_) {
+                    console.error("[fetchMetadata] Invalid custom URL format");
+                    fhirServerUrlInput.classList.add('is-invalid');
+                    alert('Invalid custom URL format. Please enter a valid URL (e.g., https://example.com/fhir).');
+                    if (resourceButtonsContainer) resourceButtonsContainer.innerHTML = `<span class="text-danger">Error: Invalid custom URL format.</span>`;
+                    return;
+                }
+                const authType = authTypeSelect.value;
+                const bearerToken = bearerTokenInput.value.trim();
+                const username = usernameInput.value.trim();
+                const password = passwordInput.value;
+                if (authType === 'bearer' && !bearerToken) {
+                    console.error("[fetchMetadata] Bearer token required");
+                    alert('Please enter a Bearer Token.');
+                    bearerTokenInput.classList.add('is-invalid');
+                    return;
+                }
+                if (authType === 'basic' && (!username || !password)) {
+                    console.error("[fetchMetadata] Username and password required");
+                    alert('Please enter both Username and Password for Basic Authentication.');
+                    if (!username) usernameInput.classList.add('is-invalid');
+                    if (!password) passwordInput.classList.add('is-invalid');
+                    return;
+                }
+            }
             fhirServerUrlInput.classList.remove('is-invalid');
 
-            // Construct metadata URL (always add /metadata)
             const url = `${baseUrl}/metadata`;
+            const headers = { 'Accept': 'application/fhir+json' };
+            if (!isUsingLocalHapi) {
+                const authType = authTypeSelect.value;
+                const bearerToken = bearerTokenInput.value.trim();
+                const username = usernameInput.value.trim();
+                const password = passwordInput.value;
+                if (authType === 'bearer') {
+                    headers['Authorization'] = `Bearer ${bearerToken}`;
+                    console.log("[fetchMetadata] Adding header Authorization: Bearer <truncated>");
+                } else if (authType === 'basic') {
+                    headers['Authorization'] = `Basic ${btoa(`${username}:${password}`)}`;
+                    console.log("[fetchMetadata] Adding header Authorization: Basic <redacted>");
+                }
+            }
 
-            console.log(`Fetching metadata from: ${url}`);
-            fetchMetadataButton.disabled = true; fetchMetadataButton.textContent = 'Fetching...';
+            console.log(`[fetchMetadata] Fetching from: ${url}`);
+            fetchMetadataButton.disabled = true;
+            fetchMetadataButton.textContent = 'Fetching...';
 
             try {
-                const resp = await fetch(url, { method: 'GET', headers: { 'Accept': 'application/fhir+json' } });
-                if (!resp.ok) { const errText = await resp.text(); throw new Error(`HTTP ${resp.status} ${resp.statusText}: ${errText.substring(0, 500)}`); }
+                const resp = await fetch(url, { method: 'GET', headers });
+                if (!resp.ok) { 
+                    const errText = await resp.text(); 
+                    throw new Error(`HTTP ${resp.status} ${resp.statusText}: ${errText.substring(0, 500)}`); 
+                }
                 const data = await resp.json();
-                console.log('Metadata received:', data);
-                fetchedMetadataCache = data; // Cache successful fetch
-                displayMetadataAndResourceButtons(data); // Parse and display
+                console.log('[fetchMetadata] Metadata received:', data);
+                fetchedMetadataCache = data;
+                displayMetadataAndResourceButtons(data);
             } catch (e) {
-                console.error('Metadata fetch error:', e);
+                console.error('[fetchMetadata] Error:', e);
                 if (resourceButtonsContainer) resourceButtonsContainer.innerHTML = `<span class="text-danger">Error fetching metadata: ${e.message}</span>`;
-                if (resourceTypesDisplayDiv) resourceTypesDisplayDiv.style.display = 'block'; // Keep container visible to show error
+                if (resourceTypesDisplayDiv) resourceTypesDisplayDiv.style.display = 'block';
                 if (swaggerUiContainer) swaggerUiContainer.style.display = 'none';
                 alert(`Error fetching metadata: ${e.message}`);
-                fetchedMetadataCache = null; // Clear cache on error
+                fetchedMetadataCache = null;
                 availableSystemOperations = [];
             } finally {
-                fetchMetadataButton.disabled = false; fetchMetadataButton.textContent = 'Fetch Metadata';
+                fetchMetadataButton.disabled = false;
+                fetchMetadataButton.textContent = 'Fetch Metadata';
             }
         });
-    } else {
+} else {
          console.error("Fetch Metadata button (#fetchMetadata) not found!");
     }
 

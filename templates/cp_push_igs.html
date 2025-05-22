@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{# Import form helpers if needed, e.g., for CSRF token #}
+{# Import form helpers for CSRF token and field rendering #}
 {% from "_form_helpers.html" import render_field %}
 
 {% block content %}
@@ -48,135 +48,138 @@
                 <p class="text-muted">No packages downloaded yet. Use the "Import IG" tab.</p>
             {% endif %}
 
-            {# --- MOVED: Push Response Area --- #}
+            {# Push Response Area #}
             <div class="mt-4">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                     <h4><i class="bi bi-file-earmark-text me-2"></i>Push Report</h4>
-                     {# --- NEW: Report Action Buttons --- #}
-                     <div id="reportActions" style="display: none;">
-                         <button id="copyReportBtn" class="btn btn-sm btn-outline-secondary me-2" title="Copy Report Text">
-                             <i class="bi bi-clipboard"></i> Copy
-                         </button>
-                         <button id="downloadReportBtn" class="btn btn-sm btn-outline-secondary" title="Download Report as Text File">
-                             <i class="bi bi-download"></i> Download
-                         </button>
-                     </div>
-                     {# --- END NEW --- #}
+                    <h4><i class="bi bi-file-earmark-text me-2"></i>Push Report</h4>
+                    <div id="reportActions" style="display: none;">
+                        <button id="copyReportBtn" class="btn btn-sm btn-outline-secondary me-2" title="Copy Report Text">
+                            <i class="bi bi-clipboard"></i> Copy
+                        </button>
+                        <button id="downloadReportBtn" class="btn btn-sm btn-outline-secondary" title="Download Report as Text File">
+                            <i class="bi bi-download"></i> Download
+                        </button>
+                    </div>
                 </div>
                 <div id="pushResponse" class="border p-3 rounded bg-light" style="min-height: 100px;">
-                     <span class="text-muted">Report summary will appear here after pushing...</span>
-                     {# Flash messages can still appear here if needed #}
-                     {% with messages = get_flashed_messages(with_categories=true) %}
-                          {% if messages %}
-                              {% for category, message in messages %}
-                                  <div class="alert alert-{{ category }} alert-dismissible fade show mt-2" role="alert">
-                                      {{ message }}
-                                      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                                  </div>
-                              {% endfor %}
-                          {% endif %}
-                     {% endwith %}
+                    <span class="text-muted">Report summary will appear here after pushing...</span>
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }} alert-dismissible fade show mt-2" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
                 </div>
             </div>
-             {# --- END MOVED --- #}
-
         </div>{# End Left Column #}
 
         {# Right Column: Push IGs Form and Console #}
         <div class="col-md-6">
             <h2><i class="bi bi-upload me-2"></i>Push IGs to FHIR Server</h2>
-             <form id="pushIgForm">
-                 {{ form.csrf_token if form else '' }} {# Use form passed from route #}
+            <form id="pushIgForm">
+                {{ form.csrf_token if form else '' }}
 
-                 {# Package Selection #}
-                 <div class="mb-3">
-                     <label for="packageSelect" class="form-label">Select Package to Push</label>
-                     <select class="form-select" id="packageSelect" name="package_id" required>
-                         <option value="" disabled selected>Select a package...</option>
-                         {% for pkg in packages %}
-                             <option value="{{ pkg.name }}#{{ pkg.version }}">{{ pkg.name }}#{{ pkg.version }}</option>
-                         {% endfor %}
-                     </select>
-                 </div>
+                {# Package Selection #}
+                <div class="mb-3">
+                    <label for="packageSelect" class="form-label">Select Package to Push</label>
+                    <select class="form-select" id="packageSelect" name="package_id" required>
+                        <option value="" disabled selected>Select a package...</option>
+                        {% for pkg in packages %}
+                            <option value="{{ pkg.name }}#{{ pkg.version }}">{{ pkg.name }}#{{ pkg.version }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
 
-                 {# Dependency Mode Display #}
-                 <div class="mb-3">
-                     <label for="dependencyMode" class="form-label">Dependency Mode Used During Import</label>
-                     <input type="text" class="form-control" id="dependencyMode" readonly placeholder="Select package to view mode...">
-                 </div>
+                {# Dependency Mode Display #}
+                <div class="mb-3">
+                    <label for="dependencyMode" class="form-label">Dependency Mode Used During Import</label>
+                    <input type="text" class="form-control" id="dependencyMode" readonly placeholder="Select package to view mode...">
+                </div>
 
-                 {# FHIR Server URL #}
-                 <div class="mb-3">
-                     <label for="fhirServerUrl" class="form-label">Target FHIR Server URL</label>
-                     <input type="url" class="form-control" id="fhirServerUrl" name="fhir_server_url" placeholder="e.g., http://localhost:8080/fhir" required>
-                 </div>
+                {# FHIR Server URL #}
+                <div class="mb-3">
+                    <label for="fhirServerUrl" class="form-label">Target FHIR Server URL</label>
+                    <input type="url" class="form-control" id="fhirServerUrl" name="fhir_server_url" placeholder="e.g., http://localhost:8080/fhir" required>
+                </div>
 
-                 {# --- RESTRUCTURED: Auth and Checkboxes --- #}
-                 <div class="row g-3 mb-3 align-items-end">
-                     {# Authentication Dropdown & Token Input #}
-                     <div class="col-md-5">
-                         <label for="authType" class="form-label">Authentication</label>
-                         <select class="form-select" id="authType" name="auth_type">
-                              <option value="none" selected>None</option>
-                              <option value="apiKey">Toolkit API Key (Internal)</option>
-                              <option value="bearerToken">Bearer Token</option>
-                         </select>
-                      </div>
-                     <div class="col-md-7" id="authTokenGroup" style="display: none;">
-                         <label for="authToken" class="form-label">Bearer Token</label>
-                         <input type="password" class="form-control" id="authToken" name="auth_token" placeholder="Enter Bearer Token">
-                     </div>
-                 </div>
+                {# Authentication Section #}
+                <div class="row g-3 mb-3 align-items-end">
+                    <div class="col-md-5">
+                        <label for="authType" class="form-label">Authentication</label>
+                        <select class="form-select" id="authType" name="auth_type">
+                            <option value="none" selected>None</option>
+                            <option value="apiKey">Toolkit API Key (Internal)</option>
+                            <option value="bearerToken">Bearer Token</option>
+                            <option value="basic">Basic Authentication</option>
+                        </select>
+                    </div>
+                    <div class="col-md-7" id="authInputsGroup" style="display: none;">
+                        {# Bearer Token Input #}
+                        <div id="bearerTokenInput" style="display: none;">
+                            <label for="authToken" class="form-label">Bearer Token</label>
+                            <input type="password" class="form-control" id="authToken" name="auth_token" placeholder="Enter Bearer Token">
+                        </div>
+                        {# Basic Auth Inputs #}
+                        <div id="basicAuthInputs" style="display: none;">
+                            <label for="username" class="form-label">Username</label>
+                            <input type="text" class="form-control mb-2" id="username" name="username" placeholder="Enter Basic Auth Username">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" class="form-control" id="password" name="password" placeholder="Enter Basic Auth Password">
+                        </div>
+                    </div>
+                </div>
 
-                 {# Checkboxes Row #}
-                 <div class="row g-3 mb-3">
-                     <div class="col-6 col-sm-3">
-                         <div class="form-check">
-                             <input type="checkbox" class="form-check-input" id="includeDependencies" name="include_dependencies" checked>
-                             <label class="form-check-label" for="includeDependencies">Include Dependencies</label>
-                         </div>
-                     </div>
-                     <div class="col-6 col-sm-3">
-                          <div class="form-check">
-                             <input type="checkbox" class="form-check-input" id="forceUpload" name="force_upload">
-                             <label class="form-check-label" for="forceUpload">Force Upload</label>
-                             <small class="form-text text-muted d-block">Force upload all resources.</small>
-                         </div>
-                     </div>
-                     <div class="col-6 col-sm-3">
-                         <div class="form-check">
-                             <input type="checkbox" class="form-check-input" id="dryRun" name="dry_run">
-                             <label class="form-check-label" for="dryRun">Dry Run</label>
-                             <small class="form-text text-muted d-block">Simulate only.</small>
-                         </div>
-                     </div>
-                     <div class="col-6 col-sm-3">
-                         <div class="form-check">
-                             <input type="checkbox" class="form-check-input" id="verbose" name="verbose">
-                             <label class="form-check-label" for="verbose">Verbose Log</label>
-                             <small class="form-text text-muted d-block">Show detailed Log.</small>
-                         </div>
-                     </div>
-                 </div>
-                 {# --- END RESTRUCTURED --- #}
+                {# Checkboxes Row #}
+                <div class="row g-3 mb-3">
+                    <div class="col-6 col-sm-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="includeDependencies" name="include_dependencies" checked>
+                            <label class="form-check-label" for="includeDependencies">Include Dependencies</label>
+                        </div>
+                    </div>
+                    <div class="col-6 col-sm-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="forceUpload" name="force_upload">
+                            <label class="form-check-label" for="forceUpload">Force Upload</label>
+                            <small class="form-text text-muted d-block">Force upload all resources.</small>
+                        </div>
+                    </div>
+                    <div class="col-6 col-sm-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="dryRun" name="dry_run">
+                            <label class="form-check-label" for="dryRun">Dry Run</label>
+                            <small class="form-text text-muted d-block">Simulate only.</small>
+                        </div>
+                    </div>
+                    <div class="col-6 col-sm-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="verbose" name="verbose">
+                            <label class="form-check-label" for="verbose">Verbose Log</label>
+                            <small class="form-text text-muted d-block">Show detailed log.</small>
+                        </div>
+                    </div>
+                </div>
 
+                {# Resource Type Filter #}
+                <div class="mb-3">
+                    <label for="resourceTypesFilter" class="form-label">Filter Resource Types <small class="text-muted">(Optional)</small></label>
+                    <textarea class="form-control" id="resourceTypesFilter" name="resource_types_filter" rows="1" placeholder="Comma-separated, e.g., StructureDefinition, ValueSet"></textarea>
+                </div>
 
-                 {# Resource Type Filter #}
-                 <div class="mb-3">
-                     <label for="resourceTypesFilter" class="form-label">Filter Resource Types <small class="text-muted">(Optional)</small></label>
-                     <textarea class="form-control" id="resourceTypesFilter" name="resource_types_filter" rows="1" placeholder="Comma-separated, e.g., StructureDefinition, ValueSet"></textarea>
-                 </div>
+                {# Skip Files Filter #}
+                <div class="mb-3">
+                    <label for="skipFilesFilter" class="form-label">Skip Specific Files <small class="text-muted">(Optional)</small></label>
+                    <textarea class="form-control" id="skipFilesFilter" name="skip_files" rows="2" placeholder="Enter full file paths within package (e.g., package/examples/bad.json), one per line or comma-separated."></textarea>
+                </div>
 
-                 {# Skip Files Filter #}
-                 <div class="mb-3">
-                     <label for="skipFilesFilter" class="form-label">Skip Specific Files <small class="text-muted">(Optional)</small></label>
-                     <textarea class="form-control" id="skipFilesFilter" name="skip_files" rows="2" placeholder="Enter full file paths within package (e.g., package/examples/bad.json), one per line or comma-separated."></textarea>
-                 </div>
-
-                 <button type="submit" class="btn btn-primary w-100" id="pushButton">
-                     <i class="bi bi-cloud-upload me-2"></i>Push to FHIR Server
-                 </button>
-             </form>
+                <button type="submit" class="btn btn-primary w-100" id="pushButton">
+                    <i class="bi bi-cloud-upload me-2"></i>Push to FHIR Server
+                </button>
+            </form>
 
             {# Live Console #}
             <div class="mt-4">
@@ -185,7 +188,6 @@
                     <span class="text-muted">Console output will appear here...</span>
                 </div>
             </div>
-
         </div> {# End Right Column #}
     </div> {# End row #}
 </div> {# End container-fluid #}
@@ -198,13 +200,17 @@ document.addEventListener('DOMContentLoaded', function() {
     const pushIgForm = document.getElementById('pushIgForm');
     const pushButton = document.getElementById('pushButton');
     const liveConsole = document.getElementById('liveConsole');
-    const responseDiv = document.getElementById('pushResponse'); // Area for final report
-    const reportActions = document.getElementById('reportActions'); // Container for report buttons
-    const copyReportBtn = document.getElementById('copyReportBtn'); // New copy button
-    const downloadReportBtn = document.getElementById('downloadReportBtn'); // New download button
+    const responseDiv = document.getElementById('pushResponse');
+    const reportActions = document.getElementById('reportActions');
+    const copyReportBtn = document.getElementById('copyReportBtn');
+    const downloadReportBtn = document.getElementById('downloadReportBtn');
     const authTypeSelect = document.getElementById('authType');
-    const authTokenGroup = document.getElementById('authTokenGroup');
+    const authInputsGroup = document.getElementById('authInputsGroup');
+    const bearerTokenInput = document.getElementById('bearerTokenInput');
+    const basicAuthInputs = document.getElementById('basicAuthInputs');
     const authTokenInput = document.getElementById('authToken');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
     const resourceTypesFilterInput = document.getElementById('resourceTypesFilter');
     const skipFilesFilterInput = document.getElementById('skipFilesFilter');
     const dryRunCheckbox = document.getElementById('dryRun');
@@ -226,7 +232,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (packageSelect && dependencyModeField) {
         packageSelect.addEventListener('change', function() {
             const packageId = this.value;
-            dependencyModeField.value = ''; // Clear on change
+            dependencyModeField.value = '';
             if (packageId) {
                 const [packageName, version] = packageId.split('#');
                 fetch(`/get-package-metadata?package_name=${packageName}&version=${version}`)
@@ -240,24 +246,32 @@ document.addEventListener('DOMContentLoaded', function() {
         if (packageSelect.value) { packageSelect.dispatchEvent(new Event('change')); }
     }
 
-    // Show/Hide Bearer Token Input
-    if (authTypeSelect && authTokenGroup) {
+    // Show/Hide Auth Inputs
+    if (authTypeSelect && authInputsGroup && bearerTokenInput && basicAuthInputs) {
         authTypeSelect.addEventListener('change', function() {
-            authTokenGroup.style.display = this.value === 'bearerToken' ? 'block' : 'none';
+            authInputsGroup.style.display = (this.value === 'bearerToken' || this.value === 'basic') ? 'block' : 'none';
+            bearerTokenInput.style.display = this.value === 'bearerToken' ? 'block' : 'none';
+            basicAuthInputs.style.display = this.value === 'basic' ? 'block' : 'none';
+            // Clear inputs when switching
             if (this.value !== 'bearerToken' && authTokenInput) authTokenInput.value = '';
+            if (this.value !== 'basic' && usernameInput) usernameInput.value = '';
+            if (this.value !== 'basic' && passwordInput) passwordInput.value = '';
         });
-        authTokenGroup.style.display = authTypeSelect.value === 'bearerToken' ? 'block' : 'none';
+        authInputsGroup.style.display = (authTypeSelect.value === 'bearerToken' || authTypeSelect.value === 'basic') ? 'block' : 'none';
+        bearerTokenInput.style.display = authTypeSelect.value === 'bearerToken' ? 'block' : 'none';
+        basicAuthInputs.style.display = authTypeSelect.value === 'basic' ? 'block' : 'none';
+    } else {
+        console.error("Auth elements not found.");
     }
 
-    // --- NEW: Report Action Button Listeners ---
+    // Report Action Button Listeners
     if (copyReportBtn && responseDiv) {
         copyReportBtn.addEventListener('click', () => {
-            const reportAlert = responseDiv.querySelector('.alert'); // Get the alert div inside
-            const reportText = reportAlert ? reportAlert.innerText || reportAlert.textContent : ''; // Get text content
+            const reportAlert = responseDiv.querySelector('.alert');
+            const reportText = reportAlert ? reportAlert.innerText || reportAlert.textContent : '';
             if (reportText && navigator.clipboard) {
                 navigator.clipboard.writeText(reportText)
                     .then(() => {
-                        // Optional: Provide feedback (e.g., change button text/icon)
                         const originalIcon = copyReportBtn.innerHTML;
                         copyReportBtn.innerHTML = '<i class="bi bi-check-lg"></i> Copied!';
                         setTimeout(() => { copyReportBtn.innerHTML = originalIcon; }, 2000);
@@ -267,9 +281,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         alert('Failed to copy report text.');
                     });
             } else if (!navigator.clipboard) {
-                 alert('Clipboard API not available in this browser.');
+                alert('Clipboard API not available in this browser.');
             } else {
-                 alert('No report content found to copy.');
+                alert('No report content found to copy.');
             }
         });
     }
@@ -292,27 +306,27 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
-                URL.revokeObjectURL(url); // Clean up
+                URL.revokeObjectURL(url);
             } else {
                 alert('No report content found to download.');
             }
         });
     }
-    // --- END NEW ---
 
-
-    // --- Form Submission ---
+    // Form Submission
     if (pushIgForm) {
         pushIgForm.addEventListener('submit', async function(event) {
             event.preventDefault();
 
-            // Get form values (with null checks for elements)
+            // Get form values
             const packageId = packageSelect ? packageSelect.value : null;
             const fhirServerUrl = fhirServerUrlInput ? fhirServerUrlInput.value.trim() : null;
             if (!packageId || !fhirServerUrl) { alert('Please select package and enter FHIR Server URL.'); return; }
             const [packageName, version] = packageId.split('#');
             const auth_type = authTypeSelect ? authTypeSelect.value : 'none';
             const auth_token = (auth_type === 'bearerToken' && authTokenInput) ? authTokenInput.value : null;
+            const username = (auth_type === 'basic' && usernameInput) ? usernameInput.value.trim() : null;
+            const password = (auth_type === 'basic' && passwordInput) ? passwordInput.value : null;
             const resource_types_filter_raw = resourceTypesFilterInput ? resourceTypesFilterInput.value.trim() : '';
             const resource_types_filter = resource_types_filter_raw ? resource_types_filter_raw.split(',').map(s => s.trim()).filter(s => s) : null;
             const skip_files_raw = skipFilesFilterInput ? skipFilesFilterInput.value.trim() : '';
@@ -322,12 +336,23 @@ document.addEventListener('DOMContentLoaded', function() {
             const include_dependencies = includeDependenciesCheckbox ? includeDependenciesCheckbox.checked : true;
             const force_upload = forceUploadCheckbox ? forceUploadCheckbox.checked : false;
 
-            // UI Updates & API Key
-            if (pushButton) { pushButton.disabled = true; pushButton.textContent = 'Processing...'; }
-            if (liveConsole) { liveConsole.innerHTML = `<div>${new Date().toLocaleTimeString()} [INFO] Starting ${dry_run ? 'DRY RUN ' : ''}${force_upload ? 'FORCE ' : ''}push for ${packageName}#${version}...</div>`; }
-            if (responseDiv) { responseDiv.innerHTML = '<span class="text-muted">Processing...</span>'; } // Clear previous report
-            if (reportActions) { reportActions.style.display = 'none'; } // Hide report buttons initially
-            const internalApiKey = {{ api_key | default("") | tojson }}; // Use tojson filter
+            // Validate Basic Auth inputs
+            if (auth_type === 'basic') {
+                if (!username) { alert('Please enter a username for Basic Authentication.'); return; }
+                if (!password) { alert('Please enter a password for Basic Authentication.'); return; }
+            }
+
+            // UI Updates
+            if (pushButton) {
+                pushButton.disabled = true;
+                pushButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
+            }
+            if (liveConsole) {
+                liveConsole.innerHTML = `<div>${new Date().toLocaleTimeString()} [INFO] Starting ${dry_run ? 'DRY RUN ' : ''}${force_upload ? 'FORCE ' : ''}push for ${packageName}#${version}...</div>`;
+            }
+            if (responseDiv) { responseDiv.innerHTML = '<span class="text-muted">Processing...</span>'; }
+            if (reportActions) { reportActions.style.display = 'none'; }
+            const internalApiKey = {{ api_key | default("") | tojson }};
 
             try {
                 // API Fetch
@@ -335,10 +360,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Accept': 'application/x-ndjson', 'X-CSRFToken': csrfToken, 'X-API-Key': internalApiKey },
                     body: JSON.stringify({
-                        package_name: packageName, version: version, fhir_server_url: fhirServerUrl,
-                        include_dependencies: include_dependencies, auth_type: auth_type, auth_token: auth_token,
-                        resource_types_filter: resource_types_filter, skip_files: skip_files,
-                        dry_run: dry_run, verbose: isVerboseChecked, force_upload: force_upload
+                        package_name: packageName,
+                        version: version,
+                        fhir_server_url: fhirServerUrl,
+                        include_dependencies: include_dependencies,
+                        auth_type: auth_type,
+                        auth_token: auth_token,
+                        username: username,
+                        password: password,
+                        resource_types_filter: resource_types_filter,
+                        skip_files: skip_files,
+                        dry_run: dry_run,
+                        verbose: isVerboseChecked,
+                        force_upload: force_upload
                     })
                 });
 
@@ -361,25 +395,28 @@ document.addEventListener('DOMContentLoaded', function() {
                             const data = JSON.parse(line); const timestamp = new Date().toLocaleTimeString();
                             let messageClass = 'text-light'; let prefix = '[INFO]'; let shouldDisplay = false;
 
-                            switch (data.type) { // Determine if message should display based on verbose
+                            switch (data.type) {
                                 case 'start': case 'error': case 'complete': shouldDisplay = true; break;
                                 case 'success': case 'warning': case 'info': case 'progress': if (isVerboseChecked) { shouldDisplay = true; } break;
                                 default: if (isVerboseChecked) { shouldDisplay = true; console.warn("Unknown type:", data.type); prefix = '[UNKNOWN]'; } break;
                             }
 
-                            if (shouldDisplay && liveConsole) { // Set prefix/class and append to console
+                            if (shouldDisplay && liveConsole) {
                                 if(data.type==='error'){prefix='[ERROR]';messageClass='text-danger';}
                                 else if(data.type==='complete'){const s=data.data?.status||'info';if(s==='success'){prefix='[SUCCESS]';messageClass='text-success';}else if(s==='partial'){prefix='[PARTIAL]';messageClass='text-warning';}else{prefix='[ERROR]';messageClass='text-danger';}}
                                 else if(data.type==='start'){prefix='[START]';messageClass='text-info';}
-                                else if(data.type==='success'){prefix='[SUCCESS]';messageClass='text-success';}else if(data.type==='warning'){prefix='[WARNING]';messageClass='text-warning';}else if(data.type==='info'){prefix='[INFO]';messageClass='text-info';}else{prefix='[PROGRESS]';messageClass='text-light';}
+                                else if(data.type==='success'){prefix='[SUCCESS]';messageClass='text-success';}
+                                else if(data.type==='warning'){prefix='[WARNING]';messageClass='text-warning';}
+                                else if(data.type==='info'){prefix='[INFO]';messageClass='text-info';}
+                                else{prefix='[PROGRESS]';messageClass='text-light';}
 
                                 const messageDiv = document.createElement('div'); messageDiv.className = messageClass;
                                 const messageText = (data.type === 'complete' && data.data) ? data.data.message : data.message;
-                                messageDiv.textContent = `${timestamp} ${prefix} ${sanitizeText(messageText) || 'Empty message.'}`;
+                                messageDiv.innerHTML = `${timestamp} ${prefix} ${sanitizeText(messageText) || 'Empty message.'}`;
                                 liveConsole.appendChild(messageDiv); liveConsole.scrollTop = liveConsole.scrollHeight;
                             }
 
-                            if (data.type === 'complete' && responseDiv) { // Update final summary box
+                            if (data.type === 'complete' && responseDiv) {
                                 const summaryData = data.data || {}; let alertClass = 'alert-info'; let statusText = 'Info'; let pushedPkgs = 'None'; let failHtml = ''; let skipHtml = '';
                                 const isDryRun = summaryData.dry_run || false; const isForceUpload = summaryData.force_upload || false;
                                 const typeFilterUsed = summaryData.resource_types_filter ? summaryData.resource_types_filter.join(', ') : 'All';
@@ -391,28 +428,74 @@ document.addEventListener('DOMContentLoaded', function() {
                                 if (summaryData.skipped_details?.length > 0) { skipHtml = '<hr><strong>Skipped:</strong><ul class="list-unstyled" style="font-size: 0.9em; max-height: 150px; overflow-y: auto; padding-left: 1em;">'; summaryData.skipped_details.forEach(s => {skipHtml += `<li><strong>${sanitizeText(s.resource)}:</strong> ${sanitizeText(s.reason)}</li>`;}); skipHtml += '</ul>';}
 
                                 responseDiv.innerHTML = `<div class="alert ${alertClass} mt-0"><strong>${isDryRun?'[DRY RUN] ':''}${isForceUpload?'[FORCE] ':''}${statusText}:</strong> ${sanitizeText(summaryData.message)||'Complete.'}<hr><strong>Target:</strong> ${sanitizeText(summaryData.target_server)}<br><strong>Package:</strong> ${sanitizeText(summaryData.package_name)}#${sanitizeText(summaryData.version)}<br><strong>Config:</strong> Deps=${summaryData.included_dependencies?'Yes':'No'}, Types=${sanitizeText(typeFilterUsed)}, SkipFiles=${sanitizeText(fileFilterUsed)}, DryRun=${isDryRun?'Yes':'No'}, Force=${isForceUpload?'Yes':'No'}, Verbose=${isVerboseChecked?'Yes':'No'}<br><strong>Stats:</strong> Attempt=${sanitizeText(summaryData.resources_attempted)}, Success=${sanitizeText(summaryData.success_count)}, Fail=${sanitizeText(summaryData.failure_count)}, Skip=${sanitizeText(summaryData.skipped_count)}<br><strong>Pushed Pkgs:</strong><br><div style="padding-left:15px;">${pushedPkgs}</div>${failHtml}${skipHtml}</div>`;
-                                if (reportActions) { reportActions.style.display = 'block'; } // Show report buttons
+                                if (reportActions) { reportActions.style.display = 'block'; }
                             }
-                        } catch (parseError) { /* (Handle JSON parse errors) */ console.error('Stream parse error:', parseError); if(liveConsole){/*...add error to console...*/} }
-                    } // end for loop
-                } // end while loop
-
-                // Process Final Buffer (if any)
-                if (buffer.trim()) {
-                     try { /* (Parsing logic for final buffer, similar to above) */ }
-                     catch (parseError) { /* (Handle final buffer parse error) */ }
+                        } catch (parseError) {
+                            console.error('Stream parse error:', parseError);
+                            if (liveConsole) {
+                                const errDiv = document.createElement('div');
+                                errDiv.className = 'text-danger';
+                                errDiv.textContent = `${new Date().toLocaleTimeString()} [ERROR] Stream parse error: ${sanitizeText(parseError.message)}`;
+                                liveConsole.appendChild(errDiv);
+                                liveConsole.scrollTop = liveConsole.scrollHeight;
+                            }
+                        }
+                    }
                 }
 
-            } catch (error) { // Handle overall fetch/network errors
+                // Process Final Buffer
+                if (buffer.trim()) {
+                    try {
+                        const data = JSON.parse(buffer.trim());
+                        if (data.type === 'complete' && responseDiv) {
+                            // Same summary rendering as above
+                            const summaryData = data.data || {};
+                            let alertClass = 'alert-info'; let statusText = 'Info'; let pushedPkgs = 'None'; let failHtml = ''; let skipHtml = '';
+                            const isDryRun = summaryData.dry_run || false; const isForceUpload = summaryData.force_upload || false;
+                            const typeFilterUsed = summaryData.resource_types_filter ? summaryData.resource_types_filter.join(', ') : 'All';
+                            const fileFilterUsed = summaryData.skip_files_filter ? summaryData.skip_files_filter.join(', ') : 'None';
+
+                            if (summaryData.pushed_packages_summary?.length > 0) { pushedPkgs = summaryData.pushed_packages_summary.map(p => `${sanitizeText(p.id)} (${sanitizeText(p.resource_count)} resources)`).join('<br>'); }
+                            if (summaryData.status === 'success') { alertClass = 'alert-success'; statusText = 'Success';} else if (summaryData.status === 'partial') { alertClass = 'alert-warning'; statusText = 'Partial Success'; } else { alertClass = 'alert-danger'; statusText = 'Error'; }
+                            if (summaryData.failed_details?.length > 0) { failHtml = '<hr><strong>Failures:</strong><ul class="list-unstyled" style="font-size: 0.9em; max-height: 150px; overflow-y: auto; padding-left: 1em;">'; summaryData.failed_details.forEach(f => {failHtml += `<li><strong>${sanitizeText(f.resource)}:</strong> ${sanitizeText(f.error)}</li>`;}); failHtml += '</ul>';}
+                            if (summaryData.skipped_details?.length > 0) { skipHtml = '<hr><strong>Skipped:</strong><ul class="list-unstyled" style="font-size: 0.9em; max-height: 150px; overflow-y: auto; padding-left: 1em;">'; summaryData.skipped_details.forEach(s => {skipHtml += `<li><strong>${sanitizeText(s.resource)}:</strong> ${sanitizeText(s.reason)}</li>`;}); skipHtml += '</ul>';}
+
+                            responseDiv.innerHTML = `<div class="alert ${alertClass} mt-0"><strong>${isDryRun?'[DRY RUN] ':''}${isForceUpload?'[FORCE] ':''}${statusText}:</strong> ${sanitizeText(summaryData.message)||'Complete.'}<hr><strong>Target:</strong> ${sanitizeText(summaryData.target_server)}<br><strong>Package:</strong> ${sanitizeText(summaryData.package_name)}#${sanitizeText(summaryData.version)}<br><strong>Config:</strong> Deps=${summaryData.included_dependencies?'Yes':'No'}, Types=${sanitizeText(typeFilterUsed)}, SkipFiles=${sanitizeText(fileFilterUsed)}, DryRun=${isDryRun?'Yes':'No'}, Force=${isForceUpload?'Yes':'No'}, Verbose=${isVerboseChecked?'Yes':'No'}<br><strong>Stats:</strong> Attempt=${sanitizeText(summaryData.resources_attempted)}, Success=${sanitizeText(summaryData.success_count)}, Fail=${sanitizeText(summaryData.failure_count)}, Skip=${sanitizeText(summaryData.skipped_count)}<br><strong>Pushed Pkgs:</strong><br><div style="padding-left:15px;">${pushedPkgs}</div>${failHtml}${skipHtml}</div>`;
+                            if (reportActions) { reportActions.style.display = 'block'; }
+                        }
+                    } catch (parseError) {
+                        console.error('Final buffer parse error:', parseError);
+                        if (liveConsole) {
+                            const errDiv = document.createElement('div');
+                            errDiv.className = 'text-danger';
+                            errDiv.textContent = `${new Date().toLocaleTimeString()} [ERROR] Final buffer parse error: ${sanitizeText(parseError.message)}`;
+                            liveConsole.appendChild(errDiv);
+                            liveConsole.scrollTop = liveConsole.scrollHeight;
+                        }
+                    }
+                }
+
+            } catch (error) {
                 console.error("Push operation failed:", error);
-                if (liveConsole) { /* ... add error to console ... */ }
-                if (responseDiv) { responseDiv.innerHTML = `<div class="alert alert-danger mt-3"><strong>Error:</strong> ${sanitizeText(error.message || error)}</div>`; }
-                if (reportActions) { reportActions.style.display = 'none'; } // Hide buttons on error
-            } finally { // Re-enable button
-                if (pushButton) { pushButton.disabled = false; pushButton.textContent = 'Push to FHIR Server'; }
+                if (liveConsole) {
+                    const errDiv = document.createElement('div');
+                    errDiv.className = 'text-danger';
+                    errDiv.textContent = `${new Date().toLocaleTimeString()} [ERROR] ${sanitizeText(error.message || error)}`;
+                    liveConsole.appendChild(errDiv);
+                    liveConsole.scrollTop = liveConsole.scrollHeight;
+                }
+                if (responseDiv) {
+                    responseDiv.innerHTML = `<div class="alert alert-danger mt-3"><strong>Error:</strong> ${sanitizeText(error.message || error)}</div>`;
+                }
+                if (reportActions) { reportActions.style.display = 'none'; }
+            } finally {
+                if (pushButton) {
+                    pushButton.disabled = false;
+                    pushButton.innerHTML = '<i class="bi bi-cloud-upload me-2"></i>Push to FHIR Server';
+                }
             }
-        }); // End form submit listener
+        });
     } else { console.error("Push IG Form element not found."); }
-}); // End DOMContentLoaded listener
+});
 </script>
 {% endblock %}
