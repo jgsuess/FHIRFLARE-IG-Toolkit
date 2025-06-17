@@ -8,7 +8,7 @@
   justify-content: center;
   position: relative;
   height: 130px; /* Overall height of the animation area */
-  /* overflow: hidden; */ /* Hide parts extending beyond the container */
+  overflow: hidden; /* Hide parts extending beyond the container */
   background-color: #270537; /* Optional: Add a background */
   border-radius: 4px;
   border: 1px solid #444;
