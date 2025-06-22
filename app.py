@@ -38,9 +38,10 @@ from services import (
     HAS_PACKAGING_LIB,
     pkg_version,
     get_package_description,
-    safe_parse_version
+    safe_parse_version,
+    import_manual_package_and_dependencies
 )
-from forms import IgImportForm, ValidationForm, FSHConverterForm, TestDataUploadForm, RetrieveSplitDataForm
+from forms import IgImportForm, ManualIgImportForm, ValidationForm, FSHConverterForm, TestDataUploadForm, RetrieveSplitDataForm
 from wtforms import SubmitField
 from package import package_bp
 from flasgger import Swagger, swag_from # Import Flasgger
@@ -517,6 +518,74 @@ def restart_tomcat():
 @app.route('/config-hapi')
 def config_hapi():
     return render_template('config_hapi.html', site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+
+@app.route('/manual-import-ig', methods=['GET', 'POST'])
+def manual_import_ig():
+    """
+    Handle manual import of FHIR Implementation Guides using file or URL uploads.
+    Uses ManualIgImportForm to support file and URL inputs without registry option.
+    """
+    form = ManualIgImportForm()
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.headers.get('HX-Request') == 'true'
+
+    if form.validate_on_submit():
+        import_mode = form.import_mode.data
+        dependency_mode = form.dependency_mode.data
+        resolve_dependencies = form.resolve_dependencies.data
+        while not log_queue.empty():
+            log_queue.get()
+
+        try:
+            if import_mode == 'file':
+                tgz_file = form.tgz_file.data
+                temp_dir = tempfile.mkdtemp()
+                temp_path = os.path.join(temp_dir, secure_filename(tgz_file.filename))
+                tgz_file.save(temp_path)
+                result = import_manual_package_and_dependencies(temp_path, dependency_mode=dependency_mode, is_file=True, resolve_dependencies=resolve_dependencies)
+                identifier = result.get('requested', tgz_file.filename)
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            elif import_mode == 'url':
+                tgz_url = form.tgz_url.data
+                result = import_manual_package_and_dependencies(tgz_url, dependency_mode=dependency_mode, is_url=True, resolve_dependencies=resolve_dependencies)
+                identifier = result.get('requested', tgz_url)
+
+            if result['errors'] and not result['downloaded']:
+                error_msg = result['errors'][0]
+                simplified_msg = error_msg
+                if "HTTP error" in error_msg and "404" in error_msg:
+                    simplified_msg = "Package not found (404). Check input."
+                elif "HTTP error" in error_msg:
+                    simplified_msg = f"Error: {error_msg.split(': ', 1)[-1]}"
+                elif "Connection error" in error_msg:
+                    simplified_msg = "Could not connect to source."
+                flash(f"Failed to import {identifier}: {simplified_msg}", "error")
+                logger.error(f"Manual import failed for {identifier}: {error_msg}")
+                if is_ajax:
+                    return jsonify({"status": "error", "message": simplified_msg}), 400
+                return render_template('manual_import_ig.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+            else:
+                if result['errors']:
+                    flash(f"Partially imported {identifier} with errors. Check logs.", "warning")
+                    for err in result['errors']:
+                        logger.warning(f"Manual import warning for {identifier}: {err}")
+                else:
+                    flash(f"Successfully imported {identifier}! Mode: {dependency_mode}", "success")
+                if is_ajax:
+                    return jsonify({"status": "success", "message": f"Imported {identifier}", "redirect": url_for('view_igs')}), 200
+                return redirect(url_for('view_igs'))
+        except Exception as e:
+            logger.error(f"Unexpected error during manual IG import: {str(e)}", exc_info=True)
+            flash(f"An unexpected error occurred: {str(e)}", "error")
+            if is_ajax:
+                return jsonify({"status": "error", "message": str(e)}), 500
+            return render_template('manual_import_ig.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
+    else:
+        for field, errors in form.errors.items():
+            for error in errors:
+                flash(f"Error in {getattr(form, field).label.text}: {error}", "danger")
+        if is_ajax:
+            return jsonify({"status": "error", "message": "Form validation failed", "errors": form.errors}), 400
+        return render_template('manual_import_ig.html', form=form, site_name='FHIRFLARE IG Toolkit', now=datetime.datetime.now())
 
 @app.route('/import-ig', methods=['GET', 'POST'])
 def import_ig():

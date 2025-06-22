@@ -241,6 +241,225 @@ def get_additional_registries():
     return feeds
 # --- END MODIFIED FUNCTION ---
 
+def import_manual_package_and_dependencies(input_source, version=None, dependency_mode='recursive', is_file=False, is_url=False, resolve_dependencies=True):
+    """
+    Import a FHIR Implementation Guide package manually, cloning import_package_and_dependencies.
+    Supports registry, file, or URL inputs with dependency handling.
+    
+    Args:
+        input_source (str): Package name (for registry), file path (for file), or URL (for URL).
+        version (str, optional): Package version for registry imports.
+        dependency_mode (str): Dependency import mode ('recursive', 'patch-canonical', 'tree-shaking').
+        is_file (bool): True if input_source is a file path.
+        is_url (bool): True if input_source is a URL.
+        resolve_dependencies (bool): Whether to resolve and import dependencies.
+    
+    Returns:
+        dict: Import results with 'requested', 'downloaded', 'dependencies', and 'errors'.
+    """
+    logger.info(f"Starting manual import for {input_source} (mode={dependency_mode}, resolve_deps={resolve_dependencies})")
+    download_dir = _get_download_dir()
+    if not download_dir:
+        return {
+            "requested": input_source,
+            "downloaded": {},
+            "dependencies": [],
+            "errors": ["Failed to get download directory."]
+        }
+
+    results = {
+        "requested": input_source,
+        "downloaded": {},
+        "dependencies": [],
+        "errors": []
+    }
+
+    try:
+        if is_file:
+            tgz_path = input_source
+            if not os.path.exists(tgz_path):
+                results['errors'].append(f"File not found: {tgz_path}")
+                return results
+            name, version = parse_package_filename(os.path.basename(tgz_path))
+            if not name:
+                name = os.path.splitext(os.path.basename(tgz_path))[0]
+                version = "unknown"
+            target_filename = construct_tgz_filename(name, version)
+            target_path = os.path.join(download_dir, target_filename)
+            shutil.copy(tgz_path, target_path)
+            results['downloaded'][name, version] = target_path
+        elif is_url:
+            tgz_path = download_manual_package_from_url(input_source, download_dir)
+            if not tgz_path:
+                results['errors'].append(f"Failed to download package from URL: {input_source}")
+                return results
+            name, version = parse_package_filename(os.path.basename(tgz_path))
+            if not name:
+                name = os.path.splitext(os.path.basename(tgz_path))[0]
+                version = "unknown"
+            results['downloaded'][name, version] = tgz_path
+        else:
+            tgz_path = download_manual_package(input_source, version, download_dir)
+            if not tgz_path:
+                results['errors'].append(f"Failed to download {input_source}#{version}")
+                return results
+            results['downloaded'][input_source, version] = tgz_path
+            name = input_source
+
+        if resolve_dependencies:
+            pkg_info = process_manual_package_file(tgz_path)
+            if pkg_info.get('errors'):
+                results['errors'].extend(pkg_info['errors'])
+            dependencies = pkg_info.get('dependencies', [])
+            results['dependencies'] = dependencies
+
+            if dependencies and dependency_mode != 'tree-shaking':
+                for dep in dependencies:
+                    dep_name = dep.get('name')
+                    dep_version = dep.get('version', 'latest')
+                    if not dep_name:
+                        continue
+                    logger.info(f"Processing dependency {dep_name}#{dep_version}")
+                    dep_result = import_manual_package_and_dependencies(
+                        dep_name,
+                        dep_version,
+                        dependency_mode=dependency_mode,
+                        resolve_dependencies=True
+                    )
+                    results['downloaded'].update(dep_result['downloaded'])
+                    results['dependencies'].extend(dep_result['dependencies'])
+                    results['errors'].extend(dep_result['errors'])
+
+        save_package_metadata(name, version, dependency_mode, results['dependencies'])
+        return results
+    except Exception as e:
+        logger.error(f"Error during manual import of {input_source}: {str(e)}", exc_info=True)
+        results['errors'].append(f"Unexpected error: {str(e)}")
+        return results
+
+def download_manual_package(package_name, version, download_dir):
+    """
+    Download a FHIR package from the registry, cloning download_package.
+    
+    Args:
+        package_name (str): Package name.
+        version (str): Package version.
+        download_dir (str): Directory to save the package.
+    
+    Returns:
+        str: Path to the downloaded file, or None if failed.
+    """
+    logger.info(f"Attempting manual download of {package_name}#{version}")
+    tgz_filename = construct_tgz_filename(package_name, version)
+    if not tgz_filename:
+        logger.error(f"Invalid filename constructed for {package_name}#{version}")
+        return None
+    target_path = os.path.join(download_dir, tgz_filename)
+    if os.path.exists(target_path):
+        logger.info(f"Manual package {package_name}#{version} already exists at {target_path}")
+        return target_path
+
+    url = f"{FHIR_REGISTRY_BASE_URL}/{package_name}/{version}"
+    try:
+        response = requests.get(url, stream=True, timeout=30)
+        response.raise_for_status()
+        with open(target_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        logger.info(f"Manually downloaded {package_name}#{version} to {target_path}")
+        return target_path
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"HTTP error downloading {package_name}#{version}: {e}")
+        return None
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request error downloading {package_name}#{version}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error downloading {package_name}#{version}: {e}", exc_info=True)
+        return None
+
+def download_manual_package_from_url(url, download_dir):
+    """
+    Download a FHIR package from a URL, cloning download_package logic.
+    
+    Args:
+        url (str): URL to the .tgz file.
+        download_dir (str): Directory to save the package.
+    
+    Returns:
+        str: Path to the downloaded file, or None if failed.
+    """
+    logger.info(f"Attempting manual download from URL: {url}")
+    parsed_url = urlparse(url)
+    filename = os.path.basename(parsed_url.path)
+    if not filename.endswith('.tgz'):
+        logger.error(f"URL does not point to a .tgz file: {filename}")
+        return None
+    target_path = os.path.join(download_dir, filename)
+    if os.path.exists(target_path):
+        logger.info(f"Package from {url} already exists at {target_path}")
+        return target_path
+
+    try:
+        response = requests.get(url, stream=True, timeout=30)
+        response.raise_for_status()
+        with open(target_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        logger.info(f"Manually downloaded package from {url} to {target_path}")
+        return target_path
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"HTTP error downloading from {url}: {e}")
+        return None
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request error downloading from {url}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error downloading from {url}: {e}", exc_info=True)
+        return None
+
+def process_manual_package_file(tgz_path):
+    """
+    Process a .tgz package file to extract metadata, cloning process_package_file.
+    
+    Args:
+        tgz_path (str): Path to the .tgz file.
+    
+    Returns:
+        dict: Package metadata including dependencies and errors.
+    """
+    if not tgz_path or not os.path.exists(tgz_path):
+        logger.error(f"Package file not found for manual processing: {tgz_path}")
+        return {'errors': [f"Package file not found: {tgz_path}"], 'dependencies': []}
+
+    pkg_basename = os.path.basename(tgz_path)
+    name, version = parse_package_filename(tgz_path)
+    logger.info(f"Manually processing package: {pkg_basename} ({name}#{version})")
+
+    results = {
+        'dependencies': [],
+        'errors': []
+    }
+
+    try:
+        with tarfile.open(tgz_path, "r:gz") as tar:
+            pkg_json_member = next((m for m in tar if m.name == 'package/package.json'), None)
+            if pkg_json_member:
+                with tar.extractfile(pkg_json_member) as f:
+                    pkg_data = json.load(f)
+                    dependencies = pkg_data.get('dependencies', {})
+                    results['dependencies'] = [
+                        {'name': dep_name, 'version': dep_version}
+                        for dep_name, dep_version in dependencies.items()
+                    ]
+            else:
+                results['errors'].append("package.json not found in archive")
+    except Exception as e:
+        logger.error(f"Error manually processing {tgz_path}: {e}", exc_info=True)
+        results['errors'].append(f"Error processing package: {str(e)}")
+
+    return results
+
 def fetch_packages_from_registries(search_term=''):
     logger.debug("Entering fetch_packages_from_registries function with search_term: %s", search_term)
     packages_dict = defaultdict(list)

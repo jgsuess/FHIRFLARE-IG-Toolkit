@@ -75,6 +75,62 @@ class IgImportForm(FlaskForm):
     ], default='recursive')
     submit = SubmitField('Import')
 
+class ManualIgImportForm(FlaskForm):
+    """Form for manual importing Implementation Guides via file or URL."""
+    import_mode = SelectField('Import Mode', choices=[
+        ('file', 'Upload File'),
+        ('url', 'From URL')
+    ], default='file', validators=[DataRequired()])
+    tgz_file = FileField('IG Package File (.tgz)', validators=[Optional()],
+                         render_kw={'accept': '.tgz'})
+    tgz_url = StringField('IG Package URL', validators=[Optional(), URL()],
+                          render_kw={'placeholder': 'e.g., https://example.com/hl7.fhir.au.core-1.1.0-preview.tgz'})
+    dependency_mode = SelectField('Dependency Mode', choices=[
+        ('recursive', 'Current Recursive'),
+        ('patch-canonical', 'Patch Canonical Versions'),
+        ('tree-shaking', 'Tree Shaking (Only Used Dependencies)')
+    ], default='recursive')
+    resolve_dependencies = BooleanField('Resolve Dependencies', default=True,
+                                       render_kw={'class': 'form-check-input'})
+    submit = SubmitField('Import')
+
+    def validate(self, extra_validators=None):
+        if not super().validate(extra_validators):
+            return False
+        mode = self.import_mode.data
+        has_file = request and request.files and self.tgz_file.name in request.files and request.files[self.tgz_file.name].filename != ''
+        has_url = bool(self.tgz_url.data)  # Convert to boolean: True if non-empty string
+
+        # Ensure exactly one input method is used
+        inputs_provided = sum([has_file, has_url])
+        if inputs_provided != 1:
+            if inputs_provided == 0:
+                self.import_mode.errors.append('Please provide input for one import method (File or URL).')
+            else:
+                self.import_mode.errors.append('Please use only one import method at a time.')
+            return False
+
+        # Validate based on import mode
+        if mode == 'file':
+            if not has_file:
+                self.tgz_file.errors.append('A .tgz file is required for File import.')
+                return False
+            if not self.tgz_file.data.filename.lower().endswith('.tgz'):
+                self.tgz_file.errors.append('File must be a .tgz file.')
+                return False
+        elif mode == 'url':
+            if not has_url:
+                self.tgz_url.errors.append('A valid URL is required for URL import.')
+                return False
+            if not self.tgz_url.data.lower().endswith('.tgz'):
+                self.tgz_url.errors.append('URL must point to a .tgz file.')
+                return False
+        else:
+            self.import_mode.errors.append('Invalid import mode selected.')
+            return False
+
+        return True
+
 class ValidationForm(FlaskForm):
     """Form for validating FHIR samples."""
     package_name = StringField('Package Name', validators=[DataRequired()])
@@ -246,7 +302,7 @@ class FhirRequestForm(FlaskForm):
             if self.auth_type.data == 'basicAuth':
                 if not self.basic_auth_username.data:
                     self.basic_auth_username.errors.append('Username is required for Basic Authentication with a custom URL.')
-                    return False
+                return False
                 if not self.basic_auth_password.data:
                     self.basic_auth_password.errors.append('Password is required for Basic Authentication with a custom URL.')
                     return False
