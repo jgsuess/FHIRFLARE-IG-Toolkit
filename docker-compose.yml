@@ -25,8 +25,6 @@ services:
     configs:
       - source: hapi
         target: /app/config/application.yaml
-    volumes:
-      - ./webapp/pong:/webapp/pong
     depends_on:
       - db
 
