@@ -1,3 +1,14 @@
+# This workflow builds and pushes a Docker image to GitHub Container Registry (ghcr.io) on every push to main.
+#
+# The Docker meta step is required because GitHub repository names can contain uppercase letters, but Docker image tags must be lowercase.
+# The docker/metadata-action@v5 normalizes the repository name to lowercase, ensuring the build and push steps use a valid image tag.
+#
+# Without this normalization, you may encounter errors like:
+#   ERROR: failed to build: invalid tag "ghcr.io/jgsuess/FHIRFLARE-IG-Toolkit:latest": repository name must be lowercase
+#   Error: Process completed with exit code 1.
+#
+# This workflow uses the IMAGE_NAME environment variable set by the Docker meta step to guarantee a valid, lowercase image name.
+
 name: Build and Push Docker image
 
 on:
@@ -19,10 +30,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+
+      - name: Set normalized image name
+        run: |
+          echo "IMAGE_NAME=${{ steps.meta.outputs.tags }}" >> $GITHUB_ENV
+
       - name: Build Docker image
         run: |
-          docker build -t ghcr.io/${{ github.repository }}:latest .
+          docker build -t ghcr.io/${{ env.IMAGE_NAME }}:latest .
 
       - name: Push Docker image
         run: |
-          docker push ghcr.io/${{ github.repository }}:latest
+          docker push ghcr.io/${{ env.IMAGE_NAME }}:latest
