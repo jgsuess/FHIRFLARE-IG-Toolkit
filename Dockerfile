@@ -1,31 +1,52 @@
-# Base image with Python and Java
-FROM tomcat:10.1-jdk17
+# ------------------------------------------------------------------------------
+# Dockerfile for FHIRFLARE-IG-Toolkit (Optimized for Python/Flask)
+#
+# This Dockerfile builds a container for the FHIRFLARE-IG-Toolkit application.
+#
+# Key Features:
+# - Uses python:3.11-slim as the base image for a minimal, secure Python runtime.
+# - Installs Node.js and global NPM packages (gofsh, fsh-sushi) for FHIR IG tooling.
+# - Sets up a Python virtual environment and installs all Python dependencies.
+# - Installs and configures Supervisor to manage the Flask app and related processes.
+# - Copies all necessary application code, templates, static files, and configuration.
+# - Exposes ports 5000 (Flask) and 8080 (optional, for compatibility).
+# - Entrypoint runs Supervisor for process management.
+#
+# Notes:
+# - The Dockerfile is optimized for Python. Tomcat/Java is not included.
+# - Node.js is only installed if needed for FHIR IG tooling.
+# - The image is suitable for development and production with minimal changes.
+# ------------------------------------------------------------------------------
 
-# Install build dependencies, Node.js 18, and coreutils (for stdbuf)
+# Optimized Dockerfile for Python (Flask)
+FROM python:3.11-slim AS base
+
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip python3-venv curl coreutils \
-    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
+    curl \
+    coreutils \
     && rm -rf /var/lib/apt/lists/*
 
-# Install specific versions of GoFSH and SUSHI
-# REMOVED pip install fhirpath from this line
-RUN npm install -g gofsh fsh-sushi
+# Optional: Install Node.js if needed for GoFSH/SUSHI
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g gofsh fsh-sushi \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set up Python environment
+# Set workdir
 WORKDIR /app
-RUN python3 -m venv /app/venv
-ENV PATH="/app/venv/bin:$PATH"
 
-# ADDED: Uninstall old fhirpath just in case it's in requirements.txt
-RUN pip uninstall -y fhirpath || true
-# ADDED: Install the new fhirpathpy library
-RUN pip install --no-cache-dir fhirpathpy
-
-# Copy Flask files
+# Copy requirements and install Python dependencies
 COPY requirements.txt .
-# Install requirements (including Pydantic - check version compatibility if needed)
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m venv /app/venv \
+    && . /app/venv/bin/activate \
+    && pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip uninstall -y fhirpath || true \
+    && pip install --no-cache-dir fhirpathpy \
+    && pip install supervisor
+
+# Copy application files
 COPY app.py .
 COPY services.py .
 COPY forms.py .
@@ -33,15 +54,13 @@ COPY package.py .
 COPY templates/ templates/
 COPY static/ static/
 COPY tests/ tests/
-
-# Install supervisord
-RUN pip install supervisor
-
-# Configure supervisord
 COPY supervisord.conf /etc/supervisord.conf
 
 # Expose ports
 EXPOSE 5000 8080
+
+# Set environment
+ENV PATH="/app/venv/bin:$PATH"
 
 # Start supervisord
 CMD ["supervisord", "-c", "/etc/supervisord.conf"]
