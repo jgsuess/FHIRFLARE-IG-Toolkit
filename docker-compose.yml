@@ -1,12 +1,8 @@
-version: '3.8'
 services:
   fhirflare:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/jgsuess/fhirflare-ig-toolkit:latest
     ports:
       - "5000:5000"
-      - "8080:8080" # Keep port exposed, even if Tomcat isn't running useful stuff in Lite
     volumes:
       - ./instance:/app/instance
       - ./static/uploads:/app/static/uploads
@@ -18,5 +14,32 @@ services:
       - NODE_PATH=/usr/lib/node_modules
       - APP_MODE=lite
       - APP_BASE_URL=http://localhost:5000
-      - HAPI_FHIR_URL=http://localhost:8080/fhir
+      - HAPI_FHIR_URL=http://fhir:8080/fhir
     command: supervisord -c /etc/supervisord.conf
+
+  fhir:
+    container_name: hapi
+    image: "hapiproject/hapi:v8.2.0-1"
+    ports:
+      - "8080:8080"
+    configs:
+      - source: hapi
+        target: /app/config/application.yaml
+    volumes:
+      - ./webapp/pong:/webapp/pong
+    depends_on:
+      - db
+
+  db:
+    image: "postgres:17.2-bookworm"
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: admin
+      POSTGRES_USER: admin
+      POSTGRES_DB: hapi
+    volumes:
+      - ./hapi.postgress.data:/var/lib/postgresql/data
+
+configs:
+  hapi:
+     file: ./application.yaml
