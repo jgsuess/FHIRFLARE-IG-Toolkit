@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fhirflare
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: fhirflare
+  strategy:
+    type: Recreate
+  template:
+    spec:
+      containers:
+        - args:
+            - supervisord
+            - -c
+            - /etc/supervisord.conf
+          env:
+            - name: APP_BASE_URL
+              value: http://localhost:5000
+            - name: APP_MODE
+              value: lite
+            - name: FLASK_APP
+              value: app.py
+            - name: FLASK_ENV
+              value: development
+            - name: HAPI_FHIR_URL
+              value: http://localhost:8080/fhir
+            - name: NODE_PATH
+              value: /usr/lib/node_modules
+          image: ghcr.io/jgsuess/fhirflare-ig-toolkit:latest
+          name: fhirflare
+          ports:
+            - containerPort: 5000
+              protocol: TCP
+      restartPolicy: Always
