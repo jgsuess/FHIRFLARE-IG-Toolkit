@@ -34,7 +34,7 @@ podAnnotations: {}
 #   runAsUser: 65532
 #   seccompProfile:
 #     type: RuntimeDefault
-#
+
 # securityContext:
 #   allowPrivilegeEscalation: false
 #   capabilities:
