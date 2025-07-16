@@ -1,0 +1,6 @@
+dependencies:
+- name: hapi-fhir-jpaserver
+  repository: https://hapifhir.github.io/hapi-fhir-jpaserver-starter/
+  version: 0.20.0
+digest: sha256:0e3b3ee43fdec137a4e61465880c7f437bac52459514674d4ce54aac39f83bde
+generated: "2025-07-16T09:42:23.594307042+10:00"
