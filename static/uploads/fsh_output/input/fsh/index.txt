@@ -1,2 +1,0 @@
-Name              Type      File
-banks-mia-leanne  Instance  instances/banks-mia-leanne.fsh

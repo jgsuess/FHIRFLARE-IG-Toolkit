@@ -1,1 +1,0 @@
-Alias: $v3-ActCode = http://terminology.hl7.org/CodeSystem/v3-ActCode
