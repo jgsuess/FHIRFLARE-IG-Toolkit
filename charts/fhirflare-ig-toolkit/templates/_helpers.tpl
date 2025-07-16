@@ -1,7 +1,7 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "hapi-fhir-jpaserver.name" -}}
+{{- define "fhirflare-ig-toolkit.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
@@ -10,7 +10,7 @@ Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
 */}}
-{{- define "hapi-fhir-jpaserver.fullname" -}}
+{{- define "fhirflare-ig-toolkit.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -26,16 +26,16 @@ If release name contains chart name it will be used as a full name.
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "hapi-fhir-jpaserver.chart" -}}
+{{- define "fhirflare-ig-toolkit.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "hapi-fhir-jpaserver.labels" -}}
-helm.sh/chart: {{ include "hapi-fhir-jpaserver.chart" . }}
-{{ include "hapi-fhir-jpaserver.selectorLabels" . }}
+{{- define "fhirflare-ig-toolkit.labels" -}}
+helm.sh/chart: {{ include "fhirflare-ig-toolkit.chart" . }}
+{{ include "fhirflare-ig-toolkit.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -45,8 +45,8 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
-{{- define "hapi-fhir-jpaserver.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "hapi-fhir-jpaserver.name" . }}
+{{- define "fhirflare-ig-toolkit.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "fhirflare-ig-toolkit.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 

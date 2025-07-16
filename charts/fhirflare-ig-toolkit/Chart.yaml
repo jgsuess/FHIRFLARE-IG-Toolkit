@@ -11,7 +11,7 @@ keywords:
   - ig-toolkit
 home: https://github.com/jgsuess/FHIRFLARE-IG-Toolkit
 maintainers:
-  - name: FHIRFLARE Team
+  - name: Jörn Guy Süß
     email: jgsuess@gmail.com
 dependencies:
   - name: hapi-fhir-jpaserver
