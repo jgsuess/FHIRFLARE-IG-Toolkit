@@ -3,7 +3,7 @@ name: Release Charts
 on:
   push:
     branches:
-      - master
+      - main
     paths:
       - "charts/**"
 
@@ -13,7 +13,7 @@ jobs:
     steps:
       - name: Add workspace as safe directory
         run: |
-          git config --global --add safe.directory /__w/FHIRFLARE-IG-Toolkit/FHIRFLARE-IG-Toolkit
+          git config --global --add safe.directory /__w/hapi-fhir-jpaserver-starter/hapi-fhir-jpaserver-starter
 
       - name: Checkout
         uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
