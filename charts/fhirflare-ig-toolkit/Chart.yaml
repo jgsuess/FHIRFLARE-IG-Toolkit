@@ -9,6 +9,7 @@ keywords:
   - fhir
   - healthcare
   - ig-toolkit
+  - implementation-guide
 home: https://github.com/jgsuess/FHIRFLARE-IG-Toolkit
 maintainers:
   - name: Jörn Guy Süß
