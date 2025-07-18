@@ -74,8 +74,11 @@ spec:
           emptyDir: {}
         - name: tmp-dir
           emptyDir: {}
-      {{- with .Values.nodeSelector }}
+      # Always require Intel 64-bit architecture nodes
       nodeSelector:
+        kubernetes.io/arch: amd64
+      {{- with .Values.nodeSelector }}
+      # Merge with user-defined nodeSelectors if any
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.affinity }}
