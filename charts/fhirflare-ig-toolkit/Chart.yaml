@@ -1,6 +1,6 @@
 apiVersion: v2
 name: fhirflare-ig-toolkit
-version: 0.2.0
+version: 0.3.0
 description: Helm chart for deploying the fhirflare-ig-toolkit application
 type: application
 appVersion: "latest"
