@@ -1,0 +1,184 @@
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::               (v3.3.11)
+
+2025-08-01T00:44:50.113Z  INFO 9 --- [           main] ca.uhn.fhir.jpa.starter.Application      : Starting Application using Java 17.0.15 with PID 9 (/usr/local/tomcat/webapps/ROOT/WEB-INF/classes started by root in /usr/local/tomcat)
+2025-08-01T00:44:50.117Z  INFO 9 --- [           main] ca.uhn.fhir.jpa.starter.Application      : No active profile set, falling back to 1 default profile: "default"
+2025-08-01T00:44:51.730Z  INFO 9 --- [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2025-08-01T00:44:52.051Z  INFO 9 --- [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 305 ms. Found 53 JPA repository interfaces.
+2025-08-01T00:44:54.276Z  WARN 9 --- [           main] trationDelegate$BeanPostProcessorChecker : Bean 'ca.uhn.fhir.jpa.config.BeanPostProcessorConfig' of type [ca.uhn.fhir.jpa.config.BeanPostProcessorConfig$$SpringCGLIB$$0] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). The currently created BeanPostProcessor [persistenceExceptionTranslationPostProcessor] is declared through a non-static factory method on that class; consider declaring it as static instead.
+2025-08-01T00:44:54.434Z  INFO 9 --- [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 4281 ms
+2025-08-01T00:44:54.614Z  INFO 9 --- [           main] ca.uhn.fhir.util.VersionUtil             : HAPI FHIR version 8.2.0 - Rev 8a44e1058f
+2025-08-01T00:44:54.623Z  INFO 9 --- [           main] ca.uhn.fhir.context.FhirContext          : Creating new FHIR context for FHIR version [R4]
+2025-08-01T00:44:54.682Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured to allow contains searches
+2025-08-01T00:44:54.682Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured to deny multiple deletes
+2025-08-01T00:44:54.682Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured to deny external references
+2025-08-01T00:44:54.683Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured to enable DAO scheduling
+2025-08-01T00:44:54.683Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured to disable delete expunges
+2025-08-01T00:44:54.683Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured to enable expunges
+2025-08-01T00:44:54.683Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured to allow overriding default search params
+2025-08-01T00:44:54.684Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured to disable auto-creating placeholder references
+2025-08-01T00:44:54.684Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured to auto-version references at paths []
+2025-08-01T00:44:54.684Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured to enable value set pre-expansion
+2025-08-01T00:44:54.685Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured to enable value set pre-expansion task
+2025-08-01T00:44:54.685Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured for pre-expand value set default count of 1000
+2025-08-01T00:44:54.685Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured for pre-expand value set max count of 1000
+2025-08-01T00:44:54.685Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured for maximum expansion size of 1000
+2025-08-01T00:44:54.717Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured to have a maximum fetch size of 'unlimited'
+2025-08-01T00:44:54.717Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured to cache search results for 60000 milliseconds
+2025-08-01T00:44:54.717Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Server configured to use 'ALPHANUMERIC' Client ID Strategy
+2025-08-01T00:44:54.758Z  INFO 9 --- [           main] c.u.f.j.s.common.FhirServerConfigCommon  : Partitioning is not enabled on this server
+2025-08-01T00:44:54.852Z  INFO 9 --- [           main] o.hibernate.jpa.internal.util.LogHelper  : HHH000204: Processing PersistenceUnitInfo [name: HAPI_PU]
+2025-08-01T00:44:54.986Z  INFO 9 --- [           main] org.hibernate.Version                    : HHH000412: Hibernate ORM core version 6.6.4.Final
+2025-08-01T00:44:55.001Z  INFO 9 --- [           main] .f.j.l.FilteringSqlLoggerImplContributor : Adding service: SqlStatementFilteringLogger
+2025-08-01T00:44:55.060Z  INFO 9 --- [           main] o.h.c.internal.RegionFactoryInitiator    : HHH000026: Second-level cache disabled
+2025-08-01T00:44:55.247Z  INFO 9 --- [           main] o.h.e.boot.internal.EnversServiceImpl    : Envers integration enabled? : true
+2025-08-01T00:44:55.586Z  INFO 9 --- [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2025-08-01T00:44:55.628Z  INFO 9 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2025-08-01T00:44:59.687Z  INFO 9 --- [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection conn1: url=jdbc:h2:file:/app/h2-data/fhir user=SA
+2025-08-01T00:44:59.691Z  INFO 9 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2025-08-01T00:44:59.756Z  INFO 9 --- [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [Connecting through datasource 'HikariDataSource (HikariPool-1)']
+	Database driver: undefined/unknown
+	Database version: 2.3.232
+	Autocommit mode: undefined/unknown
+	Isolation level: undefined/unknown
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2025-08-01T00:45:01.900Z  INFO 9 --- [           main] b.i.HibernateSearchPreIntegrationService : HSEARCH000034: Hibernate Search version 7.2.1.Final
+2025-08-01T00:45:02.062Z  INFO 9 --- [           main] o.h.e.c.i.m.AuditMetadataGenerator       : Adding properties for entity: ca.uhn.fhir.jpa.entity.MdmLink
+2025-08-01T00:45:04.735Z  INFO 9 --- [           main] o.h.e.t.j.p.i.JtaPlatformInitiator       : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2025-08-01T00:45:06.640Z  INFO 9 --- [           main] irLocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'HAPI_PU'
+2025-08-01T00:45:07.684Z  INFO 9 --- [           main] .u.f.c.s.DefaultProfileValidationSupport : Loading structure definitions from classpath: /org/hl7/fhir/r4/model/profile/profiles-resources.xml
+2025-08-01T00:45:07.705Z  INFO 9 --- [           main] ca.uhn.fhir.util.XmlUtil                 : FHIR XML procesing will use StAX implementation 'Woodstox' version '6.4.0'
+2025-08-01T00:45:08.736Z  INFO 9 --- [           main] .u.f.c.s.DefaultProfileValidationSupport : Loading structure definitions from classpath: /org/hl7/fhir/r4/model/profile/profiles-types.xml
+2025-08-01T00:45:08.828Z  INFO 9 --- [           main] .u.f.c.s.DefaultProfileValidationSupport : Loading structure definitions from classpath: /org/hl7/fhir/r4/model/profile/profiles-others.xml
+2025-08-01T00:45:09.260Z  INFO 9 --- [           main] .u.f.c.s.DefaultProfileValidationSupport : Loading structure definitions from classpath: /org/hl7/fhir/r4/model/extension/extension-definitions.xml
+2025-08-01T00:45:10.281Z  INFO 9 --- [           main] o.s.d.j.r.query.QueryEnhancerFactory     : Hibernate is in classpath; If applicable, HQL parser will be used.
+2025-08-01T00:45:14.625Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Creating Local Scheduler
+2025-08-01T00:45:14.674Z  INFO 9 --- [           main] org.quartz.impl.StdSchedulerFactory      : Using default implementation for ThreadExecutor
+2025-08-01T00:45:14.693Z  INFO 9 --- [           main] org.quartz.core.SchedulerSignalerImpl    : Initialized Scheduler Signaller of type: class org.quartz.core.SchedulerSignalerImpl
+2025-08-01T00:45:14.693Z  INFO 9 --- [           main] org.quartz.core.QuartzScheduler          : Quartz Scheduler v.2.3.2 created.
+2025-08-01T00:45:14.694Z  INFO 9 --- [           main] org.quartz.simpl.RAMJobStore             : RAMJobStore initialized.
+2025-08-01T00:45:14.695Z  INFO 9 --- [           main] org.quartz.core.QuartzScheduler          : Scheduler meta-data: Quartz Scheduler (v2.3.2) 'hapi-fhir-jpa-scheduler' with instanceId 'NON_CLUSTERED'
+  Scheduler class: 'org.quartz.core.QuartzScheduler' - running locally.
+  NOT STARTED.
+  Currently in standby mode.
+  Number of jobs executed: 0
+  Using thread pool 'org.quartz.simpl.SimpleThreadPool' - with 4 threads.
+  Using job-store 'org.quartz.simpl.RAMJobStore' - which does not support persistence. and is not clustered.
+
+2025-08-01T00:45:14.695Z  INFO 9 --- [           main] org.quartz.impl.StdSchedulerFactory      : Quartz scheduler 'hapi-fhir-jpa-scheduler' initialized from an externally provided properties instance.
+2025-08-01T00:45:14.695Z  INFO 9 --- [           main] org.quartz.impl.StdSchedulerFactory      : Quartz scheduler version: 2.3.2
+2025-08-01T00:45:14.696Z  INFO 9 --- [           main] org.quartz.core.QuartzScheduler          : JobFactory set to: ca.uhn.fhir.jpa.sched.AutowiringSpringBeanJobFactory@f7fb17c
+2025-08-01T00:45:14.696Z  INFO 9 --- [           main] org.quartz.core.QuartzScheduler          : Scheduler hapi-fhir-jpa-scheduler_$_NON_CLUSTERED paused.
+2025-08-01T00:45:14.696Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Creating Clustered Scheduler
+2025-08-01T00:45:14.697Z  INFO 9 --- [           main] org.quartz.impl.StdSchedulerFactory      : Using default implementation for ThreadExecutor
+2025-08-01T00:45:14.699Z  INFO 9 --- [           main] org.quartz.core.SchedulerSignalerImpl    : Initialized Scheduler Signaller of type: class org.quartz.core.SchedulerSignalerImpl
+2025-08-01T00:45:14.699Z  INFO 9 --- [           main] org.quartz.core.QuartzScheduler          : Quartz Scheduler v.2.3.2 created.
+2025-08-01T00:45:14.699Z  INFO 9 --- [           main] org.quartz.simpl.RAMJobStore             : RAMJobStore initialized.
+2025-08-01T00:45:14.699Z  INFO 9 --- [           main] org.quartz.core.QuartzScheduler          : Scheduler meta-data: Quartz Scheduler (v2.3.2) 'hapi-fhir-jpa-scheduler' with instanceId 'NON_CLUSTERED'
+  Scheduler class: 'org.quartz.core.QuartzScheduler' - running locally.
+  NOT STARTED.
+  Currently in standby mode.
+  Number of jobs executed: 0
+  Using thread pool 'org.quartz.simpl.SimpleThreadPool' - with 4 threads.
+  Using job-store 'org.quartz.simpl.RAMJobStore' - which does not support persistence. and is not clustered.
+
+2025-08-01T00:45:14.699Z  INFO 9 --- [           main] org.quartz.impl.StdSchedulerFactory      : Quartz scheduler 'hapi-fhir-jpa-scheduler' initialized from an externally provided properties instance.
+2025-08-01T00:45:14.699Z  INFO 9 --- [           main] org.quartz.impl.StdSchedulerFactory      : Quartz scheduler version: 2.3.2
+2025-08-01T00:45:14.699Z  INFO 9 --- [           main] org.quartz.core.QuartzScheduler          : JobFactory set to: ca.uhn.fhir.jpa.sched.AutowiringSpringBeanJobFactory@f7fb17c
+2025-08-01T00:45:14.699Z  INFO 9 --- [           main] org.quartz.core.QuartzScheduler          : Scheduler hapi-fhir-jpa-scheduler_$_NON_CLUSTERED paused.
+2025-08-01T00:45:15.168Z  INFO 9 --- [           main] c.u.f.log.terminology_troubleshooting    : Performing initial retrieval for non-expiring cache: org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain$FetchAllKey@4d737618
+2025-08-01T00:45:15.169Z  INFO 9 --- [           main] c.u.f.log.terminology_troubleshooting    : Initial retrieval for non-expiring cache org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain$FetchAllKey@4d737618 succeeded in 1ms
+2025-08-01T00:45:15.177Z  INFO 9 --- [           main] c.u.f.log.terminology_troubleshooting    : Performing initial retrieval for non-expiring cache: org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain$FetchAllKey@4d737618
+2025-08-01T00:45:15.178Z  INFO 9 --- [           main] c.u.f.log.terminology_troubleshooting    : Initial retrieval for non-expiring cache org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain$FetchAllKey@4d737618 succeeded in 1ms
+2025-08-01T00:45:15.179Z  INFO 9 --- [           main] c.u.f.log.terminology_troubleshooting    : Performing initial retrieval for non-expiring cache: org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain$FetchAllKey@4d737618
+2025-08-01T00:45:15.179Z  INFO 9 --- [           main] c.u.f.log.terminology_troubleshooting    : Initial retrieval for non-expiring cache org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain$FetchAllKey@4d737618 succeeded in 0ms
+2025-08-01T00:45:15.180Z  INFO 9 --- [           main] c.u.f.log.terminology_troubleshooting    : Performing initial retrieval for non-expiring cache: org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain$FetchAllKey@4d737618
+2025-08-01T00:45:15.180Z  INFO 9 --- [           main] c.u.f.log.terminology_troubleshooting    : Initial retrieval for non-expiring cache org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain$FetchAllKey@4d737618 succeeded in 0ms
+2025-08-01T00:45:15.181Z  INFO 9 --- [           main] c.u.f.log.terminology_troubleshooting    : Performing initial retrieval for non-expiring cache: org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain$FetchAllKey@4d737618
+2025-08-01T00:45:15.181Z  INFO 9 --- [           main] c.u.f.log.terminology_troubleshooting    : Initial retrieval for non-expiring cache org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain$FetchAllKey@4d737618 succeeded in 0ms
+2025-08-01T00:45:15.182Z  INFO 9 --- [           main] c.u.f.log.terminology_troubleshooting    : Performing initial retrieval for non-expiring cache: org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain$FetchAllKey@4d737618
+2025-08-01T00:45:15.182Z  INFO 9 --- [           main] c.u.f.log.terminology_troubleshooting    : Initial retrieval for non-expiring cache org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain$FetchAllKey@4d737618 succeeded in 0ms
+2025-08-01T00:45:15.255Z  INFO 9 --- [           main] ca.uhn.fhir.context.FhirContext          : Creating new FHIR context for FHIR version [R4]
+2025-08-01T00:45:15.531Z  INFO 9 --- [           main] c.u.f.j.starter.common.StarterJpaConfig  : CORS is enabled on this server
+2025-08-01T00:45:15.533Z  INFO 9 --- [           main] c.u.f.j.starter.common.StarterJpaConfig  : CORS allows the following origins: *
+2025-08-01T00:45:15.562Z  INFO 9 --- [           main] ca.uhn.fhir.context.FhirContext          : Creating new FHIR context for FHIR version [R5]
+2025-08-01T00:45:20.832Z  INFO 9 --- [           main] ca.uhn.fhir.context.FhirContext          : Creating new FHIR context for FHIR version [R4]
+2025-08-01T00:45:21.725Z  WARN 9 --- [           main] JpaBaseConfiguration$JpaWebConfiguration : spring.jpa.open-in-view is enabled by default. Therefore, database queries may be performed during view rendering. Explicitly configure spring.jpa.open-in-view to disable this warning
+2025-08-01T00:45:22.254Z  INFO 9 --- [           main] .s.i.SubscriptionSubmitInterceptorLoader : Subscriptions are disabled on this server.  Subscriptions will not be activated and incoming resources will not be matched against subscriptions.
+2025-08-01T00:45:22.925Z  INFO 9 --- [           main] org.quartz.impl.StdSchedulerFactory      : Using default implementation for ThreadExecutor
+2025-08-01T00:45:22.930Z  INFO 9 --- [           main] org.quartz.core.SchedulerSignalerImpl    : Initialized Scheduler Signaller of type: class org.quartz.core.SchedulerSignalerImpl
+2025-08-01T00:45:22.931Z  INFO 9 --- [           main] org.quartz.core.QuartzScheduler          : Quartz Scheduler v.2.3.2 created.
+2025-08-01T00:45:22.931Z  INFO 9 --- [           main] org.quartz.simpl.RAMJobStore             : RAMJobStore initialized.
+2025-08-01T00:45:22.931Z  INFO 9 --- [           main] org.quartz.core.QuartzScheduler          : Scheduler meta-data: Quartz Scheduler (v2.3.2) 'quartzScheduler' with instanceId 'NON_CLUSTERED'
+  Scheduler class: 'org.quartz.core.QuartzScheduler' - running locally.
+  NOT STARTED.
+  Currently in standby mode.
+  Number of jobs executed: 0
+  Using thread pool 'org.quartz.simpl.SimpleThreadPool' - with 10 threads.
+  Using job-store 'org.quartz.simpl.RAMJobStore' - which does not support persistence. and is not clustered.
+
+2025-08-01T00:45:22.931Z  INFO 9 --- [           main] org.quartz.impl.StdSchedulerFactory      : Quartz scheduler 'quartzScheduler' initialized from an externally provided properties instance.
+2025-08-01T00:45:22.931Z  INFO 9 --- [           main] org.quartz.impl.StdSchedulerFactory      : Quartz scheduler version: 2.3.2
+2025-08-01T00:45:22.931Z  INFO 9 --- [           main] org.quartz.core.QuartzScheduler          : JobFactory set to: org.springframework.scheduling.quartz.SpringBeanJobFactory@48e64e95
+2025-08-01T00:45:22.968Z  INFO 9 --- [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 1 endpoint beneath base path '/actuator'
+2025-08-01T00:45:23.183Z  INFO 9 --- [           main] o.s.s.quartz.SchedulerFactoryBean        : Starting Quartz Scheduler now
+2025-08-01T00:45:23.183Z  INFO 9 --- [           main] org.quartz.core.QuartzScheduler          : Scheduler quartzScheduler_$_NON_CLUSTERED started.
+2025-08-01T00:45:23.189Z  INFO 9 --- [           main] ca.uhn.fhir.log.batch_troubleshooting    : Registering Batch2 Job Definition: BULK_IMPORT_PULL / 1
+2025-08-01T00:45:23.191Z  INFO 9 --- [           main] ca.uhn.fhir.log.batch_troubleshooting    : Registering Batch2 Job Definition: BULK_IMPORT_PULL / 2
+2025-08-01T00:45:23.191Z  INFO 9 --- [           main] ca.uhn.fhir.log.batch_troubleshooting    : Registering Batch2 Job Definition: REINDEX / 1
+2025-08-01T00:45:23.191Z  INFO 9 --- [           main] ca.uhn.fhir.log.batch_troubleshooting    : Registering Batch2 Job Definition: REINDEX / 2
+2025-08-01T00:45:23.191Z  INFO 9 --- [           main] ca.uhn.fhir.log.batch_troubleshooting    : Registering Batch2 Job Definition: DELETE_EXPUNGE / 1
+2025-08-01T00:45:23.191Z  INFO 9 --- [           main] ca.uhn.fhir.log.batch_troubleshooting    : Registering Batch2 Job Definition: BULK_EXPORT / 1
+2025-08-01T00:45:23.191Z  INFO 9 --- [           main] ca.uhn.fhir.log.batch_troubleshooting    : Registering Batch2 Job Definition: BULK_EXPORT / 2
+2025-08-01T00:45:23.191Z  INFO 9 --- [           main] ca.uhn.fhir.log.batch_troubleshooting    : Registering Batch2 Job Definition: termCodeSystemVersionDeleteJob / 1
+2025-08-01T00:45:23.192Z  INFO 9 --- [           main] ca.uhn.fhir.log.batch_troubleshooting    : Registering Batch2 Job Definition: termCodeSystemDeleteJob / 1
+2025-08-01T00:45:23.192Z  INFO 9 --- [           main] ca.uhn.fhir.log.batch_troubleshooting    : Registering Batch2 Job Definition: bulkImportJob / 1
+2025-08-01T00:45:23.194Z  INFO 9 --- [           main] .j.s.m.m.s.MatchingQueueSubscriberLoader : Subscription Matching Subscriber subscribed to Matching Channel ca.uhn.fhir.jpa.subscription.channel.subscription.BroadcastingSubscribableChannelWrapper with name subscription-matching
+2025-08-01T00:45:24.054Z  INFO 9 --- [           main] c.u.f.j.s.registry.JpaSearchParamCache   : Have 0 unique search params
+2025-08-01T00:45:24.148Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling 15 jobs in application
+2025-08-01T00:45:24.150Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling local job ca.uhn.fhir.jpa.term.TermDeferredStorageSvcImpl$Job with interval 5000ms
+2025-08-01T00:45:24.156Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling local job ca.uhn.fhir.jpa.cache.ResourceChangeListenerCacheRefresherImpl with interval 00:00:10.000
+2025-08-01T00:45:24.158Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling clustered job ca.uhn.fhir.jpa.search.reindex.ResourceReindexingSvcImpl with interval 00:00:10.000
+2025-08-01T00:45:24.159Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling clustered job ca.uhn.fhir.jpa.bulk.export.svc.BulkDataExportJobSchedulingHelperImpl$PurgeExpiredFilesJob with interval 01:00:00
+2025-08-01T00:45:24.161Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling local job ca.uhn.fhir.jpa.bulk.imprt.svc.BulkDataImportSvcImpl$ActivationJob with interval 00:00:10.000
+2025-08-01T00:45:24.162Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling clustered job ca.uhn.fhir.jpa.search.warm.CacheWarmingSvcImpl with interval 00:00:10.000
+2025-08-01T00:45:24.163Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling clustered job ca.uhn.fhir.jpa.term.TermReadSvcImpl with interval 00:10:00
+2025-08-01T00:45:24.165Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling local job ca.uhn.fhir.jpa.term.TermReindexingSvcImpl with interval 00:01:00.000
+2025-08-01T00:45:24.166Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling clustered job ca.uhn.fhir.jpa.search.SearchUrlJobMaintenanceSvcImpl$SearchUrlMaintenanceJob with interval 00:10:00
+2025-08-01T00:45:24.166Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling clustered job ca.uhn.fhir.jpa.search.StaleSearchDeletingSvcImpl with interval 00:01:00.000
+2025-08-01T00:45:24.167Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling local job ca.uhn.fhir.jpa.util.ResourceCountCache with interval 00:10:00
+2025-08-01T00:45:24.168Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling local job ca.uhn.fhir.jpa.subscription.triggering.SubscriptionTriggeringSvcImpl with interval 5000ms
+2025-08-01T00:45:24.168Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling clustered job ca.uhn.fhir.jpa.subscription.async.AsyncResourceModifiedProcessingSchedulerSvc with interval 5000ms
+2025-08-01T00:45:24.168Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling clustered job ca.uhn.fhir.batch2.coordinator.ReductionStepExecutorServiceImpl$ReductionStepExecutorScheduledJob with interval 00:00:10.000
+2025-08-01T00:45:24.169Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Scheduling clustered job ca.uhn.fhir.batch2.maintenance.JobMaintenanceServiceImpl$JobMaintenanceScheduledJob with interval 00:01:00.000
+2025-08-01T00:45:24.169Z  INFO 9 --- [           main] c.u.f.j.sched.BaseSchedulerServiceImpl   : Starting task schedulers for context application
+2025-08-01T00:45:24.169Z  INFO 9 --- [           main] c.uhn.fhir.jpa.sched.BaseHapiScheduler   : Starting scheduler hapi-fhir-jpa-scheduler-local
+2025-08-01T00:45:24.169Z  INFO 9 --- [           main] org.quartz.core.QuartzScheduler          : Scheduler hapi-fhir-jpa-scheduler_$_NON_CLUSTERED started.
+2025-08-01T00:45:24.169Z  INFO 9 --- [           main] c.uhn.fhir.jpa.sched.BaseHapiScheduler   : Starting scheduler hapi-fhir-jpa-scheduler-clustered
+2025-08-01T00:45:24.170Z  INFO 9 --- [           main] org.quartz.core.QuartzScheduler          : Scheduler hapi-fhir-jpa-scheduler_$_NON_CLUSTERED started.
+2025-08-01T00:45:24.194Z  INFO 9 --- [           main] ca.uhn.fhir.jpa.starter.Application      : Started Application in 34.72 seconds (process running for 45.415)
+2025-08-01T00:45:24.208Z  INFO 9 --- [ler-clustered-2] .s.BulkDataExportJobSchedulingHelperImpl : Finished bulk export job deletion with nothing to do
+2025-08-01T00:45:24.260Z  INFO 9 --- [           main] ca.uhn.fhir.rest.server.RestfulServer    : Initializing HAPI FHIR restful server running in R4 mode
+2025-08-01T00:45:24.261Z  INFO 9 --- [           main] ca.uhn.fhir.rest.server.RestfulServer    : Added 147 resource provider(s). Total 147
+2025-08-01T00:45:24.710Z  INFO 9 --- [           main] ca.uhn.fhir.rest.server.RestfulServer    : Added 5 plain provider(s). Total 5
+2025-08-01T00:45:24.717Z  INFO 9 --- [           main] ca.uhn.fhir.rest.server.RestfulServer    : Removing RESTful methods for: class ca.uhn.fhir.jpa.provider.JpaCapabilityStatementProvider
+2025-08-01T00:45:24.718Z  INFO 9 --- [           main] ca.uhn.fhir.rest.server.RestfulServer    : OperationDefinition binding of ca.uhn.fhir.rest.server.method.ReadMethodBinding@2091d0e3 was removed
+2025-08-01T00:45:24.719Z  INFO 9 --- [           main] ca.uhn.fhir.rest.server.RestfulServer    : OperationDefinition binding of ca.uhn.fhir.rest.server.method.ReadMethodBinding@5221dfd5 was removed
+2025-08-01T00:45:24.762Z  INFO 9 --- [           main] ca.uhn.fhir.rest.server.RestfulServer    : A FHIR has been lit on this server
+2025-08-01T00:50:33.549Z  INFO 9 --- [nio-8080-exec-1] c.u.f.log.terminology_troubleshooting    : Performing initial retrieval for non-expiring cache: org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain$FetchAllKey@3e87800e
+2025-08-01T00:50:33.963Z  INFO 9 --- [nio-8080-exec-1] c.u.f.log.terminology_troubleshooting    : Initial retrieval for non-expiring cache org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain$FetchAllKey@3e87800e succeeded in 414ms
+2025-08-01T00:50:35.020Z  INFO 9 --- [nio-8080-exec-1] fhirtest.access                          : Path[/fhir] Source[] Operation[metadata  ] UA[Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0] Params[] ResponseEncoding[] Operation[metadata  ] UA[Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0] Params[] ResponseEncoding[]
+2025-08-01T00:54:39.611Z  INFO 9 --- [nio-8080-exec-2] fhirtest.access                          : Path[/fhir] Source[] Operation[metadata  ] UA[Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0] Params[] ResponseEncoding[] Operation[metadata  ] UA[Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0] Params[] ResponseEncoding[]
+2025-08-01T00:55:46.409Z  INFO 9 --- [nio-8080-exec-4] fhirtest.access                          : Path[/fhir] Source[] Operation[metadata  ] UA[Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0] Params[] ResponseEncoding[] Operation[metadata  ] UA[Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0] Params[] ResponseEncoding[]
+2025-08-01T00:56:01.712Z  INFO 9 --- [nio-8080-exec-6] fhirtest.access                          : Path[/fhir] Source[] Operation[metadata  ] UA[Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0] Params[] ResponseEncoding[] Operation[metadata  ] UA[Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0] Params[] ResponseEncoding[]
+2025-08-01T00:56:14.147Z  INFO 9 --- [nio-8080-exec-8] fhirtest.access                          : Path[/fhir] Source[] Operation[metadata  ] UA[Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0] Params[] ResponseEncoding[] Operation[metadata  ] UA[Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0] Params[] ResponseEncoding[]
+2025-08-01T00:56:18.348Z  INFO 9 --- [io-8080-exec-10] fhirtest.access                          : Path[/fhir] Source[] Operation[metadata  ] UA[Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0] Params[] ResponseEncoding[] Operation[metadata  ] UA[Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0] Params[] ResponseEncoding[]

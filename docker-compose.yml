@@ -16,7 +16,7 @@ services:
       - FLASK_APP=app.py
       - FLASK_ENV=development
       - NODE_PATH=/usr/lib/node_modules
-      - APP_MODE=lite
+      - APP_MODE=standalone
       - APP_BASE_URL=http://localhost:5000
-      - HAPI_FHIR_URL=http://localhost:8080/fhir
+      - HAPI_FHIR_URL=http://localhost:8080/fhir 
     command: supervisord -c /etc/supervisord.conf

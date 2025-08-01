@@ -1,0 +1,6 @@
+2025-08-01 00:44:37,751 CRIT Supervisor is running as root.  Privileges were not dropped because no user is specified in the config file.  If you intend to run as root, you can set user=root in the config file to avoid this message.
+2025-08-01 00:44:37,755 INFO supervisord started with pid 1
+2025-08-01 00:44:38,762 INFO spawned: 'flask' with pid 8
+2025-08-01 00:44:38,767 INFO spawned: 'tomcat' with pid 9
+2025-08-01 00:44:49,750 INFO success: flask entered RUNNING state, process has stayed up for > than 10 seconds (startsecs)
+2025-08-01 00:45:08,829 INFO success: tomcat entered RUNNING state, process has stayed up for > than 30 seconds (startsecs)
