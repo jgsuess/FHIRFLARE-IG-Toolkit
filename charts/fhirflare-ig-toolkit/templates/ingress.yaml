@@ -4,7 +4,7 @@
 apiVersion: networking.k8s.io/v1
 {{- else if semverCompare ">=1.14-0" .Capabilities.KubeVersion.GitVersion }}
 apiVersion: networking.k8s.io/v1beta1
-{{ else }}
+{{- else }}
 apiVersion: extensions/v1beta1
 {{- end }}
 kind: Ingress
@@ -28,7 +28,7 @@ spec:
             name: {{ $fullName }}
             port:
               number: {{ .Values.service.port | default 5000 }}
-        {{ else }}
+        {{- else }}
         backend:
           serviceName: {{ $fullName }}
           servicePort: {{ .Values.service.port | default 5000 }}

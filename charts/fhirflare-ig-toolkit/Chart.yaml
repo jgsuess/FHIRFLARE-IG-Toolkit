@@ -14,7 +14,3 @@ home: https://github.com/jgsuess/FHIRFLARE-IG-Toolkit
 maintainers:
   - name: Jörn Guy Süß
     email: jgsuess@gmail.com
-dependencies:
-  - name: hapi-fhir-jpaserver
-    version: 0.20.0
-    repository: https://hapifhir.github.io/hapi-fhir-jpaserver-starter/

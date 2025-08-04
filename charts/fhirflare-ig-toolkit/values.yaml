@@ -12,11 +12,13 @@ fullnameOverride: ""
 
 # FHIRflare specific configuration
 config:
-  appBaseUrl: "http://localhost:5000"
+  # Application mode: "lite" means using external HAPI server, "standalone" means running with embedded HAPI server
   appMode: "lite"
+  # URL for the external HAPI FHIR server when in lite mode
+  externalHapiServerUrl: "http://external-hapi-fhir:8080/fhir"
+  appBaseUrl: "http://localhost:5000"
   flaskApp: "app.py"
   flaskEnv: "development"
-  hapiFhirUrl: "http://localhost:8080/fhir"
   nodePath: "/usr/lib/node_modules"
 
 service:
@@ -85,12 +87,3 @@ affinity: {}
 ingress:
   # -- whether to create a primitive Ingress to expose the FHIR server HTTP endpoint
   enabled: false
-
-# HAPI FHIR server subchart configuration
-hapi-fhir-jpaserver:
-  # Add any HAPI FHIR specific values here to override defaults
-  enabled: true
-  postgresql:
-    enabled: true
-    auth:
-      database: "fhir"

@@ -2,19 +2,19 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "fhirflare-ig-toolkit.fullname" . }}
-  labels: 
-{{ include "fhirflare-ig-toolkit.labels" . | indent 4 }}
+  labels:
+    {{- include "fhirflare-ig-toolkit.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount | default 1 }}
   selector:
-    matchLabels: 
-{{ include "fhirflare-ig-toolkit.selectorLabels" . | indent 6 }}
+    matchLabels:
+      {{- include "fhirflare-ig-toolkit.selectorLabels" . | nindent 6 }}
   strategy:
     type: Recreate
   template:
     metadata:
-      labels: 
-{{ include "fhirflare-ig-toolkit.selectorLabels" . | indent 8 }}
+      labels:
+        {{- include "fhirflare-ig-toolkit.selectorLabels" . | nindent 8 }}
       {{- with .Values.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
@@ -43,7 +43,7 @@ spec:
             - name: FLASK_ENV
               value: {{ .Values.config.flaskEnv | default "development" | quote }}
             - name: HAPI_FHIR_URL
-              value: {{ .Values.config.hapiFhirUrl | default "http://localhost:8080/fhir" | quote }}
+              value: {{ .Values.config.externalHapiServerUrl | default "http://external-hapi-fhir:8080/fhir" | quote }}
             - name: NODE_PATH
               value: {{ .Values.config.nodePath | default "/usr/lib/node_modules" | quote }}
             - name: TMPDIR

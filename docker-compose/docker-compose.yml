@@ -1,6 +1,6 @@
 services:
   fhirflare:
-    image: ghcr.io/jgsuess/fhirflare-ig-toolkit:latest
+    image: ghcr.io/sudo-jhare/fhirflare-ig-toolkit-lite:latest
     ports:
       - "5000:5000"
     volumes:
