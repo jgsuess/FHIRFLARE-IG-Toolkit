@@ -8,5 +8,8 @@ plugins:
 show_downloads: true
 google_analytics:
 
+markdown: kramdown
+highlighter: rouge
+
 github:
   repository_url: https://github.com/Sudo-JHare/FHIRFLARE-IG-Toolkit
