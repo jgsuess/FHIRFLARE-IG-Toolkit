@@ -1,6 +1,10 @@
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+# Make paths relative to the current directory instead of absolute '/app' paths
+CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
+# Introduce app_dir variable that can be overridden by environment
+app_dir = os.environ.get('APP_DIR', CURRENT_DIR)
+sys.path.append(CURRENT_DIR)
 import datetime
 import shutil
 import queue
@@ -52,16 +56,19 @@ from logging.handlers import RotatingFileHandler
 #app setup
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-fallback-secret-key-here')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:////app/instance/fhir_ig.db')
+
+# Update paths to be relative to current directory
+instance_path = os.path.join(CURRENT_DIR, 'instance')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f'sqlite:///{os.path.join(instance_path, "fhir_ig.db")}')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['FHIR_PACKAGES_DIR'] = '/app/instance/fhir_packages'
+app.config['FHIR_PACKAGES_DIR'] = os.path.join(instance_path, 'fhir_packages')
 app.config['API_KEY'] = os.environ.get('API_KEY', 'your-fallback-api-key-here')
 app.config['VALIDATE_IMPOSED_PROFILES'] = True
 app.config['DISPLAY_PROFILE_RELATIONSHIPS'] = True
-app.config['UPLOAD_FOLDER'] = '/app/static/uploads'  # For GoFSH output
+app.config['UPLOAD_FOLDER'] = os.path.join(CURRENT_DIR, 'static', 'uploads')  # For GoFSH output
 app.config['APP_BASE_URL'] = os.environ.get('APP_BASE_URL', 'http://localhost:5000')
 app.config['HAPI_FHIR_URL'] = os.environ.get('HAPI_FHIR_URL', 'http://localhost:8080/fhir')
-CONFIG_PATH = '/usr/local/tomcat/conf/application.yaml'
+CONFIG_PATH = os.environ.get('CONFIG_PATH', '/usr/local/tomcat/conf/application.yaml')
 
 # Basic Swagger configuration
 app.config['SWAGGER'] = {
@@ -227,6 +234,11 @@ except Exception as e:
 db = SQLAlchemy(app)
 csrf = CSRFProtect(app)
 migrate = Migrate(app, db)
+
+# Add a global application state dictionary for sharing state between threads
+app_state = {
+    'fetch_failed': False
+}
 
 # @app.route('/clear-cache')
 # def clear_cache():
@@ -695,7 +707,7 @@ def perform_cache_refresh_and_log():
             now_ts = datetime.datetime.now(datetime.timezone.utc)
             app.config['MANUAL_PACKAGE_CACHE'] = normalized_packages
             app.config['MANUAL_CACHE_TIMESTAMP'] = now_ts
-            session['fetch_failed'] = fetch_failed # Update session flag reflecting fetch outcome
+            app_state['fetch_failed'] = fetch_failed # Update app_state instead of session
             logger.info(f"Updated in-memory cache with {len(normalized_packages)} packages. Fetch failed: {fetch_failed}")
 
             # 6. Cache in Database (if successful fetch)
@@ -2194,7 +2206,7 @@ def api_upload_test_data():
         if auth_type not in ['none', 'bearerToken', 'basic']:
             return jsonify({"status": "error", "message": "Invalid Authentication Type."}), 400
         if auth_type == 'bearerToken' and not auth_token:
-            return jsonify({"status": "error", "message": "Bearer Token required."}), 400
+            return jsonify({"status": "error", "message": "auth_token required for bearerToken."}), 400
         if auth_type == 'basic' and (not username or not password):
             return jsonify({"status": "error", "message": "Username and Password required for Basic Authentication."}), 400
         if upload_mode not in ['individual', 'transaction']:
@@ -2238,7 +2250,7 @@ def api_upload_test_data():
 
         # --- Prepare Server Info and Options ---
         server_info = {'url': fhir_server_url, 'auth_type': auth_type}
-        if auth_type == 'bearerToken':
+        if auth_type == 'bearer':
             server_info['auth_token'] = auth_token
         elif auth_type == 'basic':
             credentials = f"{username}:{password}"
@@ -2658,7 +2670,7 @@ def search_and_import():
             raw_packages = fetch_packages_from_registries(search_term='')
             logger.debug(f"fetch_packages_from_registries returned {len(raw_packages)} raw packages.")
             if not raw_packages:
-                logger.warning("fetch_packages_from_registries returned no packages. Handling fallback or empty list.")
+                logger.warning("No packages returned from registries during refresh.")
                 normalized_packages = []
                 fetch_failed_flag = True
                 session['fetch_failed'] = True
@@ -2672,6 +2684,7 @@ def search_and_import():
                 now_ts = datetime.datetime.now(datetime.timezone.utc)
                 app.config['MANUAL_PACKAGE_CACHE'] = normalized_packages
                 app.config['MANUAL_CACHE_TIMESTAMP'] = now_ts
+                app_state['fetch_failed'] = False
                 logger.info(f"Stored {len(normalized_packages)} packages in manual cache (memory).")
 
                 # Save to CachedPackage table
@@ -2881,10 +2894,18 @@ def safe_parse_version_local(v_str): # Use different name
                 elif suffix in ['draft', 'ballot', 'preview']: return pkg_version_local.parse(f"{base_part}b0")
                 elif suffix and suffix.startswith('rc'): return pkg_version_local.parse(f"{base_part}rc{ ''.join(filter(str.isdigit, suffix)) or '0'}")
                 return pkg_version_local.parse(base_part)
-            except pkg_version_local.InvalidVersion: logger_details.warning(f"[DetailsView] Invalid base version '{base_part}' after splitting '{original_v_str}'. Treating as alpha."); return pkg_version_local.parse("0.0.0a0")
-            except Exception as e: logger_details.error(f"[DetailsView] Unexpected error parsing FHIR-suffixed version '{original_v_str}': {e}"); return pkg_version_local.parse("0.0.0a0")
-        else: logger_details.warning(f"[DetailsView] Unparseable version '{original_v_str}' (base '{base_part}' not standard). Treating as alpha."); return pkg_version_local.parse("0.0.0a0")
-    except Exception as e: logger_details.error(f"[DetailsView] Unexpected error in safe_parse_version_local for '{v_str}': {e}"); return pkg_version_local.parse("0.0.0a0")
+            except pkg_version_local.InvalidVersion: 
+                logger_details.warning(f"[DetailsView] Invalid base version '{base_part}' after splitting '{original_v_str}'. Treating as alpha.")
+                return pkg_version_local.parse("0.0.0a0")
+            except Exception as e: 
+                logger_details.error(f"[DetailsView] Unexpected error parsing FHIR-suffixed version '{original_v_str}': {e}")
+                return pkg_version_local.parse("0.0.0a0")
+        else: 
+            logger_details.warning(f"[DetailsView] Unparseable version '{original_v_str}' (base '{base_part}' not standard). Treating as alpha.")
+            return pkg_version_local.parse("0.0.0a0")
+    except Exception as e: 
+        logger_details.error(f"[DetailsView] Unexpected error in safe_parse_version_local for '{v_str}': {e}")
+        return pkg_version_local.parse("0.0.0a0")
 # --- End Local Helper Definition ---
 
 @app.route('/package-details/<name>')

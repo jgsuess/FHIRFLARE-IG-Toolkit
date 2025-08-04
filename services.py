@@ -1087,8 +1087,115 @@ def cache_structure(package_name, package_version, resource_type, view, structur
     except Exception as e:
         logger.error(f"Error caching structure: {e}", exc_info=True)
 
+
+#----OLD CODE HERE
+# def find_and_extract_sd(tgz_path, resource_identifier, profile_url=None, include_narrative=False, raw=False):
+#     """Helper to find and extract StructureDefinition json from a tgz path, prioritizing profile match."""
+#     sd_data = None
+#     found_path = None
+#     if not tgz_path or not os.path.exists(tgz_path):
+#         logger.error(f"File not found in find_and_extract_sd: {tgz_path}")
+#         return None, None
+#     try:
+#         with tarfile.open(tgz_path, "r:gz") as tar:
+#             logger.debug(f"Searching for SD matching '{resource_identifier}' with profile '{profile_url}' in {os.path.basename(tgz_path)}")
+#             potential_matches = []
+#             for member in tar:
+#                 if not (member.isfile() and member.name.startswith('package/') and member.name.lower().endswith('.json')):
+#                     continue
+#                 if os.path.basename(member.name).lower() in ['package.json', '.index.json', 'validation-summary.json', 'validation-oo.json']:
+#                     continue
+#                 fileobj = None
+#                 try:
+#                     fileobj = tar.extractfile(member)
+#                     if fileobj:
+#                         content_bytes = fileobj.read()
+#                         content_string = content_bytes.decode('utf-8-sig')
+#                         data = json.loads(content_string)
+#                         if isinstance(data, dict) and data.get('resourceType') == 'StructureDefinition':
+#                             sd_id = data.get('id')
+#                             sd_name = data.get('name')
+#                             sd_type = data.get('type')
+#                             sd_url = data.get('url')
+#                             sd_filename_base = os.path.splitext(os.path.basename(member.name))[0]
+#                             sd_filename_lower = sd_filename_base.lower()
+#                             resource_identifier_lower = resource_identifier.lower() if resource_identifier else None
+#                             match_score = 0
+#                             if profile_url and sd_url == profile_url:
+#                                 match_score = 5
+#                                 sd_data = remove_narrative(data, include_narrative)
+#                                 found_path = member.name
+#                                 logger.info(f"Found definitive SD matching profile '{profile_url}' at path: {found_path}")
+#                                 break
+#                             elif resource_identifier_lower:
+#                                 if sd_id and resource_identifier_lower == sd_id.lower():
+#                                     match_score = 4
+#                                 elif sd_name and resource_identifier_lower == sd_name.lower():
+#                                     match_score = 4
+#                                 elif sd_filename_lower == f"structuredefinition-{resource_identifier_lower}":
+#                                     match_score = 3
+#                                 elif sd_type and resource_identifier_lower == sd_type.lower() and not re.search(r'[-.]', resource_identifier):
+#                                     match_score = 2
+#                                 elif resource_identifier_lower in sd_filename_lower:
+#                                     match_score = 1
+#                                 elif sd_url and resource_identifier_lower in sd_url.lower():
+#                                     match_score = 1
+#                             if match_score > 0:
+#                                 potential_matches.append((match_score, remove_narrative(data, include_narrative), member.name))
+#                                 if match_score >= 3:
+#                                     sd_data = remove_narrative(data, include_narrative)
+#                                     found_path = member.name
+#                                     break
+#                 except json.JSONDecodeError as e:
+#                     logger.debug(f"Could not parse JSON in {member.name}, skipping: {e}")
+#                 except UnicodeDecodeError as e:
+#                     logger.warning(f"Could not decode UTF-8 in {member.name}, skipping: {e}")
+#                 except tarfile.TarError as e:
+#                     logger.warning(f"Tar error reading member {member.name}, skipping: {e}")
+#                 except Exception as e:
+#                     logger.warning(f"Could not read/parse potential SD {member.name}, skipping: {e}")
+#                 finally:
+#                     if fileobj:
+#                         fileobj.close()
+#             if not sd_data and potential_matches:
+#                 potential_matches.sort(key=lambda x: x[0], reverse=True)
+#                 best_match = potential_matches[0]
+#                 sd_data = best_match[1]
+#                 found_path = best_match[2]
+#                 logger.info(f"Selected best match for '{resource_identifier}' from potential matches (Score: {best_match[0]}): {found_path}")
+#             if sd_data is None:
+#                 logger.info(f"SD matching identifier '{resource_identifier}' or profile '{profile_url}' not found within archive {os.path.basename(tgz_path)}")
+#             elif raw:
+#                 # Return the full, unprocessed StructureDefinition JSON
+#                 with tarfile.open(tgz_path, "r:gz") as tar:
+#                     fileobj = tar.extractfile(found_path)
+#                     content_bytes = fileobj.read()
+#                     content_string = content_bytes.decode('utf-8-sig')
+#                     raw_data = json.loads(content_string)
+#                     return remove_narrative(raw_data, include_narrative), found_path
+#     except tarfile.ReadError as e:
+#         logger.error(f"Tar ReadError reading {tgz_path}: {e}")
+#         return None, None
+#     except tarfile.TarError as e:
+#         logger.error(f"TarError reading {tgz_path} in find_and_extract_sd: {e}")
+#         raise
+#     except FileNotFoundError:
+#         logger.error(f"FileNotFoundError reading {tgz_path} in find_and_extract_sd.")
+#         raise
+#     except Exception as e:
+#         logger.error(f"Unexpected error in find_and_extract_sd for {tgz_path}: {e}", exc_info=True)
+#         raise
+#     return sd_data, found_path
+#--- OLD 
+
+# --- UPDATED: find_and_extract_sd function ---
 def find_and_extract_sd(tgz_path, resource_identifier, profile_url=None, include_narrative=False, raw=False):
-    """Helper to find and extract StructureDefinition json from a tgz path, prioritizing profile match."""
+    """
+    Helper to find and extract StructureDefinition json from a tgz path, prioritizing profile match.
+    
+    This version includes logic to handle canonical URLs with version numbers (e.g., `|5.2.0`)
+    and to prioritize a direct profile URL match.
+    """
     sd_data = None
     found_path = None
     if not tgz_path or not os.path.exists(tgz_path):
@@ -1098,6 +1205,11 @@ def find_and_extract_sd(tgz_path, resource_identifier, profile_url=None, include
         with tarfile.open(tgz_path, "r:gz") as tar:
             logger.debug(f"Searching for SD matching '{resource_identifier}' with profile '{profile_url}' in {os.path.basename(tgz_path)}")
             potential_matches = []
+            
+            # --- Work Item 3: Sanitize profile URL to strip version ---
+            clean_profile_url = profile_url.split('|')[0] if profile_url else None
+            logger.debug(f"Cleaned profile URL for search: '{clean_profile_url}'")
+
             for member in tar:
                 if not (member.isfile() and member.name.startswith('package/') and member.name.lower().endswith('.json')):
                     continue
@@ -1119,12 +1231,15 @@ def find_and_extract_sd(tgz_path, resource_identifier, profile_url=None, include
                             sd_filename_lower = sd_filename_base.lower()
                             resource_identifier_lower = resource_identifier.lower() if resource_identifier else None
                             match_score = 0
-                            if profile_url and sd_url == profile_url:
+                            
+                            # --- Prioritize exact match on the canonical URL (without version) ---
+                            if clean_profile_url and sd_url == clean_profile_url:
                                 match_score = 5
                                 sd_data = remove_narrative(data, include_narrative)
                                 found_path = member.name
-                                logger.info(f"Found definitive SD matching profile '{profile_url}' at path: {found_path}")
+                                logger.info(f"Found definitive SD matching profile '{clean_profile_url}' at path: {found_path}")
                                 break
+                            
                             elif resource_identifier_lower:
                                 if sd_id and resource_identifier_lower == sd_id.lower():
                                     match_score = 4
@@ -1132,6 +1247,7 @@ def find_and_extract_sd(tgz_path, resource_identifier, profile_url=None, include
                                     match_score = 4
                                 elif sd_filename_lower == f"structuredefinition-{resource_identifier_lower}":
                                     match_score = 3
+                                # --- Work Item 2: Score match on resourceType for fallback logic ---
                                 elif sd_type and resource_identifier_lower == sd_type.lower() and not re.search(r'[-.]', resource_identifier):
                                     match_score = 2
                                 elif resource_identifier_lower in sd_filename_lower:
@@ -1164,7 +1280,6 @@ def find_and_extract_sd(tgz_path, resource_identifier, profile_url=None, include
             if sd_data is None:
                 logger.info(f"SD matching identifier '{resource_identifier}' or profile '{profile_url}' not found within archive {os.path.basename(tgz_path)}")
             elif raw:
-                # Return the full, unprocessed StructureDefinition JSON
                 with tarfile.open(tgz_path, "r:gz") as tar:
                     fileobj = tar.extractfile(found_path)
                     content_bytes = fileobj.read()
@@ -1184,6 +1299,8 @@ def find_and_extract_sd(tgz_path, resource_identifier, profile_url=None, include
         logger.error(f"Unexpected error in find_and_extract_sd for {tgz_path}: {e}", exc_info=True)
         raise
     return sd_data, found_path
+
+
 
 # --- Metadata Saving/Loading ---
 def save_package_metadata(name, version, dependency_mode, dependencies, complies_with_profiles=None, imposed_profiles=None):
@@ -1871,8 +1988,240 @@ def _legacy_validate_resource_against_profile(package_name, version, resource, i
     }
     logger.debug(f"Validation result: valid={result['valid']}, errors={len(result['errors'])}, warnings={len(result['warnings'])}")
     return result
+# -- OLD
+# def validate_resource_against_profile(package_name, version, resource, include_dependencies=True):
+#     result = {
+#         'valid': True,
+#         'errors': [],
+#         'warnings': [],
+#         'details': [],
+#         'resource_type': resource.get('resourceType'),
+#         'resource_id': resource.get('id', 'unknown'),
+#         'profile': resource.get('meta', {}).get('profile', [None])[0]
+#     }
 
+#     # Attempt HAPI validation if a profile is specified
+#     if result['profile']:
+#         try:
+#             hapi_url = f"{current_app.config['HAPI_FHIR_URL'].rstrip('/')}/{resource['resourceType']}/$validate?profile={result['profile']}"
+#             response = requests.post(
+#                 hapi_url,
+#                 json=resource,
+#                 headers={'Content-Type': 'application/fhir+json', 'Accept': 'application/fhir+json'},
+#                 timeout=10
+#             )
+#             response.raise_for_status()
+#             outcome = response.json()
+#             if outcome.get('resourceType') == 'OperationOutcome':
+#                 for issue in outcome.get('issue', []):
+#                     severity = issue.get('severity')
+#                     diagnostics = issue.get('diagnostics', issue.get('details', {}).get('text', 'No details provided'))
+#                     detail = {
+#                         'issue': diagnostics,
+#                         'severity': severity,
+#                         'description': issue.get('details', {}).get('text', diagnostics)
+#                     }
+#                     if severity in ['error', 'fatal']:
+#                         result['valid'] = False
+#                         result['errors'].append(diagnostics)
+#                     elif severity == 'warning':
+#                         result['warnings'].append(diagnostics)
+#                     result['details'].append(detail)
+#                 result['summary'] = {
+#                     'error_count': len(result['errors']),
+#                     'warning_count': len(result['warnings'])
+#                 }
+#                 logger.debug(f"HAPI validation for {result['resource_type']}/{result['resource_id']}: valid={result['valid']}, errors={len(result['errors'])}, warnings={len(result['warnings'])}")
+#                 return result
+#             else:
+#                 logger.warning(f"HAPI returned non-OperationOutcome: {outcome.get('resourceType')}")
+#         except requests.RequestException as e:
+#             logger.error(f"HAPI validation failed for {result['resource_type']}/{result['resource_id']}: {e}")
+#             result['details'].append({
+#                 'issue': f"HAPI validation failed: {str(e)}",
+#                 'severity': 'warning',
+#                 'description': 'Falling back to local validation due to HAPI server error.'
+#             })
+
+#     # Fallback to local validation
+#     download_dir = _get_download_dir()
+#     if not download_dir:
+#         result['valid'] = False
+#         result['errors'].append("Could not access download directory")
+#         result['details'].append({
+#             'issue': "Could not access download directory",
+#             'severity': 'error',
+#             'description': "The server could not locate the directory where FHIR packages are stored."
+#         })
+#         return result
+
+#     tgz_path = os.path.join(download_dir, construct_tgz_filename(package_name, version))
+#     sd_data, sd_path = find_and_extract_sd(tgz_path, resource.get('resourceType'), result['profile'])
+#     if not sd_data:
+#         result['valid'] = False
+#         result['errors'].append(f"No StructureDefinition found for {resource.get('resourceType')}")
+#         result['details'].append({
+#             'issue': f"No StructureDefinition found for {resource.get('resourceType')}",
+#             'severity': 'error',
+#             'description': f"The package {package_name}#{version} does not contain a matching StructureDefinition."
+#         })
+#         return result
+
+#     elements = sd_data.get('snapshot', {}).get('element', [])
+#     for element in elements:
+#         path = element.get('path')
+#         min_val = element.get('min', 0)
+#         must_support = element.get('mustSupport', False)
+#         slicing = element.get('slicing')
+#         slice_name = element.get('sliceName')
+
+#         # Check required elements
+#         if min_val > 0:
+#             value = navigate_fhir_path(resource, path)
+#             if value is None or (isinstance(value, list) and not any(value)):
+#                 result['valid'] = False
+#                 result['errors'].append(f"Required element {path} missing")
+#                 result['details'].append({
+#                     'issue': f"Required element {path} missing",
+#                     'severity': 'error',
+#                     'description': f"Element {path} has min={min_val} in profile {result['profile'] or 'unknown'}"
+#                 })
+
+#         # Check must-support elements
+#         if must_support:
+#             value = navigate_fhir_path(resource, slice_name if slice_name else path)
+#             if value is None or (isinstance(value, list) and not any(value)):
+#                 result['warnings'].append(f"Must Support element {path} missing or empty")
+#                 result['details'].append({
+#                     'issue': f"Must Support element {path} missing or empty",
+#                     'severity': 'warning',
+#                     'description': f"Element {path} is marked as Must Support in profile {result['profile'] or 'unknown'}"
+#                 })
+
+#         # Validate slicing
+#         if slicing and not slice_name:  # Parent slicing element
+#             discriminator = slicing.get('discriminator', [])
+#             for d in discriminator:
+#                 d_type = d.get('type')
+#                 d_path = d.get('path')
+#                 if d_type == 'value':
+#                     sliced_elements = navigate_fhir_path(resource, path)
+#                     if isinstance(sliced_elements, list):
+#                         seen_values = set()
+#                         for elem in sliced_elements:
+#                             d_value = navigate_fhir_path(elem, d_path)
+#                             if d_value in seen_values:
+#                                 result['valid'] = False
+#                                 result['errors'].append(f"Duplicate discriminator value {d_value} for {path}.{d_path}")
+#                             seen_values.add(d_value)
+#                 elif d_type == 'type':
+#                     sliced_elements = navigate_fhir_path(resource, path)
+#                     if isinstance(sliced_elements, list):
+#                         for elem in sliced_elements:
+#                             if not navigate_fhir_path(elem, d_path):
+#                                 result['valid'] = False
+#                                 result['errors'].append(f"Missing discriminator type {d_path} for {path}")
+
+#     result['summary'] = {
+#         'error_count': len(result['errors']),
+#         'warning_count': len(result['warnings'])
+#     }
+#     return result
+
+# def validate_bundle_against_profile(package_name, version, bundle, include_dependencies=True):
+#     """Validates a FHIR Bundle against profiles in the specified package."""
+#     logger.debug(f"Validating bundle against {package_name}#{version}, include_dependencies={include_dependencies}")
+#     result = {
+#         'valid': True,
+#         'errors': [],
+#         'warnings': [],
+#         'details': [],
+#         'results': {},
+#         'summary': {
+#             'resource_count': 0,
+#             'failed_resources': 0,
+#             'profiles_validated': set()
+#         }
+#     }
+#     if not bundle.get('resourceType') == 'Bundle':
+#         result['valid'] = False
+#         result['errors'].append("Resource is not a Bundle")
+#         result['details'].append({
+#             'issue': "Resource is not a Bundle",
+#             'severity': 'error',
+#             'description': "The provided resource must have resourceType 'Bundle' to be validated as a bundle."
+#         })
+#         logger.error("Validation failed: Resource is not a Bundle")
+#         return result
+
+#     # Track references to validate resolvability
+#     references = set()
+#     resolved_references = set()
+
+#     for entry in bundle.get('entry', []):
+#         resource = entry.get('resource')
+#         if not resource:
+#             continue
+#         resource_type = resource.get('resourceType')
+#         resource_id = resource.get('id', 'unknown')
+#         result['summary']['resource_count'] += 1
+
+#         # Collect references
+#         for key, value in resource.items():
+#             if isinstance(value, dict) and 'reference' in value:
+#                 references.add(value['reference'])
+#             elif isinstance(value, list):
+#                 for item in value:
+#                     if isinstance(item, dict) and 'reference' in item:
+#                         references.add(item['reference'])
+
+#         # Validate resource
+#         validation_result = validate_resource_against_profile(package_name, version, resource, include_dependencies)
+#         result['results'][f"{resource_type}/{resource_id}"] = validation_result
+#         result['summary']['profiles_validated'].add(validation_result['profile'] or 'unknown')
+
+#         # Aggregate errors and warnings
+#         if not validation_result['valid']:
+#             result['valid'] = False
+#             result['summary']['failed_resources'] += 1
+#         result['errors'].extend(validation_result['errors'])
+#         result['warnings'].extend(validation_result['warnings'])
+#         result['details'].extend(validation_result['details'])
+
+#         # Mark resource as resolved if it has an ID
+#         if resource_id != 'unknown':
+#             resolved_references.add(f"{resource_type}/{resource_id}")
+
+#     # Check for unresolved references
+#     unresolved = references - resolved_references
+#     for ref in unresolved:
+#         warning_msg = f"Unresolved reference: {ref}"
+#         result['warnings'].append(warning_msg)
+#         result['details'].append({
+#             'issue': warning_msg,
+#             'severity': 'warning',
+#             'description': f"The reference {ref} points to a resource not included in the bundle. Ensure the referenced resource is present or resolvable."
+#         })
+#         logger.info(f"Validation warning: Unresolved reference {ref}")
+
+#     # Finalize summary
+#     result['summary']['profiles_validated'] = list(result['summary']['profiles_validated'])
+#     result['summary']['error_count'] = len(result['errors'])
+#     result['summary']['warning_count'] = len(result['warnings'])
+#     logger.debug(f"Bundle validation result: valid={result['valid']}, errors={result['summary']['error_count']}, warnings={result['summary']['warning_count']}, resources={result['summary']['resource_count']}")
+#     return result
+# -- OLD
+
+
+# --- UPDATED: validate_resource_against_profile function ---
 def validate_resource_against_profile(package_name, version, resource, include_dependencies=True):
+    """
+    Validates a FHIR resource against a StructureDefinition in the specified package.
+    
+    This version correctly handles the absence of a `meta.profile` by falling back
+    to the base resource definition. It also sanitizes profile URLs to avoid
+    version mismatch errors.
+    """
     result = {
         'valid': True,
         'errors': [],
@@ -1882,51 +2231,7 @@ def validate_resource_against_profile(package_name, version, resource, include_d
         'resource_id': resource.get('id', 'unknown'),
         'profile': resource.get('meta', {}).get('profile', [None])[0]
     }
-
-    # Attempt HAPI validation if a profile is specified
-    if result['profile']:
-        try:
-            hapi_url = f"{current_app.config['HAPI_FHIR_URL'].rstrip('/')}/{resource['resourceType']}/$validate?profile={result['profile']}"
-            response = requests.post(
-                hapi_url,
-                json=resource,
-                headers={'Content-Type': 'application/fhir+json', 'Accept': 'application/fhir+json'},
-                timeout=10
-            )
-            response.raise_for_status()
-            outcome = response.json()
-            if outcome.get('resourceType') == 'OperationOutcome':
-                for issue in outcome.get('issue', []):
-                    severity = issue.get('severity')
-                    diagnostics = issue.get('diagnostics', issue.get('details', {}).get('text', 'No details provided'))
-                    detail = {
-                        'issue': diagnostics,
-                        'severity': severity,
-                        'description': issue.get('details', {}).get('text', diagnostics)
-                    }
-                    if severity in ['error', 'fatal']:
-                        result['valid'] = False
-                        result['errors'].append(diagnostics)
-                    elif severity == 'warning':
-                        result['warnings'].append(diagnostics)
-                    result['details'].append(detail)
-                result['summary'] = {
-                    'error_count': len(result['errors']),
-                    'warning_count': len(result['warnings'])
-                }
-                logger.debug(f"HAPI validation for {result['resource_type']}/{result['resource_id']}: valid={result['valid']}, errors={len(result['errors'])}, warnings={len(result['warnings'])}")
-                return result
-            else:
-                logger.warning(f"HAPI returned non-OperationOutcome: {outcome.get('resourceType')}")
-        except requests.RequestException as e:
-            logger.error(f"HAPI validation failed for {result['resource_type']}/{result['resource_id']}: {e}")
-            result['details'].append({
-                'issue': f"HAPI validation failed: {str(e)}",
-                'severity': 'warning',
-                'description': 'Falling back to local validation due to HAPI server error.'
-            })
-
-    # Fallback to local validation
+    
     download_dir = _get_download_dir()
     if not download_dir:
         result['valid'] = False
@@ -1936,83 +2241,171 @@ def validate_resource_against_profile(package_name, version, resource, include_d
             'severity': 'error',
             'description': "The server could not locate the directory where FHIR packages are stored."
         })
+        logger.error("Validation failed: Could not access download directory")
         return result
 
+    # --- Work Item 3 & 2: Get profile URL or fallback to resourceType ---
+    profile_url = result['profile']
+    resource_identifier = resource.get('resourceType')
+    
+    if profile_url:
+        # Sanitize profile URL to remove version
+        clean_profile_url = profile_url.split('|')[0]
+        logger.debug(f"Using provided profile: {profile_url}. Cleaned to: {clean_profile_url}")
+        resource_identifier = profile_url
+    else:
+        # No profile provided, fallback to resource type
+        logger.debug(f"No profile in resource, using base type as identifier: {resource_identifier}")
+        clean_profile_url = None
+        
     tgz_path = os.path.join(download_dir, construct_tgz_filename(package_name, version))
-    sd_data, sd_path = find_and_extract_sd(tgz_path, resource.get('resourceType'), result['profile'])
+    logger.debug(f"Checking for package file: {tgz_path}")
+
+    # Find StructureDefinition
+    sd_data, sd_path = find_and_extract_sd(tgz_path, resource_identifier, clean_profile_url)
+    
+    if not sd_data and include_dependencies:
+        logger.debug(f"SD not found in {package_name}#{version}. Checking dependencies.")
+        try:
+            with tarfile.open(tgz_path, "r:gz") as tar:
+                package_json_member = None
+                for member in tar:
+                    if member.name == 'package/package.json':
+                        package_json_member = member
+                        break
+                if package_json_member:
+                    fileobj = tar.extractfile(package_json_member)
+                    pkg_data = json.load(fileobj)
+                    fileobj.close()
+                    dependencies = pkg_data.get('dependencies', {})
+                    logger.debug(f"Found dependencies: {dependencies}")
+                    for dep_name, dep_version in dependencies.items():
+                        dep_tgz = os.path.join(download_dir, construct_tgz_filename(dep_name, dep_version))
+                        if os.path.exists(dep_tgz):
+                            logger.debug(f"Searching SD in dependency {dep_name}#{dep_version}")
+                            sd_data, sd_path = find_and_extract_sd(dep_tgz, resource_identifier, clean_profile_url)
+                            if sd_data:
+                                logger.info(f"Found SD in dependency {dep_name}#{dep_version} at {sd_path}")
+                                break
+                        else:
+                            logger.warning(f"Dependency package {dep_name}#{dep_version} not found at {dep_tgz}")
+                else:
+                    logger.warning(f"No package.json found in {tgz_path}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse package.json in {tgz_path}: {e}")
+        except tarfile.TarError as e:
+            logger.error(f"Failed to read {tgz_path} while checking dependencies: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error while checking dependencies in {tgz_path}: {e}")
+
     if not sd_data:
         result['valid'] = False
-        result['errors'].append(f"No StructureDefinition found for {resource.get('resourceType')}")
+        result['errors'].append(f"No StructureDefinition found for {resource_identifier} with profile {clean_profile_url or 'any'}")
         result['details'].append({
-            'issue': f"No StructureDefinition found for {resource.get('resourceType')}",
+            'issue': f"No StructureDefinition found for {resource_identifier} with profile {clean_profile_url or 'any'}",
             'severity': 'error',
-            'description': f"The package {package_name}#{version} does not contain a matching StructureDefinition."
+            'description': f"The package {package_name}#{version} (and dependencies, if checked) does not contain a matching StructureDefinition."
         })
+        logger.error(f"Validation failed: No SD for {resource_identifier} in {tgz_path}")
         return result
+    logger.debug(f"Found SD at {sd_path}")
 
+    # Validate required elements (min=1)
+    errors = []
+    warnings = set()
     elements = sd_data.get('snapshot', {}).get('element', [])
     for element in elements:
         path = element.get('path')
         min_val = element.get('min', 0)
         must_support = element.get('mustSupport', False)
-        slicing = element.get('slicing')
-        slice_name = element.get('sliceName')
+        definition = element.get('definition', 'No definition provided in StructureDefinition.')
 
         # Check required elements
-        if min_val > 0:
+        if min_val > 0 and not '.' in path[1 + path.find('.'):] if path.find('.') != -1 else True:
             value = navigate_fhir_path(resource, path)
             if value is None or (isinstance(value, list) and not any(value)):
-                result['valid'] = False
-                result['errors'].append(f"Required element {path} missing")
+                error_msg = f"{resource.get('resourceType')}/{resource.get('id', 'unknown')}: Required element {path} missing"
+                errors.append(error_msg)
                 result['details'].append({
-                    'issue': f"Required element {path} missing",
+                    'issue': error_msg,
                     'severity': 'error',
-                    'description': f"Element {path} has min={min_val} in profile {result['profile'] or 'unknown'}"
+                    'description': f"{definition} This element is mandatory (min={min_val}) per the profile {profile_url or 'unknown'}."
                 })
+                logger.info(f"Validation error: Required element {path} missing")
 
         # Check must-support elements
-        if must_support:
-            value = navigate_fhir_path(resource, slice_name if slice_name else path)
-            if value is None or (isinstance(value, list) and not any(value)):
-                result['warnings'].append(f"Must Support element {path} missing or empty")
-                result['details'].append({
-                    'issue': f"Must Support element {path} missing or empty",
-                    'severity': 'warning',
-                    'description': f"Element {path} is marked as Must Support in profile {result['profile'] or 'unknown'}"
-                })
+        if must_support and not '.' in path[1 + path.find('.'):] if path.find('.') != -1 else True:
+            if '[x]' in path:
+                base_path = path.replace('[x]', '')
+                found = False
+                for suffix in ['Quantity', 'CodeableConcept', 'String', 'DateTime', 'Period', 'Range']:
+                    test_path = f"{base_path}{suffix}"
+                    value = navigate_fhir_path(resource, test_path)
+                    if value is not None and (not isinstance(value, list) or any(value)):
+                        found = True
+                        break
+                if not found:
+                    warning_msg = f"{resource.get('resourceType')}/{resource.get('id', 'unknown')}: Must Support element {path} missing or empty"
+                    warnings.add(warning_msg)
+                    result['details'].append({
+                        'issue': warning_msg,
+                        'severity': 'warning',
+                        'description': f"{definition} This element is marked as Must Support in AU Core, meaning it should be populated if the data is available (e.g., phone or email for Patient.telecom)."
+                    })
+                    logger.info(f"Validation warning: Must Support element {path} missing or empty")
+            else:
+                value = navigate_fhir_path(resource, path)
+                if value is None or (isinstance(value, list) and not any(value)):
+                    if element.get('min', 0) == 0:
+                        warning_msg = f"{resource.get('resourceType')}/{resource.get('id', 'unknown')}: Must Support element {path} missing or empty"
+                        warnings.add(warning_msg)
+                        result['details'].append({
+                            'issue': warning_msg,
+                            'severity': 'warning',
+                            'description': f"{definition} This element is marked as Must Support in AU Core, meaning it should be populated if the data is available (e.g., phone or email for Patient.telecom)."
+                        })
+                        logger.info(f"Validation warning: Must Support element {path} missing or empty")
 
-        # Validate slicing
-        if slicing and not slice_name:  # Parent slicing element
-            discriminator = slicing.get('discriminator', [])
-            for d in discriminator:
-                d_type = d.get('type')
-                d_path = d.get('path')
-                if d_type == 'value':
-                    sliced_elements = navigate_fhir_path(resource, path)
-                    if isinstance(sliced_elements, list):
-                        seen_values = set()
-                        for elem in sliced_elements:
-                            d_value = navigate_fhir_path(elem, d_path)
-                            if d_value in seen_values:
-                                result['valid'] = False
-                                result['errors'].append(f"Duplicate discriminator value {d_value} for {path}.{d_path}")
-                            seen_values.add(d_value)
-                elif d_type == 'type':
-                    sliced_elements = navigate_fhir_path(resource, path)
-                    if isinstance(sliced_elements, list):
-                        for elem in sliced_elements:
-                            if not navigate_fhir_path(elem, d_path):
-                                result['valid'] = False
-                                result['errors'].append(f"Missing discriminator type {d_path} for {path}")
+        # Handle dataAbsentReason for must-support elements
+        if path.endswith('dataAbsentReason') and must_support:
+            value_x_path = path.replace('dataAbsentReason', 'value[x]')
+            value_found = False
+            for suffix in ['Quantity', 'CodeableConcept', 'String', 'DateTime', 'Period', 'Range']:
+                test_path = path.replace('dataAbsentReason', f'value{suffix}')
+                value = navigate_fhir_path(resource, test_path)
+                if value is not None and (not isinstance(value, list) or any(value)):
+                    value_found = True
+                    break
+            if not value_found:
+                value = navigate_fhir_path(resource, path)
+                if value is None or (isinstance(value, list) and not any(value)):
+                    warning_msg = f"{resource.get('resourceType')}/{resource.get('id', 'unknown')}: Must Support element {path} missing or empty"
+                    warnings.add(warning_msg)
+                    result['details'].append({
+                        'issue': warning_msg,
+                        'severity': 'warning',
+                        'description': f"{definition} This element is marked as Must Support and should be used to indicate why the associated value is absent."
+                    })
+                    logger.info(f"Validation warning: Must Support element {path} missing or empty")
 
+    result['errors'] = errors
+    result['warnings'] = list(warnings)
+    result['valid'] = len(errors) == 0
     result['summary'] = {
-        'error_count': len(result['errors']),
-        'warning_count': len(result['warnings'])
+        'error_count': len(errors),
+        'warning_count': len(warnings)
     }
+    logger.debug(f"Validation result: valid={result['valid']}, errors={len(result['errors'])}, warnings={len(result['warnings'])}")
     return result
 
+# --- UPDATED: validate_bundle_against_profile function ---
 def validate_bundle_against_profile(package_name, version, bundle, include_dependencies=True):
-    """Validates a FHIR Bundle against profiles in the specified package."""
+    """
+    Validates a FHIR Bundle against profiles in the specified package.
+    
+    This version adds a new two-pass process to correctly resolve `urn:uuid`
+    references within the bundle before flagging them as unresolved.
+    """
     logger.debug(f"Validating bundle against {package_name}#{version}, include_dependencies={include_dependencies}")
     result = {
         'valid': True,
@@ -2037,10 +2430,21 @@ def validate_bundle_against_profile(package_name, version, bundle, include_depen
         logger.error("Validation failed: Resource is not a Bundle")
         return result
 
-    # Track references to validate resolvability
-    references = set()
-    resolved_references = set()
-
+    # --- Work Item 1: First pass to collect all local references ---
+    local_references = set()
+    for entry in bundle.get('entry', []):
+        fullUrl = entry.get('fullUrl')
+        resource = entry.get('resource')
+        if fullUrl:
+            local_references.add(fullUrl)
+        if resource and resource.get('resourceType') and resource.get('id'):
+            local_references.add(f"{resource['resourceType']}/{resource['id']}")
+    logger.debug(f"Found {len(local_references)} local references in the bundle.")
+    
+    # Track references and resolved references for external check
+    all_references_found = set()
+    
+    # Second pass for validation and reference checking
     for entry in bundle.get('entry', []):
         resource = entry.get('resource')
         if not resource:
@@ -2050,13 +2454,11 @@ def validate_bundle_against_profile(package_name, version, bundle, include_depen
         result['summary']['resource_count'] += 1
 
         # Collect references
-        for key, value in resource.items():
-            if isinstance(value, dict) and 'reference' in value:
-                references.add(value['reference'])
-            elif isinstance(value, list):
-                for item in value:
-                    if isinstance(item, dict) and 'reference' in item:
-                        references.add(item['reference'])
+        current_refs = []
+        find_references(resource, current_refs)
+        for ref_str in current_refs:
+            if isinstance(ref_str, str):
+                all_references_found.add(ref_str)
 
         # Validate resource
         validation_result = validate_resource_against_profile(package_name, version, resource, include_dependencies)
@@ -2071,21 +2473,17 @@ def validate_bundle_against_profile(package_name, version, bundle, include_depen
         result['warnings'].extend(validation_result['warnings'])
         result['details'].extend(validation_result['details'])
 
-        # Mark resource as resolved if it has an ID
-        if resource_id != 'unknown':
-            resolved_references.add(f"{resource_type}/{resource_id}")
-
-    # Check for unresolved references
-    unresolved = references - resolved_references
-    for ref in unresolved:
-        warning_msg = f"Unresolved reference: {ref}"
-        result['warnings'].append(warning_msg)
-        result['details'].append({
-            'issue': warning_msg,
-            'severity': 'warning',
-            'description': f"The reference {ref} points to a resource not included in the bundle. Ensure the referenced resource is present or resolvable."
-        })
-        logger.info(f"Validation warning: Unresolved reference {ref}")
+    # --- Work Item 1: Check for unresolved references *after* processing all local resources ---
+    for ref in all_references_found:
+        if ref not in local_references:
+            warning_msg = f"Unresolved reference: {ref}"
+            result['warnings'].append(warning_msg)
+            result['details'].append({
+                'issue': warning_msg,
+                'severity': 'warning',
+                'description': f"The reference {ref} points to a resource not included in the bundle. Ensure the referenced resource is present or resolvable."
+            })
+            logger.info(f"Validation warning: Unresolved reference {ref}")
 
     # Finalize summary
     result['summary']['profiles_validated'] = list(result['summary']['profiles_validated'])
@@ -2093,6 +2491,7 @@ def validate_bundle_against_profile(package_name, version, bundle, include_depen
     result['summary']['warning_count'] = len(result['warnings'])
     logger.debug(f"Bundle validation result: valid={result['valid']}, errors={result['summary']['error_count']}, warnings={result['summary']['warning_count']}, resources={result['summary']['resource_count']}")
     return result
+
 
 # --- Structure Definition Retrieval ---
 def get_structure_definition(package_name, version, resource_type):
