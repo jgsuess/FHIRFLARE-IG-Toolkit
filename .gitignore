@@ -4,3 +4,5 @@
 /__pycache__/
 /myenv/
 /tmp/
+/Gemfile.lock
+/_site/
