@@ -1,0 +1,7 @@
+source "https://rubygems.org"
+
+gem "jekyll", "~> 3.9.3"
+gem "github-pages", group: :jekyll_plugins
+gem "jekyll-remote-theme"
+gem "jekyll-seo-tag"
+gem "webrick", "~> 1.7"
