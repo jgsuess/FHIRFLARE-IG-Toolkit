@@ -3,6 +3,26 @@ entries:
   fhirflare-ig-toolkit:
   - apiVersion: v2
     appVersion: latest
+    created: "2025-08-12T06:32:26.82463504Z"
+    description: Helm chart for deploying the fhirflare-ig-toolkit application
+    digest: a6f061b056940bc92e683b92f31123052ade03c5dcf6e6d759a14c2b57cd56b8
+    home: https://github.com/jgsuess/FHIRFLARE-IG-Toolkit
+    icon: https://github.com/jgsuess/FHIRFLARE-IG-Toolkit/raw/main/static/FHIRFLARE.png
+    keywords:
+    - fhir
+    - healthcare
+    - ig-toolkit
+    - implementation-guide
+    maintainers:
+    - email: jgsuess@gmail.com
+      name: Jörn Guy Süß
+    name: fhirflare-ig-toolkit
+    type: application
+    urls:
+    - https://github.com/jgsuess/FHIRFLARE-IG-Toolkit/releases/download/helm-v0.5.0/fhirflare-ig-toolkit-0.5.0.tgz
+    version: 0.5.0
+  - apiVersion: v2
+    appVersion: latest
     created: "2025-07-18T04:10:03.565889479Z"
     dependencies:
     - name: hapi-fhir-jpaserver
@@ -73,4 +93,4 @@ entries:
     urls:
     - https://github.com/jgsuess/FHIRFLARE-IG-Toolkit/releases/download/helm-v0.1.0/fhirflare-ig-toolkit-0.1.0.tgz
     version: 0.1.0
-generated: "2025-07-18T04:10:03.565910138Z"
+generated: "2025-08-12T06:32:26.824658103Z"
